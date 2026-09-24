@@ -1,0 +1,16 @@
+services:
+  db:
+    image: postgres:17-alpine
+    ports: ['127.0.0.1:55432:5432']
+    environment:
+      POSTGRES_USER: food
+      POSTGRES_PASSWORD: food_local_only
+      POSTGRES_DB: food_delivery
+    volumes: ['food_data:/var/lib/postgresql/data']
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U food -d food_delivery']
+      interval: 3s
+      timeout: 3s
+      retries: 20
+volumes:
+  food_data:

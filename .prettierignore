@@ -1,0 +1,7 @@
+node_modules
+dist
+.local-skills
+package-lock.json
+Phase_1_Food_Delivery.md
+public/images
+test-results

@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.env
+.local-skills/
+test-results/
+playwright-report/
+*.log
+*.dump
+.tmp/
