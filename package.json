@@ -8,27 +8,34 @@
   },
   "scripts": {
     "dev": "concurrently -k \"tsx watch server/index.ts\" \"vite --host 127.0.0.1\"",
-    "build": "tsc --noEmit && vite build",
+    "build": "prisma generate && tsc --noEmit && vite build",
     "start": "tsx server/index.ts",
-    "db:migrate": "tsx server/migrate.ts",
+    "db:migrate": "prisma migrate deploy",
     "db:seed": "tsx server/seed.ts",
+    "db:generate": "prisma generate",
+    "db:validate": "prisma validate",
+    "db:pull": "prisma db pull",
+    "db:studio": "prisma studio",
+    "import:restaurants": "tsx scripts/import-restaurants.ts",
     "test": "tsx --test --test-concurrency=1 tests/*.test.ts",
     "test:e2e": "playwright test",
     "test:load": "tsx scripts/load.ts",
+    "check:openapi": "tsx scripts/check-openapi.ts",
     "format": "prettier --write src server tests scripts docs README.md design-system *.json *.ts compose.yaml",
     "format:check": "prettier --check src server tests scripts docs README.md design-system *.json *.ts compose.yaml"
   },
   "dependencies": {
     "@fontsource-variable/dm-sans": "^5.3.0",
     "@fontsource-variable/manrope": "^5.3.0",
+    "@prisma/client": "^6.19.3",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
     "express-rate-limit": "^8.2.1",
     "helmet": "^8.1.0",
     "lucide-react": "^0.468.0",
-    "pg": "^8.16.3",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
+    "swagger-ui-express": "^5.0.1",
     "zod": "^4.3.6"
   },
   "devDependencies": {
@@ -39,11 +46,15 @@
     "@types/pg": "^8.15.6",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
+    "@types/swagger-ui-express": "^4.1.8",
     "@vitejs/plugin-react": "^5.1.0",
     "concurrently": "^9.2.1",
+    "pg": "^8.16.3",
     "prettier": "^3.9.9",
+    "prisma": "^6.19.3",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
-    "vite": "^7.3.0"
+    "vite": "^7.3.0",
+    "yaml": "^2.9.1"
   }
 }

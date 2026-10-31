@@ -2,6 +2,8 @@
 
 Base path: `/api`. JSON responses use ordinary HTTP status codes. Errors have `{ code, message, requestId }`. `X-Request-Id` is attached to every response. Send `Content-Type: application/json` and `X-Requested-With: Bep` on browser mutations. Authentication uses the `session` cookie issued by login/registration. Browser origins must be in comma-separated `APP_ORIGIN`.
 
+**Interactive reference:** Swagger UI is served at [http://localhost:3001/api/docs](http://localhost:3001/api/docs) from the checked-in [`openapi.yaml`](../openapi.yaml) (OpenAPI 3.1); the raw document is at `/api/docs/openapi.yaml`. The spec declares the `session` cookie and the required `x-requested-with` header as security schemes. `npm run check:openapi` verifies that every registered route is documented.
+
 ## Identity and discovery
 
 | Method/path                   | Access                      | Contract                                                                                                    |
@@ -29,6 +31,7 @@ A line is `{itemId,quantity,optionIds:[]}`. Quantities must be 1–20 per line; 
 | ----------------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------ |
 | GET `/cart`                         | Customer                             | `{items,version}`; PostgreSQL-backed.                                                            |
 | PUT `/cart`                         | Customer                             | `{items,version}`; empty array clears basket, stale version conflicts.                           |
+| DELETE `/cart/items/:itemId`        | Customer                             | Removes one dish and returns the updated basket; 404 when it is not in the basket.               |
 | POST `/checkout/quote`              | Customer                             | `{items}` → server prices, fee and total.                                                        |
 | POST `/checkout`                    | Customer                             | `{items,address,note?,expectedTotal,idempotencyKey}` → existing/new detailed order.              |
 | GET `/orders`                       | Signed in                            | Latest 100 visible orders; membership/assignment filters enforced server-side.                   |

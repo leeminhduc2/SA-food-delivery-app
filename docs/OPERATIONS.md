@@ -2,9 +2,9 @@
 
 ## Processes and data
 
-The API and web UI use one Node process after building. Development uses Vite and the API separately. The PostgreSQL Compose volume `food_data` persists across container restarts. `docker compose stop` stops local PostgreSQL without deleting its data. Migrations and seeds are explicit commands; startup does not reset the database.
+The API and web UI use one Node process after building. Development uses Vite and the API separately. The PostgreSQL Compose volume `food_data` persists across container restarts. `docker compose stop` stops local PostgreSQL without deleting its data. The Docker entrypoint applies pending Prisma migrations with `prisma migrate deploy` before starting the API; a failure aborts startup. It never resets, seeds, or pushes schema changes. Seed data remains an explicit command.
 
-`server/schema.sql` is an idempotent initial schema with guarded additive changes, applied inside a transaction and advisory migration lock. Before evolving a deployed schema, introduce numbered migrations and a recorded migration version; do not use arbitrary changes to this bootstrap file as a production migration strategy.
+Prisma Migrate is the only schema-change path. `prisma/schema.prisma` mirrors the live database, and `prisma/migrations/20261031000000_baseline` holds the equivalent DDL, including the CHECK constraints and partial indexes that Prisma cannot express. The existing development database was backed up, compared with the baseline, and marked as applied, so `deploy` is a no-op there until a new migration is committed. Create future changes with `prisma migrate dev --create-only`, review and extend the SQL when CHECKs or partial indexes change, commit the migration, then apply it with `prisma migrate deploy`. Never use `prisma migrate reset` or `prisma db push` against an existing database. The adoption record, backup path, and verification results are in [PRISMA.md](PRISMA.md).
 
 ## Worker
 
@@ -16,7 +16,7 @@ Provider calls time out after three seconds by default (`PROVIDER_TIMEOUT_MS`). 
 
 Structured request logs include request ID, method, path, response status, and duration; they omit request bodies/passwords. Responses carry `X-Request-Id`. Business history carries order/entity/actor data, while audit logs record sensitive actions. `/api/metrics` is admin-only and reports per-process request counts, server errors, and rolling p95/p99 latency. Admin overview exposes reconciliation and notification backlog. These are foundations for instrumentation, not a deployed alerting/tracing platform.
 
-The checked local browse smoke test used 200 requests at concurrency 20 with zero errors and approximately 72 ms p95 on the development machine. The dataset contains only three kitchens. It does not substantiate production capacity or availability; load-test representative data and concurrent checkout/provider behavior before release.
+The checked local browse smoke test used 200 requests at concurrency 20 with zero errors and approximately 103 ms p95 (157 ms p99) on the development machine after the Prisma migration. The dataset contains only three kitchens. It does not substantiate production capacity or availability; load-test representative data and concurrent checkout/provider behavior before release.
 
 ## Backup and restore smoke test
 
@@ -31,6 +31,17 @@ docker compose exec -T db psql -U food -d food_restore_check -c "SELECT count(*)
 ```
 
 Choose a fresh scratch database name for each rehearsal. Confirm expected tables, counts and a representative order/payment/history join. Record backup duration, restore duration and data age. Secure/encrypt backups and define retention, offsite storage, RPO and RTO before deployment. The local rehearsal is not an ongoing backup service.
+
+### Backup storage policy
+
+Backups contain customer data and are operational artifacts, not source code. `backups/` and `*.dump` are listed in `.gitignore`, and no backup is tracked by Git; never force-add one. Keep working archives outside the repository and outside folders that sync or share automatically.
+
+- Encrypt archives at rest (for example with an encrypted volume or `age`/GPG) and in transit; limit access to operators who can perform a restore.
+- Proposed starting retention: 7 daily, 4 weekly and 12 monthly copies. Adjust to the agreed RPO/RTO and verify a restore before relying on any rotation.
+- Record backup time, size, checksum, migration version and the result of the restore rehearsal separately from the archive.
+- Never put credentials or customer data in Git, CI logs, tickets, chat or documentation.
+
+The pre-adoption dump under `backups/` is left in place. Moving or deleting it requires confirming that an encrypted copy exists outside this workspace.
 
 A local dump/restore rehearsal was completed during implementation: the restored database contained all three seeded restaurants and six seeded accounts. This checks basic archive restorability; it does not establish a production recovery objective or verify recovery of a large transactional dataset.
 

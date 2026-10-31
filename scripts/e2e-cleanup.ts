@@ -8,7 +8,7 @@ export default async function cleanup() {
     connectionString:
       process.env.TEST_DATABASE_URL ||
       process.env.DATABASE_URL ||
-      'postgres://food:food_local_only@localhost:55432/food_delivery',
+      'postgres://food:food_local_only@localhost:5433/food_delivery',
   });
   try {
     await pool.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);

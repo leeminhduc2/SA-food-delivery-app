@@ -4,6 +4,7 @@ dist/
 .local-skills/
 test-results/
 playwright-report/
+backups/
 *.log
 *.dump
 .tmp/

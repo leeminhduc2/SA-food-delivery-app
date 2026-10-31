@@ -1,0 +1,1289 @@
+openapi: 3.1.0
+info:
+  title: Bếp Food Delivery API
+  version: 1.0.0
+  description: |
+    HTTP API for the Bếp food-delivery application. Authentication is an opaque
+    session cookie (`session`, HttpOnly, SameSite=Lax). Every browser mutation
+    must also send `X-Requested-With: Bep` and an allow-listed `Origin`.
+    The payment webhook uses a raw-body HMAC signature instead of the cookie.
+servers:
+  - url: /
+tags:
+  - name: Health
+  - name: Identity
+  - name: Catalog
+  - name: Basket
+  - name: Checkout
+  - name: Orders
+  - name: Payments
+  - name: Delivery
+  - name: Support
+  - name: Operations
+  - name: Admin
+
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: session
+      description: Opaque session cookie issued by register/login. HttpOnly, SameSite=Lax, Secure in production.
+    requestedWithHeader:
+      type: apiKey
+      in: header
+      name: x-requested-with
+      description: Must equal `Bep` on every non-GET `/api` request. Defends against cross-site form posts.
+    paymentSignature:
+      type: apiKey
+      in: header
+      name: x-payment-signature
+      description: Hex HMAC-SHA256 of the exact raw request bytes using PAYMENT_WEBHOOK_SECRET.
+
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+    ItemId:
+      name: itemId
+      in: path
+      required: true
+      schema: { type: string }
+    RestaurantId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+    DeliveryId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+    OrderId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+    UserId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+    ReviewId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+    ComplaintId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+
+  responses:
+    BadRequest:
+      description: Validation failed or the request body is malformed.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unauthorized:
+      description: No valid session.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Forbidden:
+      description: The account may not perform this action.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: The resource does not exist.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Conflict:
+      description: Current state or an idempotency key conflicts with the request.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    ServerError:
+      description: Unexpected server error.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
+    Error:
+      type: object
+      required: [code, message, requestId]
+      properties:
+        code: { type: string, examples: [VALIDATION] }
+        message: { type: string }
+        requestId: { type: string }
+    User:
+      type: object
+      required: [id, email, name, role, active]
+      properties:
+        id: { type: string }
+        email: { type: string, format: email }
+        name: { type: string }
+        role: { type: string, enum: [CUSTOMER, RESTAURANT, DRIVER, ADMIN] }
+        active: { type: boolean }
+    RegisterInput:
+      type: object
+      required: [name, email, password]
+      properties:
+        name: { type: string, minLength: 2, maxLength: 80 }
+        email: { type: string, format: email, maxLength: 200 }
+        password: { type: string, minLength: 10, maxLength: 128 }
+        role: { type: string, enum: [CUSTOMER, RESTAURANT, DRIVER], default: CUSTOMER }
+    LoginInput:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, maxLength: 128 }
+    ProfileInput:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, minLength: 2, maxLength: 80 }
+    Restaurant:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        description: { type: string }
+        address: { type: string }
+        cuisine: { type: string }
+        image: { type: string }
+        status: { type: string, enum: [PENDING, APPROVED, REJECTED] }
+        delivery_fee: { type: integer }
+        eta_minutes: { type: integer }
+        rating: { type: [number, 'null'] }
+        review_count: { type: integer }
+    RestaurantInput:
+      type: object
+      required: [name, description, address, cuisine]
+      properties:
+        name: { type: string, minLength: 2, maxLength: 100 }
+        description: { type: string, maxLength: 500 }
+        address: { type: string, minLength: 8, maxLength: 300 }
+        cuisine: { type: string, minLength: 2, maxLength: 60 }
+        image: { type: string, maxLength: 1000, description: HTTPS URL, /images/<file>, or empty }
+    Option:
+      type: object
+      required: [id, name, extraPrice]
+      properties:
+        id: { type: string, maxLength: 60 }
+        name: { type: string, maxLength: 80 }
+        extraPrice: { type: integer, minimum: 0 }
+    MenuItemInput:
+      type: object
+      required: [name, price, stock, available]
+      properties:
+        name: { type: string, minLength: 2, maxLength: 100 }
+        description: { type: string, maxLength: 500 }
+        price: { type: integer, minimum: 1000, maximum: 10000000, description: Whole VND }
+        stock: { type: integer, minimum: 0, maximum: 100000 }
+        available: { type: boolean }
+        image: { type: string }
+        category: { type: string, maxLength: 60, default: Main dishes }
+        options:
+          type: array
+          maxItems: 10
+          items: { $ref: '#/components/schemas/Option' }
+    MenuItem:
+      allOf:
+        - $ref: '#/components/schemas/MenuItemInput'
+        - type: object
+          properties:
+            id: { type: string }
+            restaurant_id: { type: string }
+            menu_id: { type: string }
+            category: { type: string }
+    Line:
+      type: object
+      required: [itemId, quantity]
+      properties:
+        itemId: { type: string }
+        quantity: { type: integer, minimum: 1, maximum: 20 }
+        optionIds:
+          type: array
+          maxItems: 10
+          items: { type: string }
+    Cart:
+      type: object
+      required: [items, version]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Line' }
+        version: { type: integer, minimum: 0 }
+    CartInput:
+      type: object
+      required: [items, version]
+      properties:
+        items:
+          type: array
+          maxItems: 40
+          items: { $ref: '#/components/schemas/Line' }
+        version: { type: integer, minimum: 0 }
+    Quote:
+      type: object
+      required: [restaurantId, restaurantName, items, subtotal, deliveryFee, total, currency]
+      properties:
+        restaurantId: { type: string }
+        restaurantName: { type: string }
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              itemId: { type: string }
+              name: { type: string }
+              quantity: { type: integer }
+              price: { type: integer }
+              image: { type: string }
+              options:
+                type: array
+                items: { $ref: '#/components/schemas/Option' }
+        subtotal: { type: integer }
+        deliveryFee: { type: integer }
+        total: { type: integer }
+        currency: { type: string, enum: [VND] }
+    CheckoutInput:
+      type: object
+      required: [items, address, expectedTotal, idempotencyKey]
+      properties:
+        items:
+          type: array
+          minItems: 1
+          maxItems: 40
+          items: { $ref: '#/components/schemas/Line' }
+        address: { type: string, minLength: 8, maxLength: 300 }
+        note: { type: string, maxLength: 500, default: '' }
+        expectedTotal: { type: integer, minimum: 1 }
+        idempotencyKey: { type: string, minLength: 8, maxLength: 120 }
+    OrderSummary:
+      type: object
+      properties:
+        id: { type: string }
+        customer_id: { type: string }
+        restaurant_id: { type: string }
+        restaurant_name: { type: string }
+        status:
+          type: string
+          enum: [PENDING_PAYMENT, CONFIRMED, ACCEPTED, PREPARING, READY_FOR_PICKUP, OUT_FOR_DELIVERY, DELIVERED, CANCELLED, PAYMENT_FAILED, DELIVERY_FAILED]
+        subtotal: { type: integer }
+        delivery_fee: { type: integer }
+        total: { type: integer }
+        currency: { type: string }
+        address: { type: string }
+        note: { type: string }
+        expires_at: { type: string, format: date-time }
+        created_at: { type: string, format: date-time }
+    OrderDetail:
+      allOf:
+        - $ref: '#/components/schemas/OrderSummary'
+        - type: object
+          properties:
+            items:
+              type: array
+              items: { type: object, additionalProperties: true }
+            payment:
+              type: object
+              additionalProperties: true
+            delivery:
+              type: object
+              additionalProperties: true
+            history:
+              type: array
+              items: { type: object, additionalProperties: true }
+            review:
+              type: object
+              additionalProperties: true
+    PaymentEvent:
+      type: object
+      required: [eventId, reference, orderId, amount, currency, status, externalTransactionId]
+      properties:
+        eventId: { type: string, maxLength: 150 }
+        reference: { type: string, maxLength: 150 }
+        orderId: { type: string }
+        amount: { type: integer, minimum: 1 }
+        currency: { type: string, enum: [VND] }
+        status: { type: string, enum: [SUCCEEDED, FAILED] }
+        externalTransactionId: { type: string, maxLength: 150 }
+    ReviewInput:
+      type: object
+      required: [rating, content]
+      properties:
+        rating: { type: integer, minimum: 1, maximum: 5 }
+        content: { type: string, minLength: 3, maxLength: 1000 }
+    ComplaintInput:
+      type: object
+      required: [content]
+      properties:
+        content: { type: string, minLength: 10, maxLength: 2000 }
+    Notification:
+      type: object
+      additionalProperties: true
+    Report:
+      type: object
+      additionalProperties: true
+      properties:
+        orders: { type: integer }
+        delivered: { type: integer }
+        delivery_failed: { type: integer }
+        revenue: { type: integer }
+        pending: { type: integer }
+        daily: { type: array, items: { type: object, additionalProperties: true } }
+        revenueBasis: { type: string }
+    ApprovalInput:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [APPROVED, REJECTED] }
+    AccountStatusInput:
+      type: object
+      required: [active]
+      properties:
+        active: { type: boolean }
+    ResolutionInput:
+      type: object
+      required: [resolution]
+      properties:
+        resolution: { type: string, minLength: 3, maxLength: 1000 }
+    ReviewModerationInput:
+      type: object
+      required: [hidden]
+      properties:
+        hidden: { type: boolean }
+    DeliveryAssignInput:
+      type: object
+      required: [driverId]
+      properties:
+        driverId: { type: string }
+    DeliveryTransitionInput:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [PICKED_UP, IN_TRANSIT, DELIVERED, FAILED] }
+        reason: { type: string, maxLength: 300 }
+    OrderTransitionInput:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [ACCEPTED, PREPARING, READY_FOR_PICKUP] }
+    CancelInput:
+      type: object
+      required: [reason]
+      properties:
+        reason: { type: string, minLength: 3, maxLength: 300 }
+    SimulatedPaymentInput:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [SUCCEEDED, FAILED] }
+    ImportRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        bbox:
+          type: array
+          minItems: 4
+          maxItems: 4
+          description: '[south, west, north, east] in WGS84 degrees; at most 1 degree per side.'
+          items: { type: number }
+        dryRun: { type: boolean, default: false }
+    ImportQueued:
+      type: object
+      required: [jobId, status, dryRun]
+      properties:
+        jobId: { type: string }
+        status: { type: string, enum: [RUNNING] }
+        dryRun: { type: boolean }
+    ImportJob:
+      type: object
+      additionalProperties: true
+      properties:
+        id: { type: string }
+        requested_by: { type: string }
+        endpoint: { type: string }
+        bbox: { type: string }
+        dry_run: { type: boolean }
+        status: { type: string, enum: [RUNNING, SUCCEEDED, FAILED] }
+        stats: { type: object, additionalProperties: true }
+        error: { type: [string, 'null'] }
+        started_at: { type: string, format: date-time }
+        finished_at: { type: [string, 'null'], format: date-time }
+    Ok:
+      type: object
+      properties:
+        ok: { type: boolean, const: true }
+    WebhookResult:
+      type: object
+      required: [duplicate]
+      properties:
+        duplicate: { type: boolean }
+
+paths:
+  /api/health:
+    get:
+      tags: [Health]
+      operationId: health
+      summary: Check database connectivity
+      security: []
+      responses:
+        '200':
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, const: ok }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/config:
+    get:
+      tags: [Health]
+      operationId: config
+      summary: Public feature flags
+      security: []
+      responses:
+        '200':
+          description: Demo and payment flags
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  simulatedPayments: { type: boolean }
+                  demoMode: { type: boolean }
+
+  /api/metrics:
+    get:
+      tags: [Operations]
+      operationId: metrics
+      summary: Per-process request metrics (admin)
+      security: [{ sessionCookie: [] }]
+      responses:
+        '200':
+          description: Request stats
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/auth/register:
+    post:
+      tags: [Identity]
+      operationId: register
+      summary: Create an account
+      security: [{ requestedWithHeader: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegisterInput' }
+      responses:
+        '201':
+          description: Profile with a session cookie, or a pending-approval marker for drivers
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/User'
+                  - type: object
+                    properties:
+                      pendingApproval: { type: boolean, const: true }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /api/auth/login:
+    post:
+      tags: [Identity]
+      operationId: login
+      summary: Sign in and set the session cookie
+      security: [{ requestedWithHeader: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginInput' }
+      responses:
+        '200':
+          description: Current profile
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/auth/logout:
+    post:
+      tags: [Identity]
+      operationId: logout
+      summary: Invalidate the current session
+      security: [{ requestedWithHeader: [] }]
+      responses:
+        '200':
+          description: Session removed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ok' }
+
+  /api/auth/me:
+    get:
+      tags: [Identity]
+      operationId: getMe
+      summary: Current profile, or null when signed out
+      security: []
+      responses:
+        '200':
+          description: Profile or null
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/User'
+                  - { type: 'null' }
+    patch:
+      tags: [Identity]
+      operationId: updateMe
+      summary: Update the display name
+      security: [{ sessionCookie: [], requestedWithHeader: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProfileInput' }
+      responses:
+        '200':
+          description: Updated profile
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/restaurants:
+    get:
+      tags: [Catalog]
+      operationId: listRestaurants
+      summary: Discover approved restaurants
+      security: []
+      parameters:
+        - name: q
+          in: query
+          schema: { type: string, maxLength: 100 }
+          description: Matches restaurant name, cuisine, or available dish name
+        - name: cuisine
+          in: query
+          schema: { type: string, maxLength: 60 }
+        - name: sort
+          in: query
+          schema: { type: string, enum: [recommended, fee, name], default: recommended }
+      responses:
+        '200':
+          description: Approved restaurants
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Restaurant' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+    post:
+      tags: [Catalog]
+      operationId: createRestaurant
+      summary: Register a restaurant (pending approval)
+      security: [{ sessionCookie: [], requestedWithHeader: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RestaurantInput' }
+      responses:
+        '201':
+          description: Created restaurant
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Restaurant' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/restaurants/{id}:
+    parameters:
+      - $ref: '#/components/parameters/RestaurantId'
+    get:
+      tags: [Catalog]
+      operationId: getRestaurant
+      summary: Restaurant, menu and visible reviews
+      security: []
+      responses:
+        '200':
+          description: Restaurant detail
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Restaurant'
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: '#/components/schemas/MenuItem' }
+                      reviews:
+                        type: array
+                        items: { type: object, additionalProperties: true }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Catalog]
+      operationId: updateRestaurant
+      summary: Update a restaurant profile
+      security: [{ sessionCookie: [], requestedWithHeader: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RestaurantInput' }
+      responses:
+        '200':
+          description: Updated restaurant
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Restaurant' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/restaurants/{id}/items:
+    parameters:
+      - $ref: '#/components/parameters/RestaurantId'
+    post:
+      tags: [Catalog]
+      operationId: createItem
+      summary: Add a dish to a restaurant menu
+      security: [{ sessionCookie: [], requestedWithHeader: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MenuItemInput' }
+      responses:
+        '201':
+          description: Created dish
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MenuItem' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/manage/restaurants:
+    get:
+      tags: [Catalog]
+      operationId: listManagedRestaurants
+      summary: Restaurants owned by the actor, or all for an administrator
+      security: [{ sessionCookie: [] }]
+      responses:
+        '200':
+          description: Manageable restaurants
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Restaurant' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/items/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    put:
+      tags: [Catalog]
+      operationId: updateItem
+      summary: Replace editable dish fields
+      security: [{ sessionCookie: [], requestedWithHeader: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MenuItemInput' }
+      responses:
+        '200':
+          description: Updated dish
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MenuItem' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Catalog]
+      operationId: archiveItem
+      summary: Archive a dish by turning availability off
+      security: [{ sessionCookie: [], requestedWithHeader: [] }]
+      responses:
+        '200':
+          description: Dish archived
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ok' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/cart:
+    get:
+      tags: [Basket]
+      operationId: getCart
+      summary: Persisted basket with optimistic version
+      security: [{ sessionCookie: [] }]
+      responses:
+        '200':
+          description: Basket
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Cart' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    put:
+      tags: [Basket]
+      operationId: replaceCart
+      summary: Replace basket lines
+      security: [{ sessionCookie: [], requestedWithHeader: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CartInput' }
+      responses:
+        '200':
+          description: Updated basket
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Cart' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /api/cart/items/{itemId}:
+    parameters:
+      - $ref: '#/components/parameters/ItemId'
+    delete:
+      tags: [Basket]
+      operationId: removeCartItem
+      summary: Remove one dish from the basket
+      security: [{ sessionCookie: [], requestedWithHeader: [] }]
+      responses:
+        '200':
+          description: Updated basket
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Cart' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/checkout/quote:
+    post:
+      tags: [Checkout]
+      operationId: quoteCheckout
+      summary: Price a basket without reserving stock
+      security: [{ sessionCookie: [], requestedWithHeader: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [items]
+              properties:
+                items:
+                  type: array
+                  minItems: 1
+                  maxItems: 40
+                  items: { $ref: '#/components/schemas/Line' }
+      responses:
+        '200':
+          description: Authoritative quote
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Quote' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /api/checkout:
+    post:
+      tags: [Checkout]
+      operationId: checkout
+      summary: Create an order idempotently
+      security: [{ sessionCookie: [], requestedWithHeader: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CheckoutInput' }
+      responses:
+        '201':
+          description: Existing or newly created order
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrderDetail' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /api/orders:
+    get:
+      tags: [Orders]
+      operationId: listOrders
+      summary: Latest 100 orders visible to the actor
+      security: [{ sessionCookie: [] }]
+      responses:
+        '200':
+          description: Order details
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/OrderDetail' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/orders/{id}:
+    parameters:
+      - $ref: '#/components/parameters/OrderId'
+    get:
+      tags: [Orders]
+      operationId: getOrder
+      summary: Order snapshot, payment, delivery and history
+      security: [{ sessionCookie: [] }]
+      responses:
+        '200':
+          description: Order detail
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrderDetail' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/orders/{id}/transition:
+    parameters:
+      - $ref: '#/components/parameters/OrderId'
+    post:
+      tags: [Orders]
+      operationId: transitionOrder
+      summary: Move an order through restaurant preparation states
+      security: [{ sessionCookie: [], requestedWithHeader: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OrderTransitionInput' }
+      responses:
+        '200':
+          description: Updated order
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrderDetail' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /api/orders/{id}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/OrderId'
+    post:
+      tags: [Orders]
+      operationId: cancelOrder
+      summary: Cancel before the restaurant accepts
+      security: [{ sessionCookie: [], requestedWithHeader: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CancelInput' }
+      responses:
+        '200':
+          description: Updated order
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrderDetail' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /api/orders/{id}/simulate-payment:
+    parameters:
+      - $ref: '#/components/parameters/OrderId'
+    post:
+      tags: [Payments]
+      operationId: simulatePayment
+      summary: Simulate a provider result (simulated mode only)
+      security: [{ sessionCookie: [], requestedWithHeader: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SimulatedPaymentInput' }
+      responses:
+        '200':
+          description: Applied event
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WebhookResult' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /api/payments/webhook:
+    post:
+      tags: [Payments]
+      operationId: paymentWebhook
+      summary: Signed provider callback on the exact raw JSON bytes
+      security: [{ paymentSignature: [] }]
+      description: Exempt from the cookie/`X-Requested-With` browser flow.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PaymentEvent' }
+      responses:
+        '200':
+          description: Applied or duplicate event
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WebhookResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /api/deliveries/{id}/assign:
+    parameters:
+      - $ref: '#/components/parameters/DeliveryId'
+    post:
+      tags: [Delivery]
+      operationId: assignDelivery
+      summary: Assign an active driver (admin)
+      security: [{ sessionCookie: [], requestedWithHeader: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DeliveryAssignInput' }
+      responses:
+        '200':
+          description: Driver assigned
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ok' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /api/deliveries/{id}/transition:
+    parameters:
+      - $ref: '#/components/parameters/DeliveryId'
+    post:
+      tags: [Delivery]
+      operationId: transitionDelivery
+      summary: Move an assigned delivery through pickup and delivery
+      security: [{ sessionCookie: [], requestedWithHeader: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DeliveryTransitionInput' }
+      responses:
+        '200':
+          description: Delivery updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ok' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /api/orders/{id}/review:
+    parameters:
+      - $ref: '#/components/parameters/OrderId'
+    post:
+      tags: [Support]
+      operationId: createReview
+      summary: Review a delivered order once
+      security: [{ sessionCookie: [], requestedWithHeader: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReviewInput' }
+      responses:
+        '201':
+          description: Created review
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /api/orders/{id}/complaints:
+    parameters:
+      - $ref: '#/components/parameters/OrderId'
+    post:
+      tags: [Support]
+      operationId: createComplaint
+      summary: Open a support request for an owned order
+      security: [{ sessionCookie: [], requestedWithHeader: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ComplaintInput' }
+      responses:
+        '201':
+          description: Created complaint
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/complaints:
+    get:
+      tags: [Support]
+      operationId: listComplaints
+      summary: Own complaints, or all for an administrator
+      security: [{ sessionCookie: [] }]
+      responses:
+        '200':
+          description: Complaints
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { type: object, additionalProperties: true }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/notifications:
+    get:
+      tags: [Support]
+      operationId: listNotifications
+      summary: Own inbox, newest first
+      security: [{ sessionCookie: [] }]
+      responses:
+        '200':
+          description: Inbox events
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Notification' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/notifications/read:
+    post:
+      tags: [Support]
+      operationId: markNotificationsRead
+      summary: Mark the whole inbox read
+      security: [{ sessionCookie: [], requestedWithHeader: [] }]
+      responses:
+        '200':
+          description: Inbox updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ok' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/reports:
+    get:
+      tags: [Operations]
+      operationId: getReports
+      summary: Delivered revenue, counts and daily activity
+      security: [{ sessionCookie: [] }]
+      responses:
+        '200':
+          description: Report
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Report' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/admin/overview:
+    get:
+      tags: [Admin]
+      operationId: adminOverview
+      summary: Approval/moderation queues, audit and reconciliation status
+      security: [{ sessionCookie: [] }]
+      responses:
+        '200':
+          description: Overview
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/admin/restaurants/{id}/approval:
+    parameters:
+      - $ref: '#/components/parameters/RestaurantId'
+    post:
+      tags: [Admin]
+      operationId: approveRestaurant
+      summary: Approve or reject a pending restaurant
+      security: [{ sessionCookie: [], requestedWithHeader: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ApprovalInput' }
+      responses:
+        '200':
+          description: Approval recorded
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ok' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/admin/users/{id}:
+    parameters:
+      - $ref: '#/components/parameters/UserId'
+    patch:
+      tags: [Admin]
+      operationId: setUserActive
+      summary: Enable or disable an account
+      security: [{ sessionCookie: [], requestedWithHeader: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AccountStatusInput' }
+      responses:
+        '200':
+          description: Account updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ok' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /api/admin/complaints/{id}/resolve:
+    parameters:
+      - $ref: '#/components/parameters/ComplaintId'
+    post:
+      tags: [Admin]
+      operationId: resolveComplaint
+      summary: Resolve an open complaint
+      security: [{ sessionCookie: [], requestedWithHeader: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ResolutionInput' }
+      responses:
+        '200':
+          description: Complaint resolved
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ok' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /api/admin/restaurants/import:
+    post:
+      tags: [Admin]
+      operationId: startRestaurantImport
+      summary: Queue an OpenStreetMap restaurant import (admin)
+      description: |
+        Runs in the background and returns a job id. The Overpass endpoint is
+        server-configured; callers cannot supply a URL. Only one import may run
+        at a time. Imported restaurants are PENDING and unverified.
+      security: [{ sessionCookie: [], requestedWithHeader: [] }]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ImportRequest' }
+      responses:
+        '202':
+          description: Import queued
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ImportQueued' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /api/admin/restaurants/import/history:
+    get:
+      tags: [Admin]
+      operationId: listRestaurantImports
+      summary: Recent import jobs and statistics (admin)
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+      responses:
+        '200':
+          description: Import history, newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ImportJob' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/admin/reviews/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ReviewId'
+    patch:
+      tags: [Admin]
+      operationId: moderateReview
+      summary: Hide or restore a review
+      security: [{ sessionCookie: [], requestedWithHeader: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReviewModerationInput' }
+      responses:
+        '200':
+          description: Review moderated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ok' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
