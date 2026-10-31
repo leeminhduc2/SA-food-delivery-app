@@ -804,6 +804,14 @@ export function App() {
         <span>
           Made for the neighborhood <Heart size={13} />
         </span>
+        <a
+          className="osm-attribution"
+          href="https://www.openstreetmap.org/copyright"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Restaurant data © OpenStreetMap contributors (ODbL)
+        </a>
       </footer>
       {notice && (
         <div className="toast" role="status">

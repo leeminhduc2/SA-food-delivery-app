@@ -1,7 +1,7 @@
 services:
   db:
     image: postgres:17-alpine
-    ports: ['127.0.0.1:55432:5432']
+    ports: ['127.0.0.1:5433:5432']
     environment:
       POSTGRES_USER: food
       POSTGRES_PASSWORD: food_local_only
@@ -12,5 +12,28 @@ services:
       interval: 3s
       timeout: 3s
       retries: 20
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file: [.env]
+    environment:
+      # Inside Compose the database is reached by service name, not localhost.
+      DATABASE_URL: postgres://food:food_local_only@db:5432/food_delivery
+      HOST: 0.0.0.0
+      PORT: '3001'
+      APP_ORIGIN: http://localhost:5173,http://127.0.0.1:5173,http://localhost:3001,http://127.0.0.1:3001
+    depends_on:
+      db:
+        condition: service_healthy
+    ports: ['127.0.0.1:3001:3001']
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:3001/api/health >/dev/null || exit 1']
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
+
 volumes:
   food_data:

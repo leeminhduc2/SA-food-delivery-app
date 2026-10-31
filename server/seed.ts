@@ -1,6 +1,8 @@
 import 'dotenv/config';
-import { pool, transaction } from './db.js';
-import { hashPassword } from './modules/identity.js';
+import { prisma, transaction } from './db.js';
+import { hashPassword } from './services/identity.service.js';
+import type { Prisma } from '@prisma/client';
+
 export async function seed() {
   if (process.env.DEMO_MODE !== 'true')
     throw new Error('Seed is only available with DEMO_MODE=true.');
@@ -16,56 +18,92 @@ export async function seed() {
       ['driver2', 'Nam Phạm', 'DRIVER'],
       ['admin', 'Bếp Operations', 'ADMIN'],
     ])
-      await db.query(
-        'INSERT INTO users(id,email,name,password_hash,role) VALUES($1,$2,$3,$4,$5) ON CONFLICT(id) DO NOTHING',
-        [id, `${id}@bep.local`, name, hash, role],
-      );
-    const restaurants = [
-      [
-        'saigon',
-        'Bếp Nhà Sài Gòn',
-        'Comfort food, made the way home feels. Fresh herbs, slow-simmered broths, and a little love in every bowl.',
-        '24 Nguyễn Huệ, District 1, Ho Chi Minh City',
-        'Vietnamese',
-        '/images/vietnamese.svg',
-        15000,
-        25,
-      ],
-      [
-        'pizza',
-        'Little Italy Kitchen',
-        'Hand-stretched dough, bright tomatoes, and generous slices. Your neighborhood Italian kitchen.',
-        '18 Lê Lợi, District 1, Ho Chi Minh City',
-        'Italian',
-        '/images/pizza.svg',
-        20000,
-        35,
-      ],
-      [
-        'green',
-        'The Green Table',
-        'Feel-good bowls filled with seasonal vegetables, grains, and house-made dressings.',
-        '52 Pasteur, District 3, Ho Chi Minh City',
-        'Healthy',
-        '/images/healthy.svg',
-        12000,
-        20,
-      ],
+      // `update: {}` preserves existing credentials and profile changes.
+      await db.user.upsert({
+        where: { id },
+        update: {},
+        create: { id, email: `${id}@bep.local`, name, password_hash: hash, role },
+      });
+    const restaurants: Array<{
+      id: string;
+      name: string;
+      description: string;
+      address: string;
+      cuisine: string;
+      image: string;
+      fee: number;
+      eta: number;
+    }> = [
+      {
+        id: 'saigon',
+        name: 'Bếp Nhà Sài Gòn',
+        description:
+          'Comfort food, made the way home feels. Fresh herbs, slow-simmered broths, and a little love in every bowl.',
+        address: '24 Nguyễn Huệ, District 1, Ho Chi Minh City',
+        cuisine: 'Vietnamese',
+        image: '/images/vietnamese.svg',
+        fee: 15000,
+        eta: 25,
+      },
+      {
+        id: 'pizza',
+        name: 'Little Italy Kitchen',
+        description:
+          'Hand-stretched dough, bright tomatoes, and generous slices. Your neighborhood Italian kitchen.',
+        address: '18 Lê Lợi, District 1, Ho Chi Minh City',
+        cuisine: 'Italian',
+        image: '/images/pizza.svg',
+        fee: 20000,
+        eta: 35,
+      },
+      {
+        id: 'green',
+        name: 'The Green Table',
+        description:
+          'Feel-good bowls filled with seasonal vegetables, grains, and house-made dressings.',
+        address: '52 Pasteur, District 3, Ho Chi Minh City',
+        cuisine: 'Healthy',
+        image: '/images/healthy.svg',
+        fee: 12000,
+        eta: 20,
+      },
     ];
-    for (const [rid, name, desc, address, cuisine, image, fee, eta] of restaurants) {
-      await db.query(
-        "INSERT INTO restaurants(id,name,description,address,cuisine,image,delivery_fee,eta_minutes,status,approved_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,'APPROVED',now()) ON CONFLICT(id) DO NOTHING",
-        [rid, name, desc, address, cuisine, image, fee, eta],
-      );
-      await db.query('INSERT INTO restaurant_members VALUES($1,$2) ON CONFLICT DO NOTHING', [
-        rid === 'saigon' ? 'restaurant' : 'restaurant2',
-        rid,
-      ]);
-      await db.query(
-        'INSERT INTO menus(id,restaurant_id,name) VALUES($1,$2,$3) ON CONFLICT(id) DO NOTHING',
-        [`${rid}-main`, rid, 'House favorites'],
-      );
+    for (const restaurant of restaurants) {
+      await db.restaurant.upsert({
+        where: { id: restaurant.id },
+        update: {},
+        create: {
+          id: restaurant.id,
+          name: restaurant.name,
+          description: restaurant.description,
+          address: restaurant.address,
+          cuisine: restaurant.cuisine,
+          image: restaurant.image,
+          delivery_fee: restaurant.fee,
+          eta_minutes: restaurant.eta,
+          status: 'APPROVED',
+          approved_at: new Date(),
+        },
+      });
     }
+    await db.restaurantMember.createMany({
+      data: [
+        { user_id: 'restaurant', restaurant_id: 'saigon' },
+        { user_id: 'restaurant2', restaurant_id: 'pizza' },
+        { user_id: 'restaurant2', restaurant_id: 'green' },
+      ],
+      skipDuplicates: true,
+    });
+    for (const restaurant of restaurants)
+      await db.menu.upsert({
+        where: { id: `${restaurant.id}-main` },
+        update: {},
+        create: {
+          id: `${restaurant.id}-main`,
+          restaurant_id: restaurant.id,
+          name: 'House favorites',
+        },
+      });
     const items = [
       [
         'pho',
@@ -131,25 +169,26 @@ export async function seed() {
         65000,
         'healthy',
       ],
-    ];
-    for (const [iid, rid, name, desc, price, img] of items)
-      await db.query(
-        'INSERT INTO menu_items(id,restaurant_id,menu_id,name,description,price,image,options) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(id) DO NOTHING',
-        [
-          iid,
-          rid,
-          `${rid}-main`,
-          name,
-          desc,
-          price,
-          `/images/${img}.svg`,
-          JSON.stringify([{ id: 'extra', name: 'Extra portion', extraPrice: 15000 }]),
-        ],
-      );
+    ] as const;
+    await db.menuItem.createMany({
+      data: items.map(([iid, rid, name, desc, price, img]) => ({
+        id: iid,
+        restaurant_id: rid,
+        menu_id: `${rid}-main`,
+        name,
+        description: desc,
+        price,
+        image: `/images/${img}.svg`,
+        options: [
+          { id: 'extra', name: 'Extra portion', extraPrice: 15000 },
+        ] as unknown as Prisma.InputJsonValue,
+      })),
+      skipDuplicates: true,
+    });
   });
 }
 if (process.argv[1]?.endsWith('seed.ts')) {
   await seed();
   console.log('Demo data seeded; existing records preserved.');
-  await pool.end();
+  await prisma.$disconnect();
 }

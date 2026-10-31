@@ -4,14 +4,18 @@ import helmet from 'helmet';
 import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
 import { ZodError } from 'zod';
-import { AppError } from './core.js';
-import { pool } from './db.js';
-import { catalog } from './modules/catalog.js';
-import { delivery } from './modules/delivery.js';
-import { authenticate, identity } from './modules/identity.js';
-import { operations } from './modules/operations.js';
-import { orders } from './modules/orders.js';
-import { paymentActions, payments, simulated } from './modules/payments.js';
+import { catalogRoutes } from './api/catalog.routes.js';
+import { deliveryRoutes } from './api/delivery.routes.js';
+import { docsRoutes } from './api/docs.routes.js';
+import { identityRoutes } from './api/identity.routes.js';
+import { importRoutes } from './api/import.routes.js';
+import { authenticate } from './api/middleware/authenticate.js';
+import { operationsRoutes } from './api/operations.routes.js';
+import { orderRoutes } from './api/orders.routes.js';
+import { paymentActionRoutes, paymentRoutes } from './api/payments.routes.js';
+import { AppError } from './domain/errors.js';
+import { isPrismaError, prisma } from './db.js';
+
 export function createApp() {
   const app = express();
   app.disable('x-powered-by');
@@ -51,16 +55,17 @@ export function createApp() {
     next();
   });
   app.get('/api/health', async (_req, res) => {
-    await pool.query('SELECT 1');
+    await prisma.$queryRaw`SELECT 1`;
     res.json({ status: 'ok' });
   });
   app.use(
     '/api/payments',
     rateLimit({ windowMs: 60000, limit: 300 }),
     express.raw({ type: 'application/json', limit: '32kb' }),
-    payments,
+    paymentRoutes,
   );
   app.use(express.json({ limit: '64kb' }));
+  app.use('/api/docs', docsRoutes);
   app.use('/api', (req, res, next) => {
     res.setHeader('Cache-Control', 'no-store');
     if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
@@ -77,29 +82,40 @@ export function createApp() {
   });
   app.use('/api', authenticate);
   app.get('/api/config', (_req, res) =>
-    res.json({ simulatedPayments: simulated(), demoMode: process.env.DEMO_MODE === 'true' }),
+    res.json({
+      simulatedPayments: simulatedPayments(),
+      demoMode: process.env.DEMO_MODE === 'true',
+    }),
   );
   app.get('/api/metrics', (req, res) => {
     if (req.user?.role !== 'ADMIN') {
       res.status(403).json({ message: 'Administrator access required.' });
       return;
     }
-    const d = [...metrics.durations].sort((a, b) => a - b);
+    const durations = [...metrics.durations].sort((a, b) => a - b);
     res.json({
       requests: metrics.requests,
       serverErrors: metrics.errors,
-      p95Ms: d[Math.floor(d.length * 0.95)] || 0,
-      p99Ms: d[Math.floor(d.length * 0.99)] || 0,
+      p95Ms: durations[Math.floor(durations.length * 0.95)] || 0,
+      p99Ms: durations[Math.floor(durations.length * 0.99)] || 0,
       window: 'last 10000 requests in this process',
     });
   });
   app.use(
     '/api/auth',
     rateLimit({ windowMs: 900000, limit: process.env.NODE_ENV === 'test' ? 1000 : 100 }),
-    identity,
+    identityRoutes,
   );
   app.use('/api/checkout', rateLimit({ windowMs: 60000, limit: 60 }));
-  app.use('/api', catalog, orders, paymentActions, delivery, operations);
+  app.use(
+    '/api',
+    catalogRoutes,
+    orderRoutes,
+    paymentActionRoutes,
+    deliveryRoutes,
+    operationsRoutes,
+    importRoutes,
+  );
   app.use('/api', (_req, _res, next) =>
     next(new AppError(404, 'NOT_FOUND', 'Endpoint not found.')),
   );
@@ -114,9 +130,11 @@ export function createApp() {
       if (error instanceof ZodError) {
         status = 400;
         code = 'VALIDATION';
-        message = error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ');
+        message = error.issues
+          .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
+          .join('; ');
       }
-      if (error.code === '23505') {
+      if (error.code === '23505' || isPrismaError(error, 'P2002')) {
         status = 409;
         code = 'CONFLICT';
         message = 'This record already exists.';
@@ -133,4 +151,6 @@ export function createApp() {
   );
   return app;
 }
+
+const simulatedPayments = () => process.env.PAYMENT_MODE === 'simulated';
 const metrics = { requests: 0, errors: 0, durations: [] as number[] };

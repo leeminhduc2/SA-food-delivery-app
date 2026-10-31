@@ -1,0 +1,334 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                 String             @id
+  email              String             @unique
+  name               String
+  password_hash      String
+  role               String
+  active             Boolean            @default(true)
+  created_at         DateTime           @default(now()) @db.Timestamptz(6)
+  carts              Cart?
+  complaints         Complaint[]
+  deliveries         Delivery[]
+  assignments        DriverAssignment[]
+  notifications      Notification[]
+  orders             Order[]            @relation("OrderCustomer")
+  outbox             Outbox[]
+  restaurant_members RestaurantMember[]
+  reviews            Review[]
+  sessions           Session[]
+
+  @@map("users")
+}
+
+model Session {
+  token_hash String   @id
+  user_id    String
+  expires_at DateTime @db.Timestamptz(6)
+  user       User     @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("sessions")
+}
+
+model Restaurant {
+  id             String             @id
+  name           String
+  description    String
+  address        String
+  cuisine        String
+  image          String             @default("")
+  status         String             @default("PENDING")
+  delivery_fee   Int                @default(15000)
+  eta_minutes    Int                @default(30)
+  approved_at    DateTime?          @db.Timestamptz(6)
+  created_at     DateTime           @default(now()) @db.Timestamptz(6)
+  source         String             @default("MANUAL")
+  verified       Boolean            @default(true)
+  owner_managed  Boolean            @default(true)
+  osm_type       String?
+  osm_id         String?
+  latitude       Float?
+  longitude      Float?
+  phone          String?
+  website        String?
+  opening_hours  String?
+  address_tags   Json               @default("{}")
+  osm_tags       Json               @default("{}")
+  imported_at    DateTime?          @db.Timestamptz(6)
+  last_synced_at DateTime?          @db.Timestamptz(6)
+  items          MenuItem[]
+  menus          Menu[]
+  orders         Order[]
+  members        RestaurantMember[]
+  reviews        Review[]
+
+  @@map("restaurants")
+}
+
+model RestaurantImportJob {
+  id           String    @id
+  requested_by String
+  endpoint     String
+  bbox         String
+  dry_run      Boolean   @default(false)
+  status       String    @default("RUNNING")
+  stats        Json      @default("{}")
+  error        String?
+  started_at   DateTime  @default(now()) @db.Timestamptz(6)
+  finished_at  DateTime? @db.Timestamptz(6)
+
+  @@index([started_at(sort: Desc)], map: "restaurant_import_recent")
+  @@map("restaurant_import_jobs")
+}
+
+model RestaurantMember {
+  user_id       String
+  restaurant_id String
+  restaurant    Restaurant @relation(fields: [restaurant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  user          User       @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([user_id, restaurant_id])
+  @@map("restaurant_members")
+}
+
+model Menu {
+  id            String     @id
+  restaurant_id String
+  name          String
+  items         MenuItem[]
+  restaurant    Restaurant @relation(fields: [restaurant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([restaurant_id, name])
+  @@map("menus")
+}
+
+model MenuItem {
+  id            String      @id
+  restaurant_id String
+  menu_id       String
+  name          String
+  description   String      @default("")
+  price         Int
+  image         String      @default("")
+  available     Boolean     @default(true)
+  stock         Int         @default(30)
+  options       Json        @default("[]")
+  menu          Menu        @relation(fields: [menu_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  restaurant    Restaurant  @relation(fields: [restaurant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  order_items   OrderItem[]
+
+  @@index([restaurant_id], map: "items_restaurant")
+  @@map("menu_items")
+}
+
+model Cart {
+  customer_id String @id
+  items       Json   @default("[]")
+  version     Int    @default(0)
+  customer    User   @relation(fields: [customer_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("carts")
+}
+
+model Order {
+  id              String         @id
+  customer_id     String
+  restaurant_id   String
+  status          String
+  subtotal        Int
+  delivery_fee    Int
+  total           Int
+  currency        String         @default("VND")
+  address         String
+  note            String         @default("")
+  idempotency_key String
+  fingerprint     String
+  stock_released  Boolean        @default(false)
+  expires_at      DateTime       @db.Timestamptz(6)
+  created_at      DateTime       @default(now()) @db.Timestamptz(6)
+  complaints      Complaint[]
+  delivery        Delivery?
+  items           OrderItem[]
+  customer        User           @relation("OrderCustomer", fields: [customer_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  restaurant      Restaurant     @relation(fields: [restaurant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  payment         Payment?
+  review          Review?
+  history         StateHistory[]
+
+  @@unique([customer_id, idempotency_key])
+  @@index([customer_id, created_at(sort: Desc)], map: "orders_customer")
+  @@index([restaurant_id, status], map: "orders_restaurant")
+  @@index([status, expires_at], map: "orders_pending")
+  @@map("orders")
+}
+
+model OrderItem {
+  id           String   @id
+  order_id     String
+  menu_item_id String
+  name         String
+  price        Int
+  quantity     Int
+  options      Json
+  menu_item    MenuItem @relation(fields: [menu_item_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  order        Order    @relation(fields: [order_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("order_items")
+}
+
+model Payment {
+  id                      String         @id
+  order_id                String         @unique
+  reference               String         @unique
+  amount                  Int
+  currency                String         @default("VND")
+  status                  String         @default("PENDING")
+  external_transaction_id String?        @unique
+  provider_created        Boolean        @default(false)
+  reconciliation_required Boolean        @default(false)
+  created_at              DateTime       @default(now()) @db.Timestamptz(6)
+  next_reconcile_at       DateTime       @default(now()) @db.Timestamptz(6)
+  events                  PaymentEvent[]
+  order                   Order          @relation(fields: [order_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("payments")
+}
+
+model PaymentEvent {
+  event_id     String   @id
+  reference    String
+  payload_hash String
+  created_at   DateTime @default(now()) @db.Timestamptz(6)
+  payment      Payment  @relation(fields: [reference], references: [reference], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("payment_events")
+}
+
+model SimulatedTransaction {
+  reference   String @id
+  amount      Int
+  status      String @default("PENDING")
+  external_id String @unique
+
+  @@map("simulated_transactions")
+}
+
+model Delivery {
+  id          String             @id
+  order_id    String             @unique
+  driver_id   String?
+  status      String             @default("UNASSIGNED")
+  updated_at  DateTime           @default(now()) @db.Timestamptz(6)
+  driver      User?              @relation(fields: [driver_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  order       Order              @relation(fields: [order_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  assignments DriverAssignment[]
+
+  @@index([driver_id, status], map: "deliveries_driver")
+  @@map("deliveries")
+}
+
+model DriverAssignment {
+  id          String   @id
+  delivery_id String
+  driver_id   String
+  active      Boolean  @default(true)
+  assigned_at DateTime @default(now()) @db.Timestamptz(6)
+  delivery    Delivery @relation(fields: [delivery_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  driver      User     @relation(fields: [driver_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("driver_assignments")
+}
+
+model StateHistory {
+  id         String   @id
+  order_id   String
+  entity     String
+  from_state String?
+  to_state   String
+  actor      String
+  reason     String   @default("")
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  sequence   BigInt   @default(autoincrement())
+  order      Order    @relation(fields: [order_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("state_history")
+}
+
+model Outbox {
+  id           String        @id
+  user_id      String
+  type         String
+  payload      Json
+  attempts     Int           @default(0)
+  available_at DateTime      @default(now()) @db.Timestamptz(6)
+  processed_at DateTime?     @db.Timestamptz(6)
+  last_error   String?
+  notification Notification?
+  user         User          @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("outbox")
+}
+
+model Notification {
+  id         String   @id
+  user_id    String
+  type       String
+  payload    Json
+  read       Boolean  @default(false)
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  outbox     Outbox   @relation(fields: [id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  user       User     @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("notifications")
+}
+
+model Review {
+  id            String     @id
+  order_id      String     @unique
+  customer_id   String
+  restaurant_id String
+  rating        Int
+  content       String
+  hidden        Boolean    @default(false)
+  created_at    DateTime   @default(now()) @db.Timestamptz(6)
+  customer      User       @relation(fields: [customer_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  order         Order      @relation(fields: [order_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  restaurant    Restaurant @relation(fields: [restaurant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("reviews")
+}
+
+model Complaint {
+  id          String   @id
+  order_id    String
+  customer_id String
+  content     String
+  status      String   @default("OPEN")
+  resolution  String?
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+  customer    User     @relation(fields: [customer_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  order       Order    @relation(fields: [order_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("complaints")
+}
+
+model AuditLog {
+  id          String   @id
+  actor       String
+  action      String
+  resource_id String
+  detail      Json     @default("{}")
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+
+  @@map("audit_logs")
+}
+
+

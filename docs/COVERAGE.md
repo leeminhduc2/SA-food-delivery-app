@@ -24,7 +24,7 @@ Source of authority: `Phase_1_Food_Delivery.docx`. The companion Markdown was re
 | Reviews/complaints                             | Buyer eligibility, one review, admin moderation/resolution                               | API and browser tests                                                                        |
 | Notifications                                  | Transactional outbox with bounded retries and deduplicated inbox                         | Duplicate-worker execution test                                                              |
 | Revenue/order/delivery reports                 | Delivered gross value and status counts, restaurant scoping                              | Delivered order/revenue assertion and operations UI                                          |
-| Security                                       | Scrypt, DB sessions, CSRF checks, Helmet, parameterized SQL, rate limits                 | Invalid login/origin, forbidden role escalation, suspension tests                            |
+| Security                                       | Scrypt, DB sessions, CSRF checks, Helmet, Prisma parameterized queries, rate limits      | Invalid login/origin, forbidden role escalation, suspension tests                            |
 | Observability                                  | Request IDs, structured latency/error logs, process metrics, reconciliation/outbox views | Read-only load smoke and admin metrics endpoint                                              |
 | Recovery                                       | PostgreSQL volume and backup/restore procedure                                           | A backup restore smoke test is described in operations; production RPO/RTO remains undefined |
 

@@ -637,11 +637,16 @@ footer {
 footer .brand {
   font-size: 28px;
 }
-footer > span:last-child {
+footer > span:nth-last-child(2) {
   margin-left: auto;
   display: flex;
   align-items: center;
   gap: 6px;
+}
+footer .osm-attribution {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 .icon {
   width: 40px;
@@ -1671,9 +1676,13 @@ td small {
     flex-wrap: wrap;
     padding: 20px 0;
   }
-  footer > span:last-child {
+  footer > span:nth-last-child(2) {
     width: 100%;
     margin-left: 0;
+    font-size: 10px;
+  }
+  footer .osm-attribution {
+    width: 100%;
     font-size: 10px;
   }
   .restaurant-hero {

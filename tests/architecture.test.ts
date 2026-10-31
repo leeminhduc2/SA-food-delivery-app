@@ -8,11 +8,14 @@ const schema = 'test_' + randomUUID().replaceAll('-', '');
 const originalUrl =
   process.env.TEST_DATABASE_URL ||
   process.env.DATABASE_URL ||
-  'postgres://food:food_local_only@localhost:55432/food_delivery';
+  'postgres://food:food_local_only@localhost:5433/food_delivery';
 const admin = new pg.Pool({ connectionString: originalUrl });
 const url = new URL(originalUrl);
 url.searchParams.set('options', `-c search_path=${schema}`);
+// Prisma reads `schema`; libpq-based pg pools read `options`.
+url.searchParams.set('schema', schema);
 process.env.DATABASE_URL = url.toString();
+const schemaPool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 process.env.NODE_ENV = 'test';
 process.env.LOG_REQUESTS = 'false';
 process.env.DEMO_MODE = 'true';
@@ -79,8 +82,8 @@ before(async () => {
   await migrate();
   const { seed } = await import('../server/seed.js');
   await seed();
-  payment = await import('../server/modules/payments.js');
-  ops = await import('../server/modules/operations.js');
+  payment = await import('../server/services/payment.service.js');
+  ops = await import('../server/services/notification.service.js');
   const { createApp } = await import('../server/app.js');
   server = createApp().listen(0, '127.0.0.1');
   await new Promise<void>((r) => server.once('listening', r));
@@ -99,7 +102,8 @@ before(async () => {
 after(async () => {
   if (server)
     await new Promise<void>((resolve, reject) => server.close((e) => (e ? reject(e) : resolve())));
-  if (db) await db.pool.end();
+  if (db) await db.prisma.$disconnect();
+  await schemaPool.end();
   assert.match(schema, /^test_[a-f0-9]{32}$/);
   await admin.query(`DROP SCHEMA ${schema} CASCADE`);
   await admin.end();
@@ -206,7 +210,7 @@ test('checkout retry is atomic and payload conflicts are rejected', async () => 
   );
 });
 test('last serving concurrency permits exactly one checkout and never negative stock', async () => {
-  await db.pool.query("UPDATE menu_items SET stock=1 WHERE id='banhmi'");
+  await schemaPool.query("UPDATE menu_items SET stock=1 WHERE id='banhmi'");
   const body = {
     items: [{ itemId: 'banhmi', quantity: 1, optionIds: [] }],
     address: '12 Test Street, District 1',
@@ -219,12 +223,12 @@ test('last serving concurrency permits exactly one checkout and never negative s
   assert.deepEqual(responses.map((r) => r.status).sort(), [201, 409]);
   assert.equal(responses.find((r) => r.status === 409)!.data.code, 'OUT_OF_STOCK');
   assert.equal(
-    (await db.pool.query("SELECT stock FROM menu_items WHERE id='banhmi'")).rows[0].stock,
+    (await schemaPool.query("SELECT stock FROM menu_items WHERE id='banhmi'")).rows[0].stock,
     0,
   );
 });
 test('all-or-nothing checkout, price revalidation, unavailable items, and options', async () => {
-  const before = (await db.pool.query("SELECT stock FROM menu_items WHERE id='rice'")).rows[0]
+  const before = (await schemaPool.query("SELECT stock FROM menu_items WHERE id='rice'")).rows[0]
     .stock;
   const bad = await request('/checkout', 'POST', {
     items: [
@@ -237,7 +241,7 @@ test('all-or-nothing checkout, price revalidation, unavailable items, and option
   });
   assert.equal(bad.data.code, 'INVALID_OPTION');
   assert.equal(
-    (await db.pool.query("SELECT stock FROM menu_items WHERE id='rice'")).rows[0].stock,
+    (await schemaPool.query("SELECT stock FROM menu_items WHERE id='rice'")).rows[0].stock,
     before,
   );
   const changed = await request('/checkout', 'POST', {
@@ -251,7 +255,7 @@ test('all-or-nothing checkout, price revalidation, unavailable items, and option
     items: [{ itemId: 'pho', quantity: 2, optionIds: ['extra'] }],
   });
   assert.equal(quote.data.total, 175000);
-  await db.pool.query("UPDATE menu_items SET available=false WHERE id='rolls'");
+  await schemaPool.query("UPDATE menu_items SET available=false WHERE id='rolls'");
   assert.equal(
     (
       await request('/checkout/quote', 'POST', {
@@ -260,7 +264,7 @@ test('all-or-nothing checkout, price revalidation, unavailable items, and option
     ).data.code,
     'UNAVAILABLE',
   );
-  await db.pool.query("UPDATE menu_items SET available=true WHERE id='rolls'");
+  await schemaPool.query("UPDATE menu_items SET available=true WHERE id='rolls'");
 });
 test('signed callbacks validate amount, currency and identity; duplicate confirmation has one effect', async () => {
   const o = (await checkout()).data;
@@ -391,7 +395,8 @@ test('complete lifecycle: preparation, reassignment, authorized delivery and buy
   assert.equal(Number(report.revenue), o.total);
 });
 test('failed payment and cancellation restore stock once; late success never reopens an order', async () => {
-  const before = (await db.pool.query("SELECT stock FROM menu_items WHERE id='pho'")).rows[0].stock;
+  const before = (await schemaPool.query("SELECT stock FROM menu_items WHERE id='pho'")).rows[0]
+    .stock;
   const o = (await checkout()).data;
   assert.equal(
     (await request(`/orders/${o.id}/cancel`, 'POST', { reason: 'Changed plans' })).status,
@@ -402,7 +407,7 @@ test('failed payment and cancellation restore stock once; late success never reo
     409,
   );
   assert.equal(
-    (await db.pool.query("SELECT stock FROM menu_items WHERE id='pho'")).rows[0].stock,
+    (await schemaPool.query("SELECT stock FROM menu_items WHERE id='pho'")).rows[0].stock,
     before,
   );
   await pay(o);
@@ -414,40 +419,43 @@ test('failed payment and cancellation restore stock once; late success never reo
   await pay(failed, 'FAILED');
   assert.equal((await request('/orders/' + failed.id)).data.status, 'PAYMENT_FAILED');
   assert.equal(
-    (await db.pool.query("SELECT stock FROM menu_items WHERE id='pho'")).rows[0].stock,
+    (await schemaPool.query("SELECT stock FROM menu_items WHERE id='pho'")).rows[0].stock,
     before,
   );
 });
 test('expiration, crash recovery, query reconciliation and simulated refunds', async () => {
   const o = (await checkout()).data;
-  await db.pool.query("UPDATE orders SET expires_at=now()-interval '1 minute' WHERE id=$1", [o.id]);
+  await schemaPool.query("UPDATE orders SET expires_at=now()-interval '1 minute' WHERE id=$1", [
+    o.id,
+  ]);
   await payment.reconcilePayments();
   assert.equal((await request('/orders/' + o.id)).data.status, 'PAYMENT_FAILED');
   const pending = (await checkout()).data;
-  await db.pool.query('DELETE FROM simulated_transactions WHERE reference=$1', [
+  await schemaPool.query('DELETE FROM simulated_transactions WHERE reference=$1', [
     pending.payment.reference,
   ]);
-  await db.pool.query('UPDATE payments SET provider_created=false WHERE id=$1', [
+  await schemaPool.query('UPDATE payments SET provider_created=false WHERE id=$1', [
     pending.payment.id,
   ]);
   await payment.reconcilePayments();
   assert(
     (
-      await db.pool.query('SELECT * FROM simulated_transactions WHERE reference=$1', [
+      await schemaPool.query('SELECT * FROM simulated_transactions WHERE reference=$1', [
         pending.payment.reference,
       ])
     ).rowCount === 1,
   );
-  await db.pool.query("UPDATE simulated_transactions SET status='SUCCEEDED' WHERE reference=$1", [
-    pending.payment.reference,
-  ]);
-  await db.pool.query('UPDATE payments SET next_reconcile_at=now() WHERE order_id=$1', [
+  await schemaPool.query(
+    "UPDATE simulated_transactions SET status='SUCCEEDED' WHERE reference=$1",
+    [pending.payment.reference],
+  );
+  await schemaPool.query('UPDATE payments SET next_reconcile_at=now() WHERE order_id=$1', [
     pending.id,
   ]);
   await payment.reconcilePayments();
   assert.equal((await request('/orders/' + pending.id)).data.status, 'CONFIRMED');
   await request(`/orders/${pending.id}/cancel`, 'POST', { reason: 'Please cancel' });
-  await db.pool.query('UPDATE payments SET next_reconcile_at=now() WHERE order_id=$1', [
+  await schemaPool.query('UPDATE payments SET next_reconcile_at=now() WHERE order_id=$1', [
     pending.id,
   ]);
   await payment.reconcilePayments();
@@ -462,7 +470,7 @@ test('provider timeout keeps a recoverable pending order; outages do not hold st
     o = (await checkout()).data;
     assert.equal(o.status, 'PENDING_PAYMENT');
     assert.equal(o.payment.provider_created, false);
-    await db.pool.query("UPDATE orders SET expires_at=now()-interval '1 second' WHERE id=$1", [
+    await schemaPool.query("UPDATE orders SET expires_at=now()-interval '1 second' WHERE id=$1", [
       o.id,
     ]);
     await payment.reconcilePayments();
@@ -472,14 +480,14 @@ test('provider timeout keeps a recoverable pending order; outages do not hold st
     delete process.env.PROVIDER_TIMEOUT_MS;
   }
   const next = (await checkout()).data;
-  await db.pool.query(
+  await schemaPool.query(
     'UPDATE payments SET provider_created=false,next_reconcile_at=now() WHERE id=$1',
     [next.payment.id],
   );
   await payment.reconcilePayments();
   assert.equal(
     (
-      await db.pool.query(
+      await schemaPool.query(
         'SELECT count(*)::int AS total FROM simulated_transactions WHERE reference=$1',
         [next.payment.reference],
       )
@@ -530,7 +538,7 @@ test('delivery failure requires a reason and stays distinct from successful deli
 test('outbox retry is idempotent, complaints are owned, sensitive actions audited', async () => {
   await ops.deliverNotifications();
   await ops.deliverNotifications();
-  const counts = await db.pool.query(
+  const counts = await schemaPool.query(
     'SELECT count(*)::int AS total,count(DISTINCT id)::int AS unique FROM notifications',
   );
   assert.equal(counts.rows[0].total, counts.rows[0].unique);
@@ -562,10 +570,10 @@ test('outbox retry is idempotent, complaints are owned, sensitive actions audite
     ).status,
     200,
   );
-  const audit = await db.pool.query(
+  const audit = await schemaPool.query(
     "SELECT * FROM audit_logs WHERE action IN ('COMPLAINT_RESOLVED','INVALID_PAYMENT_SIGNATURE','DRIVER_ASSIGNED')",
   );
-  assert(audit.rowCount >= 3);
+  assert(audit.rows.length >= 3);
 });
 test('restaurant registration approval, menu CRUD and cross-restaurant write protection', async () => {
   const r = await request(
