@@ -8,6 +8,8 @@ export type OverpassDeps = {
 
 export type OverpassOptions = {
   bbox?: BBox;
+  /** Full Overpass QL body. When set, `bbox` is still reported but not queried. */
+  query?: string;
   endpoint?: string;
   timeoutMs?: number;
   retries?: number;
@@ -65,7 +67,7 @@ export function overpassMaxElements(): number {
 export function buildOverpassQuery(bbox: BBox, timeoutMs: number): string {
   const box = bbox.join(',');
   const timeout = Math.max(1, Math.ceil(timeoutMs / 1000));
-  return `[out:json][timeout:${timeout}];(node["amenity"~"^(restaurant|fast_food|food_court)$"](${box});way["amenity"~"^(restaurant|fast_food|food_court)$"](${box});relation["amenity"~"^(restaurant|fast_food|food_court)$"](${box}););out center;`;
+  return `[out:json][timeout:${timeout}];(node["amenity"~"^(restaurant|fast_food|cafe|food_court)$"](${box});way["amenity"~"^(restaurant|fast_food|cafe|food_court)$"](${box});relation["amenity"~"^(restaurant|fast_food|cafe|food_court)$"](${box}););out center;`;
 }
 
 const inFlight = new Map<string, Promise<OverpassResult>>();
@@ -110,7 +112,7 @@ export async function fetchOsmRestaurants(
   const maxElements = options.maxElements ?? overpassMaxElements();
   const fetchImpl = deps.fetchImpl ?? (fetch as OverpassFetch);
   const sleep = deps.sleep ?? defaultSleep;
-  const query = buildOverpassQuery(bbox, timeoutMs);
+  const query = options.query ?? buildOverpassQuery(bbox, timeoutMs);
   const key = `${endpoint}|${query}`;
 
   const existing = inFlight.get(key);

@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" role="img" aria-label="Illustration of steak">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#e5f0e6"/><stop offset="1" stop-color="#fffdf7"/>
+    </linearGradient>
+    <radialGradient id="glow" cx=".32" cy=".2" r=".8">
+      <stop offset="0" stop-color="#ffffff" stop-opacity=".85"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="800" height="600" fill="url(#bg)"/>
+  <rect width="800" height="600" fill="url(#glow)"/>
+  <g opacity=".18" stroke="#244b38" stroke-width="2">
+    <path d="M40 520C170 470 230 560 360 510s190-40 400 20"/>
+    <path d="M40 548C170 498 230 588 360 538s190-40 400 20"/>
+  </g>
+  
+    <ellipse cx="400" cy="414" rx="250" ry="48" fill="#2a1c15" opacity=".16"/>
+    <ellipse cx="400" cy="330" rx="250" ry="170" fill="#fffdf5"/>
+    <ellipse cx="400" cy="330" rx="214" ry="138" fill="#e5f0e6"/>
+    
+    
+    
+    <path d="M286 274c28-42 78-54 122-34c38 17 68 8 92 28c26 22 20 62-6 84c-32 28-84 18-120 6c-38-13-76-8-94-34c-10-16-6-34 6-50Z" fill="#244b38"/>
+           <path d="M320 286c22-20 52-22 76-8c20 12 36 4 50 16" stroke="#b96b51" stroke-width="12" fill="none" stroke-linecap="round"/>
+           <g fill="#e8b45a"><rect x="468" y="362" width="16" height="54" rx="7" transform="rotate(-18 468 362)"/><rect x="492" y="356" width="16" height="54" rx="7" transform="rotate(12 492 356)"/><rect x="516" y="366" width="16" height="54" rx="7" transform="rotate(-6 516 366)"/></g>
+    
+    
+    
+    
+    
+    
+    
+    
+    <g stroke="#d9c9ae" stroke-width="3" opacity=".5"><circle cx="400" cy="330" r="196" fill="none"/></g>
+  <g fill="#244b38" opacity=".8">
+    <text x="34" y="560" font-family="Georgia, serif" font-size="20" letter-spacing="4">BẾP · MINH HOẠ</text>
+    <text x="766" y="560" text-anchor="end" font-family="Georgia, serif" font-size="14" letter-spacing="2">DEMO ASSET</text>
+  </g>
+</svg>

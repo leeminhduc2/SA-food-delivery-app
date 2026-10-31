@@ -1,9 +1,10 @@
 # OpenStreetMap restaurant import
 
-The importer fetches restaurants for a bounding box from the Overpass API,
-normalizes them, and upserts them as **unverified, non-orderable** records.
-It never enables ordering, never marks a restaurant verified, and never
-overwrites manual, admin-verified, or owner-managed data.
+The generic importer fetches restaurants for a bounding box from the Overpass
+API, normalizes them, and upserts them as **unverified, non-orderable** records.
+The separate curated Hanoi command (below) makes its records visible with demo
+menus, but still leaves them `verified=false` and never overwrites manual,
+admin-verified, or owner-managed data. Neither command deletes rows.
 
 ## Sources and licensing
 
@@ -44,6 +45,24 @@ Dry runs fetch, validate, deduplicate, and classify records without writing
 restaurant rows or job history. A failing batch is isolated by savepoints and
 reported; the command exits non-zero only when every attempted write failed.
 
+### Curated Hanoi demo import
+
+`npm.cmd run import:hanoi` reuses this pipeline for 30 real Hanoi OSM nodes and
+attaches deterministic demo menus. The public Overpass endpoint can take longer
+than 30 seconds for the combined node query, so the recommended command is:
+
+```powershell
+npm.cmd run import:hanoi -- --dry-run
+npm.cmd run import:hanoi -- --timeout=120000
+```
+
+The curated import does not create a second catalog or endpoint. Imported rows
+remain `verified=false` and `owner_managed=false`; demo menus and generated SVG
+illustrations are marked in `restaurants.osm_tags._bep`. The protected upsert
+still refuses to overwrite manual, verified or owner-managed data. See
+[DATA_IMPORT.md](DATA_IMPORT.md) for the data model, licences, curated list and
+the actual import report.
+
 ## Admin API
 
 | Method | Path                                    | Behaviour                                                                                                                                                       |
@@ -57,8 +76,8 @@ in `restaurant_import_jobs`; a partial unique index allows at most one
 
 ## Data rules
 
-- Only `amenity=restaurant|fast_food|food_court` records with a name and valid
-  coordinates are accepted.
+- Only `amenity=restaurant|fast_food|cafe|food_court` records with a name and
+  valid coordinates are accepted.
 - Duplicate OSM identities in one response are collapsed; counts are reported.
 - New rows get `source='OSM'`, `status='PENDING'`, `verified=false`,
   `owner_managed=false`, `delivery_fee=0`, empty `image`/`description`, and the
@@ -74,5 +93,8 @@ in `restaurant_import_jobs`; a partial unique index allows at most one
 `tests/restaurant-import.test.ts` covers Overpass retries and timeouts,
 normalization/dedupe, empty and partial responses, protected updates, dry runs,
 savepoint isolation, database failures, admin authorization, background jobs,
-and source attribution. All Overpass calls are mocked; the suite does not
-contact the public API. Tests use an isolated schema and drop it afterwards.
+and source attribution. `tests/hanoi-menu.test.ts` and
+`tests/hanoi-import.test.ts` cover the curated demo dataset, idempotency,
+demo/provenance metadata, protected owner rows and the public catalog contract.
+All Overpass calls are mocked; the suite does not contact the public API. Tests
+use an isolated schema and drop it afterwards.

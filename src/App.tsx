@@ -5,6 +5,7 @@ import {
   Bike,
   Check,
   Clock,
+  Globe2,
   Heart,
   LayoutDashboard,
   Leaf,
@@ -12,6 +13,7 @@ import {
   MapPin,
   Minus,
   Package,
+  Phone,
   Pizza,
   Plus,
   Search,
@@ -30,9 +32,39 @@ import { Auth, Profile } from './components/Account';
 import { Dish } from './components/Catalog';
 import { OrderCard } from './components/Orders';
 import { Empty, Field, Modal } from './components/Primitives';
+import { SmartImage } from './components/SmartImage';
 import { AdminPanels, ItemForm, RestaurantForm } from './components/Workspace';
 import type { Actor, Basket, Line } from './types';
 import { errorText } from './types';
+
+const menuCategoryOrder = ['Starters', 'Main dishes', 'Drinks'];
+
+function groupByCategory(items: any[]): [string, any[]][] {
+  const groups: Record<string, any[]> = {};
+  for (const item of items) (groups[item.category || 'Menu'] ||= []).push(item);
+  return Object.entries(groups).sort(([a], [b]) => {
+    const ai = menuCategoryOrder.indexOf(a);
+    const bi = menuCategoryOrder.indexOf(b);
+    if (ai !== -1 || bi !== -1) return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+    return a.localeCompare(b);
+  });
+}
+
+function cuisineIcon(name: string) {
+  if (/vietnam|thai|soup|noodle|pho|bun/i.test(name)) return Soup;
+  if (/italian|pizza|pasta/i.test(name)) return Pizza;
+  if (/healthy|salad|veget|vegan/i.test(name)) return Leaf;
+  return Utensils;
+}
+
+function websiteLabel(value: string): string {
+  try {
+    return new URL(value).hostname.replace(/^www\./, '');
+  } catch {
+    return 'Website';
+  }
+}
+
 export function App() {
   const [actor, setActor] = useState<Actor | null>(null),
     [config, setConfig] = useState<any>({}),
@@ -46,6 +78,7 @@ export function App() {
     [selected, setSelected] = useState<any>(null),
     [query, setQuery] = useState(''),
     [cuisine, setCuisine] = useState(''),
+    [cuisineOptions, setCuisineOptions] = useState<string[]>([]),
     [sort, setSort] = useState('recommended'),
     [loading, setLoading] = useState(false);
   const [basket, setBasket] = useState<Basket>({ items: [], version: 0 }),
@@ -123,6 +156,21 @@ export function App() {
       clearTimeout(timer);
     };
   }, [query, cuisine, sort]);
+  useEffect(() => {
+    let active = true;
+    api('/restaurants?sort=name')
+      .then((rows) => {
+        if (!active) return;
+        const cuisines: string[] = rows
+          .map((row: any) => row.cuisine)
+          .filter((value: unknown): value is string => typeof value === 'string' && !!value);
+        setCuisineOptions([...new Set(cuisines)].sort((a, b) => a.localeCompare(b)));
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, []);
   const refresh = useCallback(async () => {
     if (!actor) return;
     const [o, n] = await Promise.all([api('/orders'), api('/notifications')]);
@@ -302,7 +350,7 @@ export function App() {
             <span className="location">
               <MapPin size={17} />
               <span>
-                Ho Chi Minh City<small>Good food, in your neighborhood</small>
+                Hanoi · Ho Chi Minh City<small>Good food, in your neighborhood</small>
               </span>
             </span>
             {actor && (
@@ -383,17 +431,70 @@ export function App() {
                         <Bike size={16} />
                         {money(selected.delivery_fee)}
                       </span>
+                      {selected.phone && (
+                        <span>
+                          <Phone size={16} />
+                          {selected.phone}
+                        </span>
+                      )}
+                      {selected.opening_hours && (
+                        <span>
+                          <Clock size={16} />
+                          {selected.opening_hours}
+                        </span>
+                      )}
+                      {selected.website && (
+                        <a
+                          className="meta-link"
+                          href={selected.website}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          <Globe2 size={16} />
+                          {websiteLabel(selected.website)}
+                        </a>
+                      )}
                     </div>
                     <p className="subtle">
                       <MapPin size={15} />
                       {selected.address}
                     </p>
+                    {selected.source === 'OSM' && (
+                      <p className="source-line">
+                        Location data from{' '}
+                        <a
+                          href={
+                            selected.osm_tags?._bep?.sourceUrl ||
+                            'https://www.openstreetmap.org/copyright'
+                          }
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          OpenStreetMap
+                        </a>{' '}
+                        (ODbL). Not verified by the restaurant.
+                      </p>
+                    )}
                   </div>
-                  <img
-                    src={selected.image || '/images/vietnamese.svg'}
+                  <SmartImage
+                    src={selected.image}
                     alt={`Illustration for ${selected.name}`}
+                    title={
+                      selected.osm_tags?._bep?.image?.type === 'ILLUSTRATION'
+                        ? 'Illustration, not a photograph of the venue'
+                        : undefined
+                    }
                   />
                 </section>
+                {selected.osm_tags?._bep?.menu?.dataType === 'DEMO' && (
+                  <div className="demo-note" role="note">
+                    <MapPin size={18} />
+                    <div>
+                      <strong>Demo menu.</strong> Dishes and prices are illustrative, not this
+                      restaurant’s official menu. Location data comes from OpenStreetMap.
+                    </div>
+                  </div>
+                )}
                 <div className="section-title">
                   <div>
                     <span className="eyebrow">FRESH FROM THE KITCHEN</span>
@@ -401,11 +502,16 @@ export function App() {
                   </div>
                   <span>{selected.items.length} dishes</span>
                 </div>
-                <div className="menu-grid">
-                  {selected.items.map((i: any) => (
-                    <Dish key={i.id} item={i} busy={busy} add={add} />
-                  ))}
-                </div>
+                {groupByCategory(selected.items).map(([category, items]) => (
+                  <section className="menu-section" key={category}>
+                    <h3 className="menu-category">{category}</h3>
+                    <div className="menu-grid">
+                      {items.map((i: any) => (
+                        <Dish key={i.id} item={i} busy={busy} add={add} />
+                      ))}
+                    </div>
+                  </section>
+                ))}
                 <section className="reviews">
                   <h2>From the neighborhood</h2>
                   {selected.reviews.length ? (
@@ -488,9 +594,14 @@ export function App() {
                     <div className="categories">
                       {[
                         { name: 'All kitchens', value: '', icon: Utensils },
-                        { name: 'Vietnamese', value: 'Vietnamese', icon: Soup },
-                        { name: 'Italian', value: 'Italian', icon: Pizza },
-                        { name: 'Healthy', value: 'Healthy', icon: Leaf },
+                        ...(cuisineOptions.length
+                          ? cuisineOptions
+                          : ['Vietnamese', 'Italian', 'Healthy']
+                        ).map((name) => ({
+                          name,
+                          value: name,
+                          icon: cuisineIcon(name),
+                        })),
                       ].map((c) => (
                         <button
                           key={c.value}
@@ -539,53 +650,63 @@ export function App() {
                     </label>
                   </div>
                   <div className="restaurant-grid" aria-busy={loading}>
-                    {restaurants.map((r, i) => (
-                      <button
-                        className="restaurant-card"
-                        key={r.id}
-                        onClick={() => openRestaurant(r.id)}
-                      >
-                        <div className={'card-image tone-' + i}>
-                          <img
-                            loading="lazy"
-                            src={r.image || '/images/vietnamese.svg'}
-                            alt={`Illustration of ${r.cuisine} food`}
-                          />
-                          <span className="image-label">
-                            {i === 0
-                              ? 'Neighborhood favorite'
-                              : r.cuisine === 'Healthy'
-                                ? 'Feel-good food'
-                                : 'Made with love'}
-                          </span>
-                          <span className="image-arrow">
-                            <ArrowRight size={18} />
-                          </span>
-                        </div>
-                        <div className="card-copy">
-                          <div className="between">
-                            <h3>{r.name}</h3>
-                            <span className="rating">
-                              <Star size={14} />
-                              {r.rating || 'New'}
+                    {restaurants.map((r, i) => {
+                      const demoMenu = r.osm_tags?._bep?.menu?.dataType === 'DEMO';
+                      return (
+                        <button
+                          className="restaurant-card"
+                          key={r.id}
+                          onClick={() => openRestaurant(r.id)}
+                        >
+                          <div className={'card-image tone-' + i}>
+                            <SmartImage
+                              loading="lazy"
+                              src={r.image}
+                              alt={`Illustration of ${r.cuisine} food`}
+                              title={
+                                r.osm_tags?._bep?.image?.type === 'ILLUSTRATION'
+                                  ? 'Illustration, not a photograph of the venue'
+                                  : undefined
+                              }
+                            />
+                            <span className="image-label">
+                              {demoMenu
+                                ? 'Demo menu'
+                                : i === 0
+                                  ? 'Neighborhood favorite'
+                                  : r.cuisine === 'Healthy'
+                                    ? 'Feel-good food'
+                                    : 'Made with love'}
+                            </span>
+                            <span className="image-arrow">
+                              <ArrowRight size={18} />
                             </span>
                           </div>
-                          <p>
-                            {r.cuisine} <span>·</span> {r.description.split('.')[0]}
-                          </p>
-                          <div className="card-bottom">
-                            <span>
-                              <Clock size={15} />
-                              {r.eta_minutes}–{r.eta_minutes + 10} min
-                            </span>
-                            <span>
-                              <Bike size={16} />
-                              {money(r.delivery_fee)}
-                            </span>
+                          <div className="card-copy">
+                            <div className="between">
+                              <h3>{r.name}</h3>
+                              <span className="rating">
+                                <Star size={14} />
+                                {r.rating || 'New'}
+                              </span>
+                            </div>
+                            <p>
+                              {r.cuisine} <span>·</span> {r.description.split('.')[0]}
+                            </p>
+                            <div className="card-bottom">
+                              <span>
+                                <Clock size={15} />
+                                {r.eta_minutes}–{r.eta_minutes + 10} min
+                              </span>
+                              <span>
+                                <Bike size={16} />
+                                {money(r.delivery_fee)}
+                              </span>
+                            </div>
                           </div>
-                        </div>
-                      </button>
-                    ))}
+                        </button>
+                      );
+                    })}
                   </div>
                   {!loading && !restaurants.length && (
                     <Empty title="No kitchens found">

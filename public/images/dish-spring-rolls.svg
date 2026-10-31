@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" role="img" aria-label="Illustration of spring rolls">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#e5f0e6"/><stop offset="1" stop-color="#fffdf7"/>
+    </linearGradient>
+    <radialGradient id="glow" cx=".32" cy=".2" r=".8">
+      <stop offset="0" stop-color="#ffffff" stop-opacity=".85"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="800" height="600" fill="url(#bg)"/>
+  <rect width="800" height="600" fill="url(#glow)"/>
+  <g opacity=".18" stroke="#244b38" stroke-width="2">
+    <path d="M40 520C170 470 230 560 360 510s190-40 400 20"/>
+    <path d="M40 548C170 498 230 588 360 538s190-40 400 20"/>
+  </g>
+  
+    <ellipse cx="400" cy="414" rx="250" ry="48" fill="#2a1c15" opacity=".16"/>
+    <ellipse cx="400" cy="330" rx="250" ry="170" fill="#fffdf5"/>
+    <ellipse cx="400" cy="330" rx="214" ry="138" fill="#e5f0e6"/>
+    
+    
+    
+    
+    
+    
+    
+    
+    <g><rect x="276" y="286" width="116" height="54" rx="26" fill="#dc9a4b" transform="rotate(-8 276 286)"/>
+             <rect x="318" y="330" width="126" height="54" rx="26" fill="#e2a758" transform="rotate(7 318 330)"/>
+             <rect x="420" y="286" width="126" height="54" rx="26" fill="#d89243" transform="rotate(-4 420 286)"/>
+             <g fill="#6f9c54"><circle cx="320" cy="312" r="10"/><circle cx="378" cy="356" r="10"/><circle cx="480" cy="312" r="10"/></g></g>
+    
+    
+    
+    <g stroke="#d9c9ae" stroke-width="3" opacity=".5"><circle cx="400" cy="330" r="196" fill="none"/></g>
+  <g fill="#244b38" opacity=".8">
+    <text x="34" y="560" font-family="Georgia, serif" font-size="20" letter-spacing="4">BẾP · MINH HOẠ</text>
+    <text x="766" y="560" text-anchor="end" font-family="Georgia, serif" font-size="14" letter-spacing="2">DEMO ASSET</text>
+  </g>
+</svg>

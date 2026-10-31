@@ -5,7 +5,7 @@
  * pipeline validates and normalizes external data before any SQL runs.
  */
 
-export const osmAmenities = ['restaurant', 'fast_food', 'food_court'] as const;
+export const osmAmenities = ['restaurant', 'fast_food', 'cafe', 'food_court'] as const;
 export type OsmAmenity = (typeof osmAmenities)[number];
 export const osmTypes = ['node', 'way', 'relation'] as const;
 export type OsmType = (typeof osmTypes)[number];

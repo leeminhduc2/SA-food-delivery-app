@@ -23,6 +23,8 @@ Base path: `/api`. JSON responses use ordinary HTTP status codes. Errors have `{
 
 Item fields: `{name,description,price,stock,available,image,category,options:[{id,name,extraPrice}]}`. Prices are whole VND. Image values may be HTTPS URLs, a local `/images/<filename>` path, or empty. Extra IDs must be unique within the dish.
 
+Restaurant responses also include provenance fields: `source`, `verified`, `owner_managed`, `osm_type`, `osm_id`, `latitude`, `longitude`, `phone`, `website`, `opening_hours`, `address_tags`, `osm_tags`, `imported_at`, and `last_synced_at`. Imported demo menus are marked at `osm_tags._bep.menu.dataType = "DEMO"`; they are not official menus. No additional endpoint is required for Hanoi data.
+
 ## Basket, checkout and lifecycle
 
 A line is `{itemId,quantity,optionIds:[]}`. Quantities must be 1–20 per line; at most 40 lines per request. Quotes do not reserve stock.

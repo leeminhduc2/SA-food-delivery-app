@@ -17,6 +17,8 @@
     "db:pull": "prisma db pull",
     "db:studio": "prisma studio",
     "import:restaurants": "tsx scripts/import-restaurants.ts",
+    "import:hanoi": "tsx scripts/import-hanoi.ts",
+    "assets:hanoi": "tsx scripts/generate-hanoi-images.ts",
     "test": "tsx --test --test-concurrency=1 tests/*.test.ts",
     "test:e2e": "playwright test",
     "test:load": "tsx scripts/load.ts",

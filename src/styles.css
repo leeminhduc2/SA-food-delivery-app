@@ -723,6 +723,46 @@ footer .osm-attribution {
   object-fit: cover;
   border-radius: 16px;
 }
+.meta a.meta-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--green);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.source-line {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 10px;
+}
+.source-line a {
+  text-decoration: underline;
+}
+.demo-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  background: #fff4e2;
+  border: 1px solid #f0d9b5;
+  border-radius: 12px;
+  padding: 14px 18px;
+  margin-bottom: 26px;
+  font-size: 12px;
+  color: #6f4a1f;
+}
+.demo-note svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.menu-section {
+  margin-bottom: 34px;
+}
+.menu-category {
+  font-size: 20px;
+  margin: 0 0 16px;
+}
 .meta {
   display: flex;
   gap: 20px;

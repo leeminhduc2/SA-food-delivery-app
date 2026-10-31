@@ -58,12 +58,63 @@ export async function upsertImportedRestaurant(
       website=CASE WHEN restaurants.source='OSM' AND NOT restaurants.verified AND NOT restaurants.owner_managed THEN EXCLUDED.website ELSE restaurants.website END,
       opening_hours=CASE WHEN restaurants.source='OSM' AND NOT restaurants.verified AND NOT restaurants.owner_managed THEN EXCLUDED.opening_hours ELSE restaurants.opening_hours END,
       address_tags=CASE WHEN restaurants.source='OSM' AND NOT restaurants.verified AND NOT restaurants.owner_managed THEN EXCLUDED.address_tags ELSE restaurants.address_tags END,
-      osm_tags=EXCLUDED.osm_tags,
+      osm_tags=restaurants.osm_tags || EXCLUDED.osm_tags,
       last_synced_at=now()
     WHERE restaurants.source='OSM' AND NOT restaurants.verified AND NOT restaurants.owner_managed
     RETURNING id, (xmax = 0) AS inserted
   `;
   return rows[0];
+}
+
+export type CuratedPresentation = {
+  cuisine: string;
+  description: string;
+  image: string;
+  deliveryFee: number;
+  etaMinutes: number;
+  osmTags: Record<string, unknown>;
+};
+
+/**
+ * Apply display/demo fields to a row that is still owned by the importer.
+ *
+ * The predicate is repeated here because this is a second write after the
+ * protected upsert; it must never touch a verified or owner-managed row.
+ * `osm_tags` is merged so a later OSM sync cannot erase `_bep` metadata.
+ */
+export async function applyCuratedPresentation(
+  record: Pick<NormalizedRestaurant, 'osmType' | 'osmId'>,
+  presentation: CuratedPresentation,
+  db: DB = prisma,
+): Promise<number> {
+  return db.$executeRaw`
+    UPDATE restaurants SET
+      status='APPROVED',
+      approved_at=COALESCE(approved_at, now()),
+      cuisine=${presentation.cuisine},
+      description=${presentation.description},
+      image=${presentation.image},
+      delivery_fee=${presentation.deliveryFee},
+      eta_minutes=${presentation.etaMinutes},
+      osm_tags=osm_tags || ${JSON.stringify(presentation.osmTags)}::jsonb,
+      last_synced_at=now()
+    WHERE osm_type=${record.osmType}
+      AND osm_id=${record.osmId}
+      AND source='OSM'
+      AND NOT verified
+      AND NOT owner_managed
+  `;
+}
+
+export async function findByOsmIdentities(
+  records: Pick<NormalizedRestaurant, 'osmType' | 'osmId'>[],
+  db: DB = prisma,
+): Promise<{ id: string; osm_type: string | null; osm_id: string | null }[]> {
+  if (!records.length) return [];
+  return db.restaurant.findMany({
+    where: { OR: records.map((record) => ({ osm_type: record.osmType, osm_id: record.osmId })) },
+    select: { id: true, osm_type: true, osm_id: true },
+  });
 }
 
 /** Read-only ownership snapshot used to classify records in dry-run mode. */

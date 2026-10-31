@@ -26,20 +26,20 @@ test('responsive discovery, search, empty state, keyboard dialog and navigation'
   await expect(
     page.getByRole('heading', { name: 'A little hungry? You’re in the right place.' }),
   ).toBeVisible();
-  await expect(page.locator('.restaurant-card')).toHaveCount(3);
+  await expect(page.locator('.restaurant-card')).toHaveCount(5);
   await page.screenshot({ path: 'test-results/discovery-desktop.png', fullPage: true });
   expect(
     (await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze())
       .violations,
   ).toEqual([]);
   await page.getByRole('link', { name: 'Find your next favorite' }).click();
-  await expect(page.locator('.restaurant-card')).toHaveCount(3);
-  await page.getByLabel('Search restaurants or dishes').fill('phở');
+  await expect(page.locator('.restaurant-card')).toHaveCount(5);
+  await page.getByLabel('Search restaurants or dishes').fill('Bếp Nhà');
   await expect(page.locator('.restaurant-card')).toHaveCount(1);
   await page.getByLabel('Search restaurants or dishes').fill('missing-kitchen');
   await expect(page.getByText('No kitchens found')).toBeVisible();
   await page.getByRole('button', { name: 'Clear filters', exact: true }).click();
-  await expect(page.locator('.restaurant-card')).toHaveCount(3);
+  await expect(page.locator('.restaurant-card')).toHaveCount(5);
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await expect(page.getByRole('dialog')).toBeVisible();
   expect(
@@ -59,6 +59,47 @@ test('responsive discovery, search, empty state, keyboard dialog and navigation'
   await page.screenshot({ path: 'test-results/discovery-mobile.png', fullPage: true });
   expect(errors).toEqual([]);
 });
+test('imported demo restaurant shows provenance, grouped menu, cuisine filter and image fallback', async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.route('**/images/hanoi-3678370944.svg', (route) => route.abort());
+  await page.goto('/');
+  await page.getByRole('link', { name: 'Find your next favorite' }).click();
+  await expect(page.locator('.restaurant-card')).toHaveCount(5);
+  await expect(
+    page.locator('.restaurant-card').filter({ hasText: 'The Hanoi Social Club' }),
+  ).toContainText('Demo menu');
+  await page.locator('.restaurant-card').filter({ hasText: 'The Hanoi Social Club' }).click();
+  await expect(page.getByRole('heading', { name: 'The Hanoi Social Club' })).toBeVisible();
+  await expect(page.locator('.demo-note')).toContainText('Demo menu');
+  await expect(page.locator('.demo-note')).toContainText('not this restaurant’s official menu');
+  await expect(page.locator('.source-line')).toContainText('OpenStreetMap');
+  await expect(page.locator('.source-line a')).toHaveAttribute(
+    'href',
+    'https://www.openstreetmap.org/node/3678370944',
+  );
+  await expect(page.locator('.restaurant-hero img')).toHaveAttribute(
+    'src',
+    '/images/vietnamese.svg',
+  );
+  await expect(page.locator('.menu-section')).toHaveCount(3);
+  await expect(page.locator('.dish')).toHaveCount(10);
+  await expect(page.locator('.menu-category')).toHaveText(['Starters', 'Main dishes', 'Drinks']);
+  await page.getByRole('button', { name: 'All restaurants' }).click();
+  await page.getByRole('button', { name: 'Sandwich', exact: true }).click();
+  await expect(page.locator('.restaurant-card')).toHaveCount(1);
+  await expect(page.locator('.restaurant-card')).toContainText('Bánh Mì 25');
+  for (const width of [375, 768, 1024, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    ).toBeTruthy();
+  }
+  expect(errors).toEqual([]);
+});
+
 test('customer checkout through restaurant preparation, assignment, driver delivery, review and complaint', async ({
   browser,
 }) => {

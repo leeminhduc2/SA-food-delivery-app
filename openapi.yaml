@@ -164,6 +164,34 @@ components:
         eta_minutes: { type: integer }
         rating: { type: [number, 'null'] }
         review_count: { type: integer }
+        source:
+          type: string
+          description: MANUAL for user-created records, OSM for imported records.
+        verified:
+          type: boolean
+          description: True only when a human has verified the venue data.
+        owner_managed:
+          type: boolean
+          description: True when a restaurant owner has taken over the record.
+        osm_type: { type: [string, 'null'], enum: [node, way, relation, null] }
+        osm_id: { type: [string, 'null'] }
+        latitude: { type: [number, 'null'], minimum: -90, maximum: 90 }
+        longitude: { type: [number, 'null'], minimum: -180, maximum: 180 }
+        phone: { type: [string, 'null'] }
+        website: { type: [string, 'null'], format: uri }
+        opening_hours: { type: [string, 'null'] }
+        address_tags:
+          type: object
+          additionalProperties: { type: string }
+          description: Structured address components from OpenStreetMap.
+        osm_tags:
+          type: object
+          additionalProperties: true
+          description: >-
+            Raw OpenStreetMap tags plus optional `_bep` import metadata. Demo
+            menus are marked at `_bep.menu.dataType = DEMO` and are not official.
+        imported_at: { type: [string, 'null'], format: date-time }
+        last_synced_at: { type: [string, 'null'], format: date-time }
     RestaurantInput:
       type: object
       required: [name, description, address, cuisine]

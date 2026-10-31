@@ -1,6 +1,7 @@
 import { Plus } from 'lucide-react';
 import { useState } from 'react';
 import { money } from '../api';
+import { SmartImage } from './SmartImage';
 export function Dish({
   item,
   busy,
@@ -13,11 +14,7 @@ export function Dish({
   const [options, setOptions] = useState<string[]>([]);
   return (
     <article className="dish">
-      <img
-        src={item.image || '/images/vietnamese.svg'}
-        alt={`Illustration of ${item.name}`}
-        loading="lazy"
-      />
+      <SmartImage src={item.image} alt={`Illustration of ${item.name}`} loading="lazy" />
       <div className="dish-copy">
         <span className="eyebrow">{item.category}</span>
         <h3>{item.name}</h3>

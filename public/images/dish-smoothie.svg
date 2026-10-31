@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" role="img" aria-label="Illustration of smoothie">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f6ead8"/><stop offset="1" stop-color="#fffdf7"/>
+    </linearGradient>
+    <radialGradient id="glow" cx=".32" cy=".2" r=".8">
+      <stop offset="0" stop-color="#ffffff" stop-opacity=".85"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="800" height="600" fill="url(#bg)"/>
+  <rect width="800" height="600" fill="url(#glow)"/>
+  <g opacity=".18" stroke="#7c3f2c" stroke-width="2">
+    <path d="M40 520C170 470 230 560 360 510s190-40 400 20"/>
+    <path d="M40 548C170 498 230 588 360 538s190-40 400 20"/>
+  </g>
+  
+    <ellipse cx="400" cy="438" rx="190" ry="36" fill="#2a1c15" opacity=".16"/>
+    <ellipse cx="400" cy="422" rx="150" ry="38" fill="#fffdf5"/>
+    <path d="M320 206h160l-18 216h-124Z" fill="#d8a25e"/><path d="M334 226h132l-6 74H340Z" fill="#f3c46b"/><rect x="430" y="170" width="13" height="170" rx="6" fill="#7c3f2c" transform="rotate(12 430 170)"/>
+    
+    
+    
+    <g fill="#6f9c54"><path d="M0 0C15-18 35-18 46 0C34 20 14 22 0 0Z" fill="#6f9c54" transform="translate(318 400) rotate(-24)"/><path d="M0 0C15-18 35-18 46 0C34 20 14 22 0 0Z" fill="#8cad5b" transform="translate(482 400) rotate(24)"/></g>
+    <g stroke="#d9c9ae" stroke-width="3" opacity=".55"><path d="M300 410h200"/></g>
+  <g fill="#7c3f2c" opacity=".8">
+    <text x="34" y="560" font-family="Georgia, serif" font-size="20" letter-spacing="4">BẾP · MINH HOẠ</text>
+    <text x="766" y="560" text-anchor="end" font-family="Georgia, serif" font-size="14" letter-spacing="2">DEMO ASSET</text>
+  </g>
+</svg>

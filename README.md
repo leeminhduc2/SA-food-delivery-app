@@ -46,17 +46,29 @@ To serve the built UI from the API, run `npm.cmd run build` then `npm.cmd start`
 ### Restaurant data from OpenStreetMap
 
 Restaurants can be imported from the Overpass API as unverified, non-orderable
-records. Existing manual, verified, or owner-managed rows are never overwritten.
+records. The curated Hanoi command additionally approves its records and
+attaches clearly-labelled demo menus so the imported data can be browsed and
+ordered in the demo app; those rows remain `verified=false`. Existing manual,
+verified, or owner-managed rows are never overwritten.
 
 ```powershell
 npm.cmd run import:restaurants -- --dry-run
 npm.cmd run import:restaurants
+
+# 30 curated Hanoi venues with clearly-labelled demo menus
+npm.cmd run import:hanoi -- --dry-run
+npm.cmd run import:hanoi -- --timeout=120000
 ```
 
 Administrators can also queue an import with `POST /api/admin/restaurants/import`
-and read job history at `GET /api/admin/restaurants/import/history`. Data is ©
-OpenStreetMap contributors and licensed under the ODbL; see
-[the import guide](docs/IMPORT.md) for configuration, limits, and attribution.
+and read job history at `GET /api/admin/restaurants/import/history`. Hanoi
+menus, prices and illustrations are demo content, recorded as
+`osm_tags._bep.menu.dataType = DEMO`; restaurant names, addresses, contacts and
+coordinates come from the live OSM response. Data is © OpenStreetMap
+contributors and licensed under the ODbL. See
+[the import guide](docs/IMPORT.md) and
+[the Hanoi data guide](docs/DATA_IMPORT.md) for configuration, licences,
+attribution, idempotency and actual import results.
 
 ### Database and Prisma
 
@@ -106,8 +118,8 @@ npm.cmd run format:check
 
 - `build`: regenerates the Prisma client, runs strict TypeScript checking and the optimized Vite build.
 - `check:openapi`: fails when a registered route is missing from `openapi.yaml` or the spec documents a route that no router serves.
-- `test`: 34 scenarios against real PostgreSQL: 14 lifecycle/concurrency scenarios (concurrent last-serving checkout, same-key retry, payload conflicts, atomic rollback, authoritative pricing, invalid transitions, ownership, signed callbacks, late payments, timeout recovery, expiry, refunds, complaints, review eligibility, outbox idempotency), 13 restaurant-import scenarios (Overpass retries, normalization, protected upserts, dry runs, savepoint isolation, admin job history), and 7 runtime API smoke scenarios (health/docs, auth/session/CSRF, discovery/menu/sorting, cart, checkout→payment→delivery→review, admin/operations, error contract).
-- `test:e2e`: three Chrome browser scenarios covering responsive discovery, keyboard dialogs, accessibility checks, the full four-role delivery journey, and persistent menu editing. Screenshots/traces are written under `test-results/`.
+- `test`: 47 scenarios against real PostgreSQL: 14 lifecycle/concurrency scenarios (concurrent last-serving checkout, same-key retry, payload conflicts, atomic rollback, authoritative pricing, invalid transitions, ownership, signed callbacks, late payments, timeout recovery, expiry, refunds, complaints, review eligibility, outbox idempotency), 13 restaurant-import scenarios (Overpass retries, normalization, protected upserts, dry runs, savepoint isolation, admin job history), 6 pure Hanoi-menu scenarios, 7 Hanoi import/API scenarios, and 7 runtime API smoke scenarios (health/docs, auth/session/CSRF, discovery/menu/sorting, cart, checkout→payment→delivery→review, admin/operations, error contract).
+- `test:e2e`: four Chrome browser scenarios covering responsive discovery, imported demo provenance/menu grouping/image fallback, keyboard dialogs, accessibility checks, the full four-role delivery journey, and persistent menu editing. Screenshots/traces are written under `test-results/`.
 - `test:load`: a read-only browse smoke test; the API must already be running. Default: 200 requests, 20 concurrent. Override `LOAD_BASE_URL`, `LOAD_REQUESTS`, or `LOAD_CONCURRENCY`.
 - `format:check`: Prettier check over source, tests, scripts and docs. `.prettierrc.json` uses `endOfLine: "auto"` so the check is stable with both LF and CRLF checkouts.
 
