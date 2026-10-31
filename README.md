@@ -14,6 +14,7 @@ Copy-Item .env.example .env
 docker compose up -d db
 npm.cmd run db:migrate
 npm.cmd run db:seed
+npm.cmd run db:seed:mock
 npm.cmd run dev
 ```
 
@@ -26,6 +27,7 @@ The Compose credentials and example password are only local development defaults
 ```powershell
 docker compose up --build -d
 docker compose run --rm app npm run db:seed
+docker compose run --rm app npm run db:seed:mock
 ```
 
 Compose builds the multi-stage `Dockerfile`, waits for the database healthcheck, then the entrypoint applies pending Prisma migrations (`prisma migrate deploy`) before starting the API on port 3001. A migration failure aborts startup. Seeding stays a deliberate manual step. Open [http://127.0.0.1:3001](http://127.0.0.1:3001); the interactive API reference is at [/api/docs](http://127.0.0.1:3001/api/docs).
@@ -33,8 +35,8 @@ Compose builds the multi-stage `Dockerfile`, waits for the database healthcheck,
 | Account           | Email                 | Access                                                          |
 | ----------------- | --------------------- | --------------------------------------------------------------- |
 | Customer          | customer@bep.local    | Discover, order, pay, track, review, request support            |
-| Restaurant        | restaurant@bep.local  | Bếp Nhà Sài Gòn menu and orders                                 |
-| Second restaurant | restaurant2@bep.local | Little Italy Kitchen and The Green Table                        |
+| Restaurant        | restaurant@bep.local  | Bếp Phố Hà Thành and other demo kitchens                        |
+| Second restaurant | restaurant2@bep.local | Tiệm Pizza Mộc and other demo kitchens                          |
 | Driver            | driver@bep.local      | Assigned deliveries                                             |
 | Second driver     | driver2@bep.local     | Assignment isolation and reassignment                           |
 | Admin             | admin@bep.local       | Approvals, assignments, accounts, complaints, moderation, audit |
@@ -43,32 +45,42 @@ All seeded accounts use `DEMO_PASSWORD`; the example value is `LocalDemo123!`. N
 
 To serve the built UI from the API, run `npm.cmd run build` then `npm.cmd start`, and open **http://127.0.0.1:3001**. Stop the development API first to free port 3001. Local assets and fonts require no third-party browser requests.
 
-### Restaurant data from OpenStreetMap
+### Fictional demo catalog (Hanoi)
 
-Restaurants can be imported from the Overpass API as unverified, non-orderable
-records. The curated Hanoi command additionally approves its records and
-attaches clearly-labelled demo menus so the imported data can be browsed and
-ordered in the demo app; those rows remain `verified=false`. Existing manual,
-verified, or owner-managed rows are never overwritten.
+The public catalog is a fixed dataset of **10 Hanoi restaurants and 60 dishes**,
+seeded by `npm.cmd run db:seed:mock`. It requires no API key and makes no
+external request. The rows live in PostgreSQL and are served by the normal
+catalog API like any other restaurant; names, addresses, phone numbers, opening
+hours, prices, ratings and review counts are invented for development.
+
+The seed is idempotent and only upserts its own stable IDs
+(`mock-restaurant-01`…`mock-restaurant-10`, `mock-item-001`…`mock-item-060`).
+It never overwrites edits to an existing mock row, never deletes anything, and
+hides legacy OSM/demo rows by setting `catalog_visible = false`. Orders, order
+items, payments, users, carts and reviews are untouched. The seed is a manual
+step; it does not run at application startup.
+
+The 10 covers and 60 dish photos are referenced at deterministic paths under
+`public/images/restaurants/` and `public/images/menu-items/`. **No raster image
+files ship with this workspace yet** because no image-generation tooling is
+available here. The UI shows a neutral "Ảnh đang cập nhật" placeholder instead
+of an SVG or a stock photo. The complete per-dish prompt list, file names and
+suggested sizes are in [docs/MOCK_IMAGE_PROMPTS.md](docs/MOCK_IMAGE_PROMPTS.md);
+regenerate it with `npm.cmd run assets:prompts`.
 
 ```powershell
-npm.cmd run import:restaurants -- --dry-run
-npm.cmd run import:restaurants
-
-# 30 curated Hanoi venues with clearly-labelled demo menus
-npm.cmd run import:hanoi -- --dry-run
-npm.cmd run import:hanoi -- --timeout=120000
+npm.cmd run db:seed:mock   # add/refresh the fictional catalog, hide legacy rows
+npm.cmd run assets:prompts # write docs/MOCK_IMAGE_PROMPTS.md from the same data
 ```
 
-Administrators can also queue an import with `POST /api/admin/restaurants/import`
-and read job history at `GET /api/admin/restaurants/import/history`. Hanoi
-menus, prices and illustrations are demo content, recorded as
-`osm_tags._bep.menu.dataType = DEMO`; restaurant names, addresses, contacts and
-coordinates come from the live OSM response. Data is © OpenStreetMap
-contributors and licensed under the ODbL. See
-[the import guide](docs/IMPORT.md) and
-[the Hanoi data guide](docs/DATA_IMPORT.md) for configuration, licences,
-attribution, idempotency and actual import results.
+### Legacy OpenStreetMap/demo data
+
+The earlier OSM importer and curated Hanoi demo remain in the database for
+development and are hidden from the public catalog by the mock seed. They are
+never deleted, so historical orders keep working. `npm.cmd run catalog:archive`
+reports or re-applies the reversible visibility change; see
+[the import guide](docs/IMPORT.md) and [the Hanoi data guide](docs/DATA_IMPORT.md).
+Data is © OpenStreetMap contributors (ODbL). The public catalog does not use it.
 
 ### Database and Prisma
 
@@ -118,8 +130,8 @@ npm.cmd run format:check
 
 - `build`: regenerates the Prisma client, runs strict TypeScript checking and the optimized Vite build.
 - `check:openapi`: fails when a registered route is missing from `openapi.yaml` or the spec documents a route that no router serves.
-- `test`: 47 scenarios against real PostgreSQL: 14 lifecycle/concurrency scenarios (concurrent last-serving checkout, same-key retry, payload conflicts, atomic rollback, authoritative pricing, invalid transitions, ownership, signed callbacks, late payments, timeout recovery, expiry, refunds, complaints, review eligibility, outbox idempotency), 13 restaurant-import scenarios (Overpass retries, normalization, protected upserts, dry runs, savepoint isolation, admin job history), 6 pure Hanoi-menu scenarios, 7 Hanoi import/API scenarios, and 7 runtime API smoke scenarios (health/docs, auth/session/CSRF, discovery/menu/sorting, cart, checkout→payment→delivery→review, admin/operations, error contract).
-- `test:e2e`: four Chrome browser scenarios covering responsive discovery, imported demo provenance/menu grouping/image fallback, keyboard dialogs, accessibility checks, the full four-role delivery journey, and persistent menu editing. Screenshots/traces are written under `test-results/`.
+- `test`: 56 scenarios against real PostgreSQL: 14 lifecycle/concurrency scenarios (concurrent last-serving checkout, same-key retry, payload conflicts, atomic rollback, authoritative pricing, invalid transitions, ownership, signed callbacks, late payments, timeout recovery, expiry, refunds, complaints, review eligibility, outbox idempotency), 13 restaurant-import scenarios (Overpass retries, normalization, protected upserts, dry runs, savepoint isolation, admin job history), 6 pure Hanoi-menu scenarios, 7 Hanoi import/API scenarios, 9 fictional-catalog scenarios (exactly 10 visible restaurants, 60 dishes, 5–8 per restaurant, valid VND prices, hidden-but-retained legacy rows, no provider fields or provider calls in the public catalog path, idempotent seed that preserves edits, preserved order history, no orphan items, raster assets or an explicit skip), and 7 runtime API smoke scenarios (health/docs, auth/session/CSRF, discovery/menu/sorting, cart, checkout→payment→delivery→review, admin/operations, error contract).
+- `test:e2e`: four Chrome browser scenarios covering responsive discovery, keyboard dialogs and accessibility checks, the full four-role delivery journey with review and complaint, and persistent menu editing. Screenshots/traces are written under `test-results/`. The suite seeds the fictional catalog; no external data provider is exercised.
 - `test:load`: a read-only browse smoke test; the API must already be running. Default: 200 requests, 20 concurrent. Override `LOAD_BASE_URL`, `LOAD_REQUESTS`, or `LOAD_CONCURRENCY`.
 - `format:check`: Prettier check over source, tests, scripts and docs. `.prettierrc.json` uses `endOfLine: "auto"` so the check is stable with both LF and CRLF checkouts.
 
@@ -170,4 +182,4 @@ docs/                     API contract, decisions, requirement coverage and oper
 
 Delivery uses a trusted fixed fee and indicative ETA configured per restaurant. Addresses are free text. There is no geocoding, live GPS tracking, route optimization, or service-area verification. Notifications are delivered to the app inbox through a transactional outbox; email/SMS/push are not connected.
 
-See [API reference](docs/API.md), [requirement coverage](docs/COVERAGE.md), and [operations guide](docs/OPERATIONS.md). The UI uses guidance from the requested [UI UX Pro Max skill](https://github.com/nextlevelbuilder/ui-ux-pro-max-skill); design choices are recorded in [the design system](design-system/bep/MASTER.md).
+See [API reference](docs/API.md), [requirement coverage](docs/COVERAGE.md), [the mock image guide](docs/MOCK_IMAGE_PROMPTS.md), and [operations guide](docs/OPERATIONS.md). The UI uses guidance from the requested [UI UX Pro Max skill](https://github.com/nextlevelbuilder/ui-ux-pro-max-skill); design choices are recorded in [the design system](design-system/bep/MASTER.md).

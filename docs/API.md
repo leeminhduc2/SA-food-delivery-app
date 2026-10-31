@@ -12,7 +12,7 @@ Base path: `/api`. JSON responses use ordinary HTTP status codes. Errors have `{
 | POST `/auth/login`            | Public                      | `{email,password}`; returns profile and sets session cookie.                                                |
 | POST `/auth/logout`           | Session optional            | Invalidates current session.                                                                                |
 | GET/PATCH `/auth/me`          | GET public, PATCH signed in | GET current profile/null; PATCH `{name}`.                                                                   |
-| GET `/restaurants`            | Public                      | `q`, `cuisine`, `sort=recommended                                                                           | fee | name`; approved kitchens, search includes dishes. |
+| GET `/restaurants`            | Public                      | `q`, `cuisine`, `sort=recommended \| fee \| name`; approved kitchens, search includes dishes.               |
 | GET `/restaurants/:id`        | Public for approved         | Restaurant, items, category names, extras and visible reviews. Unapproved access requires membership/admin. |
 | GET `/manage/restaurants`     | Restaurant/Admin            | Owned restaurants, or all for admin.                                                                        |
 | POST `/restaurants`           | Restaurant                  | `{name,description,address,cuisine,image?}` creates pending kitchen and membership.                         |
@@ -23,7 +23,9 @@ Base path: `/api`. JSON responses use ordinary HTTP status codes. Errors have `{
 
 Item fields: `{name,description,price,stock,available,image,category,options:[{id,name,extraPrice}]}`. Prices are whole VND. Image values may be HTTPS URLs, a local `/images/<filename>` path, or empty. Extra IDs must be unique within the dish.
 
-Restaurant responses also include provenance fields: `source`, `verified`, `owner_managed`, `osm_type`, `osm_id`, `latitude`, `longitude`, `phone`, `website`, `opening_hours`, `address_tags`, `osm_tags`, `imported_at`, and `last_synced_at`. Imported demo menus are marked at `osm_tags._bep.menu.dataType = "DEMO"`; they are not official menus. No additional endpoint is required for Hanoi data.
+Restaurant responses also include `slug`, `district`, `mock`, `catalog_visible`, `rating` and `review_count`. The public catalog is the seeded 10-restaurant dataset; legacy OSM/MANUAL rows stay in the database with `catalog_visible = false` and are still returned to their members and admins where the contract requires it. The seeded ratings and review counts are invented development data. Legacy demo menus are marked at `osm_tags._bep.menu.dataType = "DEMO"`; they are not official menus.
+
+`image` values point at deterministic local raster paths (`/images/restaurants/<slug>.webp` and `/images/menu-items/<id>.webp`). Clients should render a neutral placeholder when the file is missing; no SVG or stock photo should be substituted for a food image. There is no external photo proxy and no image API key.
 
 ## Basket, checkout and lifecycle
 
@@ -40,7 +42,7 @@ A line is `{itemId,quantity,optionIds:[]}`. Quantities must be 1–20 per line; 
 | GET `/orders/:id`                   | Owner/member/assigned driver/Admin   | Order snapshots, independent payment/delivery state and history.                                 |
 | POST `/orders/:id/transition`       | Owning restaurant                    | `{status}`: ACCEPTED → PREPARING → READY_FOR_PICKUP, from the correct preceding state.           |
 | POST `/orders/:id/cancel`           | Owner/member/Admin                   | `{reason}`; only PENDING_PAYMENT or CONFIRMED.                                                   |
-| POST `/orders/:id/simulate-payment` | Owning customer, simulated mode only | `{status: "SUCCEEDED"                                                                            | "FAILED"}`. Never available when simulation is disabled. |
+| POST `/orders/:id/simulate-payment` | Owning customer, simulated mode only | `{status: "SUCCEEDED" \| "FAILED"}`. Never available when simulation is disabled.                |
 | POST `/deliveries/:id/assign`       | Admin                                | `{driverId}`. Paid order, active driver, before pickup.                                          |
 | POST `/deliveries/:id/transition`   | Active assigned driver               | `{status,reason?}`: PICKED_UP → IN_TRANSIT → DELIVERED; FAILED allowed after pickup with reason. |
 
@@ -87,7 +89,7 @@ The server verifies signature, reference/order/amount/currency, immutable event 
 | POST `/notifications/read`             | Signed in              | Marks own inbox read.                                                                      |
 | GET `/reports`                         | Restaurant/Admin       | Owned/global delivered revenue, counts, failure counts, daily activity.                    |
 | GET `/admin/overview`                  | Admin                  | Restaurant/account queues, review moderation, audit, pending reconciliation/outbox counts. |
-| POST `/admin/restaurants/:id/approval` | Admin                  | `{status:"APPROVED"                                                                        | "REJECTED"}`. |
+| POST `/admin/restaurants/:id/approval` | Admin                  | `{status:"APPROVED" \| "REJECTED"}`.                                                       |
 | PATCH `/admin/users/:id`               | Admin                  | `{active}`; cannot disable self, disabling revokes sessions.                               |
 | POST `/admin/complaints/:id/resolve`   | Admin                  | `{resolution}`; records audit and notification event.                                      |
 | PATCH `/admin/reviews/:id`             | Admin                  | `{hidden}`; audit logged.                                                                  |

@@ -24,20 +24,10 @@ const { migrate } = await import('../server/migrate.js');
 await migrate();
 const { seed } = await import('../server/seed.js');
 await seed();
-// Two real OSM records are imported through the production code path so the
-// browser suite can cover demo provenance without calling Overpass.
-const { HANOI_E2E_FIXTURES, HANOI_E2E_IDS } = await import('./e2e-hanoi-fixtures.js');
-const { runHanoiDemoImport } = await import('../server/services/hanoi-import.service.js');
-await runHanoiDemoImport(
-  { ids: HANOI_E2E_IDS, endpoint: 'http://e2e.invalid/overpass' },
-  {
-    fetchImpl: (async () =>
-      new Response(JSON.stringify({ elements: HANOI_E2E_FIXTURES }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      })) as typeof fetch,
-  },
-);
+// The public catalog is the fictional Hanoi dataset; legacy demo rows are
+// hidden by the same seed the application uses. No external API is called.
+const { seedMockCatalog } = await import('../server/seed-mock.js');
+await seedMockCatalog();
 const { createApp } = await import('../server/app.js');
 const { prisma } = await import('../server/db.js');
 const server = createApp().listen(3002, '127.0.0.1');

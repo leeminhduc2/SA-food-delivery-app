@@ -14,7 +14,7 @@ export function Dish({
   const [options, setOptions] = useState<string[]>([]);
   return (
     <article className="dish">
-      <SmartImage src={item.image} alt={`Illustration of ${item.name}`} loading="lazy" />
+      <SmartImage src={item.image} alt={`Ảnh món ${item.name}`} loading="lazy" />
       <div className="dish-copy">
         <span className="eyebrow">{item.category}</span>
         <h3>{item.name}</h3>

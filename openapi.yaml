@@ -164,15 +164,25 @@ components:
         eta_minutes: { type: integer }
         rating: { type: [number, 'null'] }
         review_count: { type: integer }
+        slug: { type: [string, 'null'] }
+        district: { type: [string, 'null'] }
+        mock:
+          type: boolean
+          description: True for the fictional demo catalog. Never verified business data.
         source:
           type: string
-          description: MANUAL for user-created records, OSM for imported records.
+          description: >-
+            MOCK for the fictional demo catalog, MANUAL for user-created records,
+            and OSM for retained legacy imports.
         verified:
           type: boolean
           description: True only when a human has verified the venue data.
         owner_managed:
           type: boolean
           description: True when a restaurant owner has taken over the record.
+        catalog_visible:
+          type: boolean
+          description: False hides a retained row from the public catalog without deleting it.
         osm_type: { type: [string, 'null'], enum: [node, way, relation, null] }
         osm_id: { type: [string, 'null'] }
         latitude: { type: [number, 'null'], minimum: -90, maximum: 90 }
@@ -232,6 +242,9 @@ components:
             restaurant_id: { type: string }
             menu_id: { type: string }
             category: { type: string }
+            mock:
+              type: boolean
+              description: True when the dish belongs to the fictional demo catalog.
     Line:
       type: object
       required: [itemId, quantity]
@@ -1315,3 +1328,4 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+

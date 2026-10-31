@@ -8,6 +8,25 @@ import * as audits from '../repositories/audit.repository.js';
 import * as menu from '../repositories/menu.repository.js';
 import * as restaurants from '../repositories/restaurant.repository.js';
 
+/**
+ * Hide retired provider columns from public responses. The columns stay in the
+ * database (no destructive migration), but no client should depend on them.
+ */
+function publicRestaurant(row: any): any {
+  const {
+    photo_name,
+    photo_attribution,
+    photo_verified_food,
+    places_synced_at,
+    google_place_id,
+    google_maps_uri,
+    google_primary_type,
+    google_business_status,
+    ...restaurant
+  } = row;
+  return restaurant;
+}
+
 export const restaurantSchema = z.object({
   name: z.string().trim().min(2).max(100),
   description: z.string().max(500),
@@ -54,7 +73,7 @@ const orderColumns = {
 
 export async function listRestaurants(raw: unknown): Promise<any[]> {
   const query = listQuerySchema.parse(raw);
-  return restaurants.search(query, orderColumns[query.sort]);
+  return (await restaurants.search(query, orderColumns[query.sort])).map(publicRestaurant);
 }
 
 export async function assertMember(
@@ -77,9 +96,15 @@ export async function getRestaurant(actor: User | undefined, restaurantId: strin
     const privileged = requireActor(actor, 'RESTAURANT', 'ADMIN');
     await assertMember(undefined, privileged, restaurant.id);
   }
+  if (!restaurant.catalog_visible) {
+    const privileged =
+      actor?.role === 'ADMIN' ||
+      Boolean(actor && (await restaurants.isMember(actor.id, restaurant.id)));
+    check(privileged, 404, 'NOT_FOUND', 'Restaurant not found.');
+  }
   const items = await menu.listByRestaurant(restaurant.id);
   const reviews = await restaurants.listVisibleReviews(restaurant.id);
-  return { ...restaurant, items, reviews };
+  return { ...publicRestaurant(restaurant), items, reviews };
 }
 
 export async function createRestaurant(actor: User, raw: unknown): Promise<any> {
@@ -205,7 +230,7 @@ export async function priceCart(db: DB, raw: unknown, reserve = false): Promise<
     ? await restaurants.findForShare(first.restaurant_id, db)
     : await restaurants.findById(first.restaurant_id, db);
   check(
-    restaurant?.status === 'APPROVED',
+    restaurant?.status === 'APPROVED' && restaurant.catalog_visible,
     409,
     'UNAVAILABLE',
     'This restaurant is not accepting orders.',

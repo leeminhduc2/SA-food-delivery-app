@@ -389,7 +389,7 @@ export function App() {
       {config.simulatedPayments && (
         <div className="demo-strip">
           <ShieldCheck size={14} />
-          Local demo · Payments are simulated. No money is charged.
+          Local development · Payments are simulated. No money is charged.
         </div>
       )}
       <main id="main" tabIndex={-1}>
@@ -417,12 +417,18 @@ export function App() {
                   <div>
                     <span className="eyebrow">YOUR NEIGHBORHOOD KITCHEN</span>
                     <h1>{selected.name}</h1>
-                    <p>{selected.description}</p>
+                    {selected.description && <p>{selected.description}</p>}
                     <div className="meta">
                       <span>
                         <Utensils size={16} />
                         {selected.cuisine}
                       </span>
+                      {selected.rating ? (
+                        <span>
+                          <Star size={16} />
+                          {selected.rating} / 5 ({selected.review_count || 0})
+                        </span>
+                      ) : null}
                       <span>
                         <Clock size={16} />
                         {selected.eta_minutes}–{selected.eta_minutes + 10} min
@@ -459,49 +465,27 @@ export function App() {
                       <MapPin size={15} />
                       {selected.address}
                     </p>
-                    {selected.source === 'OSM' && (
-                      <p className="source-line">
-                        Location data from{' '}
-                        <a
-                          href={
-                            selected.osm_tags?._bep?.sourceUrl ||
-                            'https://www.openstreetmap.org/copyright'
-                          }
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          OpenStreetMap
-                        </a>{' '}
-                        (ODbL). Not verified by the restaurant.
-                      </p>
-                    )}
                   </div>
-                  <SmartImage
-                    src={selected.image}
-                    alt={`Illustration for ${selected.name}`}
-                    title={
-                      selected.osm_tags?._bep?.image?.type === 'ILLUSTRATION'
-                        ? 'Illustration, not a photograph of the venue'
-                        : undefined
-                    }
-                  />
+                  <SmartImage src={selected.image} alt={`Ảnh món ăn của ${selected.name}`} />
                 </section>
-                {selected.osm_tags?._bep?.menu?.dataType === 'DEMO' && (
+                {!selected.items.length && (
                   <div className="demo-note" role="note">
-                    <MapPin size={18} />
+                    <Utensils size={18} />
                     <div>
-                      <strong>Demo menu.</strong> Dishes and prices are illustrative, not this
-                      restaurant’s official menu. Location data comes from OpenStreetMap.
+                      <strong>Chưa có thực đơn.</strong> Nhà hàng này chưa có món ăn nên chưa thể
+                      đặt hàng.
                     </div>
                   </div>
                 )}
-                <div className="section-title">
-                  <div>
-                    <span className="eyebrow">FRESH FROM THE KITCHEN</span>
-                    <h2>The menu</h2>
+                {selected.items.length > 0 && (
+                  <div className="section-title">
+                    <div>
+                      <span className="eyebrow">FRESH FROM THE KITCHEN</span>
+                      <h2>The menu</h2>
+                    </div>
+                    <span>{selected.items.length} dishes</span>
                   </div>
-                  <span>{selected.items.length} dishes</span>
-                </div>
+                )}
                 {groupByCategory(selected.items).map(([category, items]) => (
                   <section className="menu-section" key={category}>
                     <h3 className="menu-category">{category}</h3>
@@ -651,7 +635,6 @@ export function App() {
                   </div>
                   <div className="restaurant-grid" aria-busy={loading}>
                     {restaurants.map((r, i) => {
-                      const demoMenu = r.osm_tags?._bep?.menu?.dataType === 'DEMO';
                       return (
                         <button
                           className="restaurant-card"
@@ -662,21 +645,14 @@ export function App() {
                             <SmartImage
                               loading="lazy"
                               src={r.image}
-                              alt={`Illustration of ${r.cuisine} food`}
-                              title={
-                                r.osm_tags?._bep?.image?.type === 'ILLUSTRATION'
-                                  ? 'Illustration, not a photograph of the venue'
-                                  : undefined
-                              }
+                              alt={`Ảnh món ăn của ${r.name}`}
                             />
                             <span className="image-label">
-                              {demoMenu
-                                ? 'Demo menu'
-                                : i === 0
-                                  ? 'Neighborhood favorite'
-                                  : r.cuisine === 'Healthy'
-                                    ? 'Feel-good food'
-                                    : 'Made with love'}
+                              {i === 0
+                                ? 'Neighborhood favorite'
+                                : r.cuisine === 'Healthy'
+                                  ? 'Feel-good food'
+                                  : 'Made with love'}
                             </span>
                             <span className="image-arrow">
                               <ArrowRight size={18} />
@@ -688,10 +664,21 @@ export function App() {
                               <span className="rating">
                                 <Star size={14} />
                                 {r.rating || 'New'}
+                                {r.rating && r.review_count ? (
+                                  <small> ({r.review_count})</small>
+                                ) : null}
                               </span>
                             </div>
                             <p>
-                              {r.cuisine} <span>·</span> {r.description.split('.')[0]}
+                              {r.cuisine}
+                              {r.district ? (
+                                <>
+                                  <span> · </span>
+                                  {r.district}
+                                </>
+                              ) : null}
+                              <span> · </span>
+                              {r.description ? r.description.split('.')[0] : 'Món ăn đặc sắc'}
                             </p>
                             <div className="card-bottom">
                               <span>
@@ -925,14 +912,6 @@ export function App() {
         <span>
           Made for the neighborhood <Heart size={13} />
         </span>
-        <a
-          className="osm-attribution"
-          href="https://www.openstreetmap.org/copyright"
-          target="_blank"
-          rel="noreferrer"
-        >
-          Restaurant data © OpenStreetMap contributors (ODbL)
-        </a>
       </footer>
       {notice && (
         <div className="toast" role="status">
