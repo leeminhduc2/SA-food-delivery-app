@@ -11,6 +11,7 @@ import { parse } from 'yaml';
 
 const routeFiles: Array<{ file: string; router: string; prefix: string }> = [
   { file: 'server/api/identity.routes.ts', router: 'identityRoutes', prefix: '/api/auth' },
+  { file: 'server/api/address.routes.ts', router: 'addressRoutes', prefix: '/api' },
   { file: 'server/api/catalog.routes.ts', router: 'catalogRoutes', prefix: '/api' },
   { file: 'server/api/orders.routes.ts', router: 'orderRoutes', prefix: '/api' },
   { file: 'server/api/payments.routes.ts', router: 'paymentRoutes', prefix: '/api/payments' },

@@ -7,6 +7,12 @@ import type { User } from '../domain/types.js';
 import * as audits from '../repositories/audit.repository.js';
 import * as menu from '../repositories/menu.repository.js';
 import * as restaurants from '../repositories/restaurant.repository.js';
+import {
+  deliveryAddressForActor,
+  deliveryInfoForRestaurant,
+  noAddressInfo,
+  type DeliveryInfo,
+} from './shipping.service.js';
 
 /**
  * Hide retired provider columns from public responses. The columns stay in the
@@ -71,9 +77,73 @@ const orderColumns = {
   name: 'name',
 } as const;
 
-export async function listRestaurants(raw: unknown): Promise<any[]> {
+function lookupBudgetMs(): number {
+  return Math.max(1_000, Number(process.env.DELIVERY_LOOKUP_BUDGET_MS || 8_000));
+}
+
+/**
+ * Catalog requests must never hang because an external router is slow. The
+ * underlying cached call may finish later; this request degrades to an
+ * explicit "unavailable" entry.
+ */
+async function boundedDelivery(work: Promise<DeliveryInfo>): Promise<DeliveryInfo> {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      work,
+      new Promise<DeliveryInfo>((resolve) => {
+        timer = setTimeout(
+          () => resolve({ ...noAddressInfo(), status: 'UNAVAILABLE', reason: 'LOOKUP_BUDGET' }),
+          lookupBudgetMs(),
+        );
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+async function withDeliveryInfo(
+  rows: any[],
+  userId: string | undefined,
+  includeGeometry: boolean,
+): Promise<any[]> {
+  const address = await deliveryAddressForActor(userId);
+  if (!address) return rows.map((row) => ({ ...row, deliveryInfo: noAddressInfo() }));
+  return Promise.all(
+    rows.map(async (row) => ({
+      ...row,
+      deliveryInfo: await boundedDelivery(
+        deliveryInfoForRestaurant(row, address, { includeGeometry }),
+      ),
+    })),
+  );
+}
+
+export async function listRestaurants(raw: unknown, user?: User): Promise<any[]> {
   const query = listQuerySchema.parse(raw);
-  return (await restaurants.search(query, orderColumns[query.sort])).map(publicRestaurant);
+  const rows = (await restaurants.search(query, orderColumns[query.sort])).map(publicRestaurant);
+  const enriched = await withDeliveryInfo(rows, user?.id, false);
+  if (query.sort !== 'recommended') return enriched;
+  // The default "recommended" order becomes nearest-first once the customer
+  // has a routable address. Unsupported or failed routes stay visible last.
+  const indexed = enriched.map((row, index) => ({ row, index }));
+  indexed.sort((a, b) => {
+    const aInfo = a.row.deliveryInfo as DeliveryInfo;
+    const bInfo = b.row.deliveryInfo as DeliveryInfo;
+    const aDistance = aInfo.supported ? (aInfo.distanceMeters as number) : Number.POSITIVE_INFINITY;
+    const bDistance = bInfo.supported ? (bInfo.distanceMeters as number) : Number.POSITIVE_INFINITY;
+    return aDistance - bDistance || a.index - b.index;
+  });
+  return indexed.map((entry) => entry.row);
+}
+
+export async function shippingQuoteForRestaurant(actor: User, restaurantId: string): Promise<any> {
+  const restaurant = await restaurants.findById(restaurantId);
+  check(restaurant, 404, 'NOT_FOUND', 'Restaurant not found.');
+  const address = await deliveryAddressForActor(actor.id);
+  check(address, 400, 'ADDRESS_REQUIRED', 'Add a delivery address in Settings first.');
+  return boundedDelivery(deliveryInfoForRestaurant(restaurant, address, { includeGeometry: true }));
 }
 
 export async function assertMember(
@@ -104,7 +174,11 @@ export async function getRestaurant(actor: User | undefined, restaurantId: strin
   }
   const items = await menu.listByRestaurant(restaurant.id);
   const reviews = await restaurants.listVisibleReviews(restaurant.id);
-  return { ...publicRestaurant(restaurant), items, reviews };
+  const address = await deliveryAddressForActor(actor?.id);
+  const deliveryInfo = await boundedDelivery(
+    deliveryInfoForRestaurant(restaurant, address, { includeGeometry: true }),
+  );
+  return { ...publicRestaurant(restaurant), items, reviews, deliveryInfo };
 }
 
 export async function createRestaurant(actor: User, raw: unknown): Promise<any> {

@@ -27,16 +27,16 @@ accepts the transaction-scoped `DB` client (`Prisma.TransactionClient`) with
 
 ## Configuration
 
-| Item             | Value                                                                  |
-| ---------------- | ---------------------------------------------------------------------- |
-| Prisma CLI       | `prisma` 6.19.3 (devDependency)                                        |
-| Client           | `@prisma/client` 6.19.3 (dependency)                                   |
-| Schema           | [`prisma/schema.prisma`](../prisma/schema.prisma)                      |
-| Datasource       | PostgreSQL, `env("DATABASE_URL")`                                      |
-| Generator        | `prisma-client-js`                                                     |
-| Naming           | Existing `snake_case` table and column names are preserved via `@@map` |
-| Migrations       | [`prisma/migrations/`](../prisma/migrations) (baseline only)           |
-| Client singleton | [`server/db.ts`](../server/db.ts)                                      |
+| Item             | Value                                                                       |
+| ---------------- | --------------------------------------------------------------------------- |
+| Prisma CLI       | `prisma` 6.19.3 (devDependency)                                             |
+| Client           | `@prisma/client` 6.19.3 (dependency)                                        |
+| Schema           | [`prisma/schema.prisma`](../prisma/schema.prisma)                           |
+| Datasource       | PostgreSQL, `env("DATABASE_URL")`                                           |
+| Generator        | `prisma-client-js`                                                          |
+| Naming           | Existing `snake_case` table and column names are preserved via `@@map`      |
+| Migrations       | [`prisma/migrations/`](../prisma/migrations) (baseline + additive delivery) |
+| Client singleton | [`server/db.ts`](../server/db.ts)                                           |
 
 The schema was produced by `prisma db pull` against the existing database and
 then committed. Field names were intentionally left in `snake_case` so API
@@ -254,6 +254,18 @@ scripts. No application code imports `pg`.
 | Fresh database deploy   | 22 tables (incl. `_prisma_migrations`), 18 checks, 4 partials; explicit seed 6 users / 3 restaurants / 8 items            |
 | Isolated-schema deploy  | 22 tables in `test_*` schema, 0 in `public`; `_prisma_migrations` present                                                 |
 | Live schema inspection  | 21 tables, 18 CHECK constraints, all 4 partial indexes present; demo data intact (3 restaurants, 6 users, 1 order)        |
+
+## Delivery routing migration (2026-11-03)
+
+`prisma/migrations/20261103090000_delivery_routing/` is a separate additive
+migration; the applied baseline was not edited. It creates `addresses` with a
+user foreign key, a user lookup index and a partial unique index enforcing one
+default address per user. It adds nullable `geocoded_address` / `geocoded_at`
+columns to `restaurants`, and nullable delivery snapshot columns to `orders`
+(`delivery_latitude`, `delivery_longitude`, `walking_distance_meters`,
+`walking_duration_seconds`). No existing row, order fee, relation or CHECK
+constraint is removed or rewritten. Existing orders remain unchanged and keep
+their historical delivery fee. Apply it with `npm.cmd run db:migrate`.
 
 ## Known limitations
 

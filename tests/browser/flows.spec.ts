@@ -177,3 +177,41 @@ test('restaurant edits menu options and stock with persistent results', async ({
     page.getByRole('dialog').locator('.manage-item').filter({ hasText: 'Nem rán' }),
   ).toContainText('39.000');
 });
+
+test('saved delivery address drives walking distance, fee and address changes', async ({
+  page,
+}) => {
+  await login(page, 'customer');
+  await page.getByRole('button', { name: 'Account settings' }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByLabel('Street address').fill('18 Phố Hàng Bạc, Hoàn Kiếm, Hà Nội');
+  await dialog.getByRole('button', { name: 'Find address' }).click();
+  await expect(dialog.locator('.resolved-address')).toContainText('Hà Nội');
+  await dialog.getByRole('button', { name: 'Save delivery address' }).click();
+  await expect(dialog.locator('.current-address')).toContainText('18 Phố Hàng Bạc');
+  await dialog.getByRole('button', { name: 'Close dialog' }).click();
+
+  await page.getByRole('link', { name: 'Find your next favorite' }).click();
+  const card = page.locator('.restaurant-card').filter({ hasText: 'Bếp Phố Hà Thành' });
+  await expect(card).toContainText('1.2 km');
+  await expect(card).toContainText('10.000');
+  await card.click();
+  await expect(page.locator('.delivery-overview')).toContainText('1.2 km');
+  await expect(page.locator('.delivery-overview')).toContainText('10.000');
+
+  await page.getByRole('button', { name: 'Account settings' }).click();
+  await dialog.getByLabel('Street address').fill('50 Phố Huế, Hai Bà Trưng, Hà Nội');
+  await dialog.getByRole('button', { name: 'Find address' }).click();
+  await expect(dialog.locator('.resolved-address')).toContainText('Hà Nội');
+  await dialog.getByRole('button', { name: 'Save delivery address' }).click();
+  await expect(dialog.locator('.current-address')).toContainText('50 Phố Huế');
+  await dialog.getByRole('button', { name: 'Close dialog' }).click();
+
+  await page.getByRole('link', { name: 'Bếp home' }).click();
+  await expect(
+    page.locator('.restaurant-card').filter({ hasText: 'Bếp Phố Hà Thành' }),
+  ).toContainText('5.0 km');
+  await expect(
+    page.locator('.restaurant-card').filter({ hasText: 'Bếp Phố Hà Thành' }),
+  ).toContainText('19.000');
+});

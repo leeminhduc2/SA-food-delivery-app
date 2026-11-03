@@ -18,7 +18,7 @@ export default defineConfig({
       command: 'npx tsx scripts/e2e-server.ts',
       url: 'http://127.0.0.1:3002/api/health',
       reuseExistingServer: false,
-      timeout: 30000,
+      timeout: 120_000,
     },
     {
       command: 'npx vite --host 127.0.0.1 --port 5174 --strictPort',

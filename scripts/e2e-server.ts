@@ -28,6 +28,50 @@ await seed();
 // hidden by the same seed the application uses. No external API is called.
 const { seedMockCatalog } = await import('../server/seed-mock.js');
 await seedMockCatalog();
+// Browser tests must not depend on public geocoding/routing services. These
+// deterministic adapters exercise the real service and fee code paths.
+const { setGeocodingProvider } = await import('../server/integrations/geocoding.js');
+setGeocodingProvider({
+  name: 'e2e-geocoder',
+  async search(query) {
+    const far = /Huế/i.test(query);
+    return {
+      address: query,
+      formattedAddress: query + ', Hà Nội, Việt Nam',
+      latitude: far ? 21.05 : 21.0301,
+      longitude: far ? 105.86 : 105.8527,
+      provider: 'e2e-geocoder',
+    };
+  },
+  async reverse(latitude, longitude) {
+    return {
+      address: `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`,
+      formattedAddress: `${latitude.toFixed(6)}, ${longitude.toFixed(6)}, Hà Nội, Việt Nam`,
+      latitude,
+      longitude,
+      provider: 'e2e-geocoder',
+    };
+  },
+});
+const { setRoutingProvider } = await import('../server/integrations/routing.js');
+setRoutingProvider({
+  name: 'e2e-pedestrian',
+  async walkingRoute(from, to) {
+    const distanceMeters = from.latitude > 21.045 ? 5_000 : 1_200;
+    return {
+      distanceMeters,
+      durationSeconds: Math.round(distanceMeters / 1.2),
+      routeGeometry: {
+        type: 'LineString',
+        coordinates: [
+          [from.longitude, from.latitude],
+          [to.longitude, to.latitude],
+        ],
+      },
+      provider: 'e2e-pedestrian',
+    };
+  },
+});
 const { createApp } = await import('../server/app.js');
 const { prisma } = await import('../server/db.js');
 const server = createApp().listen(3002, '127.0.0.1');

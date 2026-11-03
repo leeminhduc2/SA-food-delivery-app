@@ -73,6 +73,50 @@ npm.cmd run db:seed:mock   # add/refresh the fictional catalog, hide legacy rows
 npm.cmd run assets:prompts # write docs/MOCK_IMAGE_PROMPTS.md from the same data
 ```
 
+### Delivery address, walking routes and shipping fees
+
+A signed-in customer can save one default delivery address in **Account →
+Delivery address**: search a Vietnamese address, choose or drag a pin on the
+Leaflet/OpenStreetMap map, or optionally use the browser's location permission.
+The browser never requires GPS: searching or picking a point works without it.
+Saving stores the typed address, the formatted address, coordinates, and
+`is_default`. Provider failures leave the previous address unchanged.
+
+The backend geocodes with an adapter (Photon by default, Nominatim supported)
+and computes walking routes with Valhalla `costing=pedestrian`. It never uses
+straight-line distance as a walking distance. Restaurant coordinates already in
+the database are reused; a missing location is geocoded once and persisted only
+after success. Restaurant address edits clear the old coordinates so the next
+request resolves the new address, without overwriting the address itself.
+
+Delivery fee (backend-only, configurable through `SHIPPING_*`):
+
+- 0–2 km: 10,000 VND
+- each started kilometre above 2 km: +3,000 VND
+- over 15 km or no pedestrian route: unsupported
+- route provider failure: unavailable; checkout is blocked rather than charging 0
+
+The catalog and restaurant detail expose `deliveryInfo` (`distanceMeters`,
+`durationSeconds`, `shippingFee`, `supported`, status and, on detail, the route
+geometry). With a saved address the default catalog order becomes nearest-first
+and unsupported restaurants remain visible last. Without an address the catalog
+still loads and prompts the customer to set one; no distance or fee is invented.
+Checkout uses the saved address, recomputes the route and fee, and snapshots the
+address, coordinates, walking distance and fee on the order. The client-supplied
+shipping fee is never trusted; historical orders keep their original snapshot.
+
+The public Photon and Valhalla endpoints are suitable for development and demos,
+not as unmonitored production dependencies. Their base URLs, timeouts, caching,
+request rate and concurrency are configurable (see `.env.example`); self-host or
+use a contracted provider for production. Nominatim was unreachable from this
+workspace during verification, so Photon is the default. Map tiles come from
+OpenStreetMap and keep the required attribution; configure
+`VITE_MAP_TILE_URL`/`VITE_MAP_TILE_ATTRIBUTION` if you use another tile service.
+
+```powershell
+npm.cmd run db:migrate   # applies the additive address/order-snapshot migration
+```
+
 ### Legacy OpenStreetMap/demo data
 
 The earlier OSM importer and curated Hanoi demo remain in the database for
@@ -108,12 +152,13 @@ adoption record, backup details, and fresh-database verification.
 
 ## Try a complete order
 
-1. Sign in as a customer, open a kitchen, add dishes and extras, and enter a delivery address.
-2. Place the order and choose **Simulate successful payment**. No money is charged.
-3. In another browser profile, sign in as the restaurant and move the order through Accepted, Preparing, and Ready for pickup.
-4. As admin, open Orders and assign an active driver.
-5. As that driver, confirm Picked up, In transit, then Delivered.
-6. The customer can now leave one review and submit a support request. The admin can resolve support requests and moderate reviews.
+1. Sign in as a customer, save a delivery address under **Account → Delivery address** (or enter one during checkout if none is saved), open a kitchen, add dishes and extras.
+2. The catalog and restaurant detail show walking distance, time and the backend shipping fee for that address.
+3. Place the order and choose **Simulate successful payment**. No money is charged.
+4. In another browser profile, sign in as the restaurant and move the order through Accepted, Preparing, and Ready for pickup.
+5. As admin, open Orders and assign an active driver.
+6. As that driver, confirm Picked up, In transit, then Delivered.
+7. The customer can now leave one review and submit a support request. The admin can resolve support requests and moderate reviews.
 
 The UI refreshes status every seven seconds. Using separate browser profiles or private contexts is necessary to retain multiple account sessions at once.
 
@@ -130,8 +175,8 @@ npm.cmd run format:check
 
 - `build`: regenerates the Prisma client, runs strict TypeScript checking and the optimized Vite build.
 - `check:openapi`: fails when a registered route is missing from `openapi.yaml` or the spec documents a route that no router serves.
-- `test`: 56 scenarios against real PostgreSQL: 14 lifecycle/concurrency scenarios (concurrent last-serving checkout, same-key retry, payload conflicts, atomic rollback, authoritative pricing, invalid transitions, ownership, signed callbacks, late payments, timeout recovery, expiry, refunds, complaints, review eligibility, outbox idempotency), 13 restaurant-import scenarios (Overpass retries, normalization, protected upserts, dry runs, savepoint isolation, admin job history), 6 pure Hanoi-menu scenarios, 7 Hanoi import/API scenarios, 9 fictional-catalog scenarios (exactly 10 visible restaurants, 60 dishes, 5–8 per restaurant, valid VND prices, hidden-but-retained legacy rows, no provider fields or provider calls in the public catalog path, idempotent seed that preserves edits, preserved order history, no orphan items, raster assets or an explicit skip), and 7 runtime API smoke scenarios (health/docs, auth/session/CSRF, discovery/menu/sorting, cart, checkout→payment→delivery→review, admin/operations, error contract).
-- `test:e2e`: four Chrome browser scenarios covering responsive discovery, keyboard dialogs and accessibility checks, the full four-role delivery journey with review and complaint, and persistent menu editing. Screenshots/traces are written under `test-results/`. The suite seeds the fictional catalog; no external data provider is exercised.
+- `test`: 68 scenarios against real PostgreSQL: 14 lifecycle/concurrency scenarios (concurrent last-serving checkout, same-key retry, payload conflicts, atomic rollback, authoritative pricing, invalid transitions, ownership, signed callbacks, late payments, timeout recovery, expiry, refunds, complaints, review eligibility, outbox idempotency), 12 delivery scenarios (fee boundaries 1.2/2/2.1/3/5/8/10/15/>15 km, no-address behavior, address validation and geocoding not-found/timeout, nearest-first pedestrian catalog, per-restaurant routing failure isolation, shipping quote, checkout recompute/ignore client fee/snapshot/address change, historical orders unchanged, missing restaurant coordinates never overwritten, restaurant address change re-geocoding), 13 restaurant-import scenarios (Overpass retries, normalization, protected upserts, dry runs, savepoint isolation, admin job history), 6 pure Hanoi-menu scenarios, 7 Hanoi import/API scenarios, 9 fictional-catalog scenarios (exactly 10 visible restaurants, 60 dishes, 5–8 per restaurant, valid VND prices, hidden-but-retained legacy rows, no provider fields or provider calls in the public catalog path, idempotent seed that preserves edits, preserved order history, no orphan items, raster assets or an explicit skip), and 7 runtime API smoke scenarios (health/docs, auth/session/CSRF, discovery/menu/sorting, cart, checkout→payment→delivery→review, admin/operations, error contract).
+- `test:e2e`: five Chrome browser scenarios covering responsive discovery, keyboard dialogs and accessibility checks, the full four-role delivery journey with review and complaint, persistent menu editing, and a saved delivery address driving card/detail walking distance, fee and an address change. Screenshots/traces are written under `test-results/`. The suite seeds the fictional catalog and injects deterministic geocoding/pedestrian-routing adapters, so no public provider is exercised.
 - `test:load`: a read-only browse smoke test; the API must already be running. Default: 200 requests, 20 concurrent. Override `LOAD_BASE_URL`, `LOAD_REQUESTS`, or `LOAD_CONCURRENCY`.
 - `format:check`: Prettier check over source, tests, scripts and docs. `.prettierrc.json` uses `endOfLine: "auto"` so the check is stable with both LF and CRLF checkouts.
 
@@ -144,7 +189,7 @@ Integration and browser tests create and drop uniquely named schemas. They never
 ```text
 src/
   App.tsx                 Application navigation, data loading, basket and checkout
-  components/             Account, catalog, orders, workspace, accessible primitives
+  components/             Account, catalog, orders, workspace, DeliveryAddress map and settings
   api.ts                  HTTP client and money/status formatting
   styles.css              Responsive design tokens and layout
 server/
@@ -154,18 +199,20 @@ server/
   migrate.ts              Runs `prisma migrate deploy` for tests and the E2E server
   api/                    HTTP layer: routes, cookies, status codes, validation gates
     identity.routes.ts    /auth
-    catalog.routes.ts     Restaurants, menus and dishes
+    address.routes.ts     Delivery address and geocoding previews
+    catalog.routes.ts     Restaurants, nearby order, menus and shipping quote
     orders.routes.ts      Basket, quote, checkout and order lifecycle
     payments.routes.ts    Raw-body webhook and simulated payment
     delivery.routes.ts    Driver assignment and delivery transitions
     operations.routes.ts  Reviews, complaints, notifications, reports, admin
     docs.routes.ts        Swagger UI at /api/docs
     middleware/           Session resolution and actor helpers
+  integrations/           Geocoding (Photon/Nominatim) and routing (Valhalla) adapters
   services/               Business rules and transactions; no Express, no raw pool
-    identity, catalog, cart, order, payment, delivery,
-    review, support, notification, report, admin
+    identity, address, geocoding, routing, shipping, catalog, cart, order,
+    payment, delivery, review, support, notification, report, admin
   repositories/           Prisma Client queries per aggregate; accept a transaction client
-  domain/                 Pure types, errors, authorization and Zod schemas
+  domain/                 Pure types, errors, authorization, Zod schemas and fee formula
 prisma/
   schema.prisma           Introspected schema preserving existing names and IDs
   migrations/             Baseline SQL, including CHECKs and partial indexes
@@ -180,6 +227,6 @@ docs/                     API contract, decisions, requirement coverage and oper
 
 **Payment is a simulator**, backed by PostgreSQL so retries and process restarts are meaningful. A generic HMAC callback endpoint is implemented, but is not an integration with a commercial gateway. Production startup rejects simulated payments and demo mode. Implement and validate a real provider adapter and provider-specific callback authentication before enabling real charges.
 
-Delivery uses a trusted fixed fee and indicative ETA configured per restaurant. Addresses are free text. There is no geocoding, live GPS tracking, route optimization, or service-area verification. Notifications are delivered to the app inbox through a transactional outbox; email/SMS/push are not connected.
+Delivery distance and fee come from a pedestrian route between the customer's saved address and the restaurant. A customer without a saved address can still browse; checkout then requires a manual address and uses the restaurant's legacy fixed fee. Geocoding, routing, map tiles and the resulting fee are development defaults, not production service contracts. Live GPS tracking, route optimization and capacity scheduling are still not implemented.
 
 See [API reference](docs/API.md), [requirement coverage](docs/COVERAGE.md), [the mock image guide](docs/MOCK_IMAGE_PROMPTS.md), and [operations guide](docs/OPERATIONS.md). The UI uses guidance from the requested [UI UX Pro Max skill](https://github.com/nextlevelbuilder/ui-ux-pro-max-skill); design choices are recorded in [the design system](design-system/bep/MASTER.md).

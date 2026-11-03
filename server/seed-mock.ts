@@ -48,6 +48,8 @@ export async function seedMockCatalog(): Promise<{
           address: restaurant.address,
           latitude: restaurant.latitude,
           longitude: restaurant.longitude,
+          geocoded_address: restaurant.address,
+          geocoded_at: new Date(),
           phone: restaurant.phone,
           opening_hours: restaurant.opening_hours,
           delivery_fee: restaurant.delivery_fee,

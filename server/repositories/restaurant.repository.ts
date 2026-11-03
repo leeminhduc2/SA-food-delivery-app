@@ -28,6 +28,8 @@ export type RestaurantRow = {
   imported_at: Date | string | null;
   last_synced_at: Date | string | null;
   catalog_visible: boolean;
+  geocoded_address: string | null;
+  geocoded_at: Date | string | null;
   slug: string | null;
   district: string | null;
   mock: boolean;
@@ -158,12 +160,42 @@ export async function update(
   },
   db: DB = prisma,
 ): Promise<RestaurantRow | undefined> {
+  const existing = await findById(restaurantId, db);
+  if (!existing) return undefined;
+  const addressChanged = existing.address.trim() !== input.address.trim();
   const updated = await db.restaurant.updateMany({
     where: { id: restaurantId },
-    data: { ...input, owner_managed: true },
+    data: {
+      ...input,
+      owner_managed: true,
+      // A changed address invalidates the previous route origin. Coordinates
+      // are resolved lazily from the new address; the address itself is never
+      // overwritten by a failed lookup.
+      ...(addressChanged
+        ? { latitude: null, longitude: null, geocoded_address: null, geocoded_at: null }
+        : {}),
+    },
   });
   if (!updated.count) return undefined;
   return findById(restaurantId, db);
+}
+
+export async function setCoordinates(
+  restaurantId: string,
+  address: string,
+  latitude: number,
+  longitude: number,
+  db: DB = prisma,
+): Promise<void> {
+  await db.restaurant.updateMany({
+    where: { id: restaurantId, address },
+    data: {
+      latitude,
+      longitude,
+      geocoded_address: address,
+      geocoded_at: new Date(),
+    },
+  });
 }
 
 export async function setStatus(

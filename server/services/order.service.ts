@@ -11,10 +11,16 @@ import { assertMember, priceCart, releaseStock } from './catalog.service.js';
 import { cancelDelivery, createDelivery } from './delivery.service.js';
 import { notify } from './notification.service.js';
 import { cancelPayment, createPayment, ensurePayment } from './payment.service.js';
+import { defaultAddressFor } from './address.service.js';
+import {
+  checkoutDeliveryQuote,
+  deliveryInfoForRestaurantId,
+  noAddressInfo,
+} from './shipping.service.js';
 
 const checkoutSchema = z.object({
   items: linesSchema,
-  address: z.string().trim().min(8).max(300),
+  address: z.string().trim().min(8).max(300).optional(),
   note: z.string().trim().max(500).default(''),
   expectedTotal: z.number().int().positive(),
   idempotencyKey: z.string().min(8).max(120),
@@ -88,13 +94,61 @@ export async function detail(actor: User, orderId: string): Promise<any> {
 }
 
 export async function quote(actor: User, items: unknown): Promise<any> {
-  return transaction((db) => priceCart(db, items));
+  const base = await transaction((db) => priceCart(db, items));
+  const address = await defaultAddressFor(actor.id);
+  if (!address)
+    return {
+      ...base,
+      total: base.subtotal + base.deliveryFee,
+      deliveryInfo: noAddressInfo(),
+    };
+  const info = await deliveryInfoForRestaurantId(base.restaurantId, address, {
+    includeGeometry: true,
+  });
+  if (!info.supported)
+    return {
+      ...base,
+      deliveryFee: 0,
+      total: base.subtotal,
+      deliveryInfo: info,
+    };
+  return {
+    ...base,
+    deliveryFee: info.shippingFee,
+    total: base.subtotal + (info.shippingFee as number),
+    deliveryInfo: info,
+  };
 }
 
 export async function checkout(actor: User, raw: unknown): Promise<any> {
   const input = checkoutSchema.parse(raw);
+  const savedAddress = await defaultAddressFor(actor.id);
+  const addressText = savedAddress?.address ?? input.address;
+  check(addressText, 400, 'ADDRESS_REQUIRED', 'Add a delivery address before placing an order.');
+  let routed: Awaited<ReturnType<typeof checkoutDeliveryQuote>> | null = null;
+  if (savedAddress) {
+    // Resolve the walking route before opening the stock-locking transaction.
+    const preview = await transaction((db) => priceCart(db, input.items));
+    routed = await checkoutDeliveryQuote(preview.restaurantId, savedAddress);
+    if (!routed.info.supported) {
+      if (routed.info.reason === 'OUT_OF_RANGE')
+        check(
+          false,
+          409,
+          'DELIVERY_UNSUPPORTED',
+          `This restaurant is ${((routed.info.distanceMeters || 0) / 1000).toFixed(1)} km away on foot, beyond the 15 km delivery limit.`,
+        );
+      check(
+        false,
+        409,
+        'DELIVERY_ROUTE_UNAVAILABLE',
+        'We cannot calculate a walking delivery route to this address right now. Please try again or choose another address.',
+      );
+    }
+  }
+  const canonicalAddress = savedAddress?.address ?? addressText;
   const canonical = {
-    address: input.address,
+    address: canonicalAddress,
     note: input.note,
     expectedTotal: input.expectedTotal,
     items: input.items
@@ -119,11 +173,13 @@ export async function checkout(actor: User, raw: unknown): Promise<any> {
       return old.id;
     }
     const quote = await priceCart(db, input.items, true);
+    const deliveryFee = routed ? (routed.info.shippingFee as number) : quote.deliveryFee;
+    const total = quote.subtotal + deliveryFee;
     check(
-      quote.total === input.expectedTotal,
+      total === input.expectedTotal,
       409,
       'PRICE_CHANGED',
-      'Prices changed. Review a fresh quote before ordering.',
+      'Prices or the delivery fee changed. Review a fresh quote before ordering.',
     );
     const newOrderId = id();
     const expiry = new Date(Date.now() + Number(process.env.PAYMENT_WINDOW_MINUTES || 15) * 60000);
@@ -133,13 +189,21 @@ export async function checkout(actor: User, raw: unknown): Promise<any> {
         customerId: actor.id,
         restaurantId: quote.restaurantId,
         subtotal: quote.subtotal,
-        deliveryFee: quote.deliveryFee,
-        total: quote.total,
-        address: input.address,
+        deliveryFee,
+        total,
+        address: addressText,
         note: input.note,
         idempotencyKey: input.idempotencyKey,
         fingerprint,
         expiresAt: expiry,
+        deliveryLatitude: routed?.info.supported ? savedAddress?.latitude : undefined,
+        deliveryLongitude: routed?.info.supported ? savedAddress?.longitude : undefined,
+        walkingDistanceMeters: routed?.info.supported
+          ? (routed.info.distanceMeters as number)
+          : undefined,
+        walkingDurationSeconds: routed?.info.supported
+          ? (routed.info.durationSeconds as number)
+          : undefined,
       },
       db,
     );
@@ -156,7 +220,7 @@ export async function checkout(actor: User, raw: unknown): Promise<any> {
         id(),
         db,
       );
-    await createPayment(db, newOrderId, quote.total);
+    await createPayment(db, newOrderId, total);
     await createDelivery(db, newOrderId);
     await audits.history(newOrderId, 'ORDER', null, 'PENDING_PAYMENT', actor.id, '', db);
     await notify(db, actor.id, 'ORDER_CREATED', { orderId: newOrderId });

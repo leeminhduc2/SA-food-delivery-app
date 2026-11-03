@@ -5,7 +5,15 @@ import { actor } from './middleware/actor.js';
 export const catalogRoutes = Router();
 
 catalogRoutes.get('/restaurants', async (req, res) => {
-  res.json(await catalog.listRestaurants(req.query));
+  res.json(await catalog.listRestaurants(req.query, req.user));
+});
+
+catalogRoutes.get('/restaurants/nearby', async (req, res) => {
+  res.json(await catalog.listRestaurants({ ...req.query, sort: 'recommended' }, req.user));
+});
+
+catalogRoutes.get('/restaurants/:id/shipping-quote', async (req, res) => {
+  res.json(await catalog.shippingQuoteForRestaurant(actor(req), String(req.params.id)));
 });
 
 catalogRoutes.get('/restaurants/:id', async (req, res) => {
