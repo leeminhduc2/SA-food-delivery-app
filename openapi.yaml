@@ -13,6 +13,7 @@ tags:
   - name: Health
   - name: Identity
   - name: Catalog
+  - name: Delivery Address
   - name: Basket
   - name: Checkout
   - name: Orders
@@ -164,6 +165,51 @@ components:
         eta_minutes: { type: integer }
         rating: { type: [number, 'null'] }
         review_count: { type: integer }
+        slug: { type: [string, 'null'] }
+        district: { type: [string, 'null'] }
+        mock:
+          type: boolean
+          description: True for the fictional demo catalog. Never verified business data.
+        source:
+          type: string
+          description: >-
+            MOCK for the fictional demo catalog, MANUAL for user-created records,
+            and OSM for retained legacy imports.
+        verified:
+          type: boolean
+          description: True only when a human has verified the venue data.
+        owner_managed:
+          type: boolean
+          description: True when a restaurant owner has taken over the record.
+        catalog_visible:
+          type: boolean
+          description: False hides a retained row from the public catalog without deleting it.
+        osm_type: { type: [string, 'null'], enum: [node, way, relation, null] }
+        osm_id: { type: [string, 'null'] }
+        latitude: { type: [number, 'null'], minimum: -90, maximum: 90 }
+        longitude: { type: [number, 'null'], minimum: -180, maximum: 180 }
+        deliveryInfo:
+          allOf:
+            - $ref: '#/components/schemas/DeliveryInfo'
+          description: >-
+            Walking distance and shipping fee for the signed-in customer's saved
+            address. Without a saved address the status is NO_ADDRESS and no
+            distance or fee is invented.
+        phone: { type: [string, 'null'] }
+        website: { type: [string, 'null'], format: uri }
+        opening_hours: { type: [string, 'null'] }
+        address_tags:
+          type: object
+          additionalProperties: { type: string }
+          description: Structured address components from OpenStreetMap.
+        osm_tags:
+          type: object
+          additionalProperties: true
+          description: >-
+            Raw OpenStreetMap tags plus optional `_bep` import metadata. Demo
+            menus are marked at `_bep.menu.dataType = DEMO` and are not official.
+        imported_at: { type: [string, 'null'], format: date-time }
+        last_synced_at: { type: [string, 'null'], format: date-time }
     RestaurantInput:
       type: object
       required: [name, description, address, cuisine]
@@ -204,6 +250,9 @@ components:
             restaurant_id: { type: string }
             menu_id: { type: string }
             category: { type: string }
+            mock:
+              type: boolean
+              description: True when the dish belongs to the fictional demo catalog.
     Line:
       type: object
       required: [itemId, quantity]
@@ -231,6 +280,71 @@ components:
           maxItems: 40
           items: { $ref: '#/components/schemas/Line' }
         version: { type: integer, minimum: 0 }
+    DeliveryInfo:
+      type: object
+      required: [status, supported, distanceMeters, durationSeconds, shippingFee, currency, reason]
+      properties:
+        status:
+          type: string
+          enum: [AVAILABLE, NO_ADDRESS, UNSUPPORTED, UNAVAILABLE]
+          description: >-
+            AVAILABLE means a pedestrian route and fee exist. NO_ADDRESS means
+            the customer must save an address. UNSUPPORTED means the route does
+            not exist or exceeds the delivery radius. UNAVAILABLE means a
+            provider or restaurant location failed; no numbers are shown.
+        supported: { type: boolean }
+        distanceMeters: { type: [integer, 'null'], minimum: 0 }
+        durationSeconds: { type: [integer, 'null'], minimum: 0 }
+        shippingFee: { type: [integer, 'null'], minimum: 0 }
+        currency: { type: string, enum: [VND] }
+        reason: { type: [string, 'null'] }
+        routeGeometry:
+          $ref: '#/components/schemas/RouteGeometry'
+    RouteGeometry:
+      type: object
+      required: [type, coordinates]
+      properties:
+        type: { type: string, enum: [LineString] }
+        coordinates:
+          type: array
+          minItems: 2
+          items:
+            type: array
+            minItems: 2
+            maxItems: 2
+            items: { type: number }
+          description: GeoJSON [longitude, latitude] pairs.
+    DeliveryAddress:
+      type: object
+      properties:
+        id: { type: string }
+        address: { type: string }
+        formattedAddress: { type: [string, 'null'] }
+        latitude: { type: number, minimum: -90, maximum: 90 }
+        longitude: { type: number, minimum: -180, maximum: 180 }
+        isDefault: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    DeliveryAddressInput:
+      type: object
+      required: [address]
+      properties:
+        address: { type: string, minLength: 5, maxLength: 300 }
+        latitude: { type: number, minimum: -90, maximum: 90 }
+        longitude: { type: number, minimum: -180, maximum: 180 }
+      description: >-
+        Every user has at most one default address. Supply latitude and
+        longitude together to use a map-picked point; otherwise the backend
+        geocodes the address. Provider failures never overwrite an existing
+        default address.
+    GeocodeResult:
+      type: object
+      required: [address, formattedAddress, latitude, longitude]
+      properties:
+        address: { type: string }
+        formattedAddress: { type: string }
+        latitude: { type: number }
+        longitude: { type: number }
     Quote:
       type: object
       required: [restaurantId, restaurantName, items, subtotal, deliveryFee, total, currency]
@@ -254,18 +368,32 @@ components:
         deliveryFee: { type: integer }
         total: { type: integer }
         currency: { type: string, enum: [VND] }
+        deliveryInfo:
+          $ref: '#/components/schemas/DeliveryInfo'
     CheckoutInput:
       type: object
-      required: [items, address, expectedTotal, idempotencyKey]
+      required: [items, expectedTotal, idempotencyKey]
       properties:
         items:
           type: array
           minItems: 1
           maxItems: 40
           items: { $ref: '#/components/schemas/Line' }
-        address: { type: string, minLength: 8, maxLength: 300 }
+        address:
+          type: string
+          minLength: 8
+          maxLength: 300
+          description: >-
+            Required only when the customer has no saved delivery address. When
+            one exists, the backend uses it and ignores this field.
         note: { type: string, maxLength: 500, default: '' }
-        expectedTotal: { type: integer, minimum: 1 }
+        expectedTotal:
+          type: integer
+          minimum: 1
+          description: >-
+            Client-computed total used to detect a stale quote. The backend
+            recomputes the pedestrian fee and rejects a mismatch; a
+            client-supplied shipping fee is never trusted.
         idempotencyKey: { type: string, minLength: 8, maxLength: 120 }
     OrderSummary:
       type: object
@@ -276,7 +404,19 @@ components:
         restaurant_name: { type: string }
         status:
           type: string
-          enum: [PENDING_PAYMENT, CONFIRMED, ACCEPTED, PREPARING, READY_FOR_PICKUP, OUT_FOR_DELIVERY, DELIVERED, CANCELLED, PAYMENT_FAILED, DELIVERY_FAILED]
+          enum:
+            [
+              PENDING_PAYMENT,
+              CONFIRMED,
+              ACCEPTED,
+              PREPARING,
+              READY_FOR_PICKUP,
+              OUT_FOR_DELIVERY,
+              DELIVERED,
+              CANCELLED,
+              PAYMENT_FAILED,
+              DELIVERY_FAILED,
+            ]
         subtotal: { type: integer }
         delivery_fee: { type: integer }
         total: { type: integer }
@@ -571,6 +711,113 @@ paths:
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
 
+  /api/users/me/delivery-address:
+    get:
+      tags: [Delivery Address]
+      operationId: getDeliveryAddress
+      summary: Current user's default delivery address
+      security: [{ sessionCookie: [] }]
+      responses:
+        '200':
+          description: The default address, or null when none is saved
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/DeliveryAddress'
+                  - { type: 'null' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    put:
+      tags: [Delivery Address]
+      operationId: saveDeliveryAddress
+      summary: Create or replace the default delivery address
+      security: [{ sessionCookie: [], requestedWithHeader: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DeliveryAddressInput' }
+      responses:
+        '200':
+          description: Saved default address
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeliveryAddress' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422':
+          description: The address could not be found in Vietnam.
+        '502':
+          description: The geocoding provider failed; the previous address is unchanged.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/geocode:
+    post:
+      tags: [Delivery Address]
+      operationId: geocodeAddress
+      summary: Resolve an address to coordinates before saving it
+      security: [{ sessionCookie: [], requestedWithHeader: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [address]
+              properties:
+                address: { type: string, minLength: 5, maxLength: 300 }
+      responses:
+        '200':
+          description: Resolved address
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GeocodeResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422':
+          description: No matching address was found.
+        '429':
+          description: Too many geocoding previews.
+        '502':
+          description: The geocoding provider failed.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/geocode/reverse:
+    post:
+      tags: [Delivery Address]
+      operationId: reverseGeocodeAddress
+      summary: Resolve a map point to an address before saving it
+      security: [{ sessionCookie: [], requestedWithHeader: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [latitude, longitude]
+              properties:
+                latitude: { type: number, minimum: -90, maximum: 90 }
+                longitude: { type: number, minimum: -180, maximum: 180 }
+      responses:
+        '200':
+          description: Resolved map point
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GeocodeResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429':
+          description: Too many geocoding previews.
+        '502':
+          description: The geocoding provider failed.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
   /api/restaurants:
     get:
       tags: [Catalog]
@@ -617,6 +864,34 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
+  /api/restaurants/nearby:
+    get:
+      tags: [Catalog]
+      operationId: listNearbyRestaurants
+      summary: Visible restaurants ordered by walking distance
+      description: >-
+        Uses the saved default address and the pedestrian routing provider. A
+        customer without an address still receives the full catalog, ordered as
+        recommended, with deliveryInfo.status = NO_ADDRESS and no invented
+        distance or fee.
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - name: q
+          in: query
+          schema: { type: string, maxLength: 100 }
+        - name: cuisine
+          in: query
+          schema: { type: string, maxLength: 60 }
+      responses:
+        '200':
+          description: Restaurants with delivery information, nearest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Restaurant' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
   /api/restaurants/{id}:
     parameters:
       - $ref: '#/components/parameters/RestaurantId'
@@ -662,6 +937,28 @@ paths:
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/restaurants/{id}/shipping-quote:
+    parameters:
+      - $ref: '#/components/parameters/RestaurantId'
+    get:
+      tags: [Catalog, Delivery Address]
+      operationId: getRestaurantShippingQuote
+      summary: Walking distance and fee for the saved address
+      security: [{ sessionCookie: [] }]
+      responses:
+        '200':
+          description: Delivery information for this restaurant
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeliveryInfo' }
+        '400':
+          description: No default delivery address is saved.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /api/restaurants/{id}/items:
     parameters:

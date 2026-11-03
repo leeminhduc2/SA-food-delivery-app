@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
 import { ZodError } from 'zod';
+import { addressRoutes } from './api/address.routes.js';
 import { catalogRoutes } from './api/catalog.routes.js';
 import { deliveryRoutes } from './api/delivery.routes.js';
 import { docsRoutes } from './api/docs.routes.js';
@@ -109,6 +110,7 @@ export function createApp() {
   app.use('/api/checkout', rateLimit({ windowMs: 60000, limit: 60 }));
   app.use(
     '/api',
+    addressRoutes,
     catalogRoutes,
     orderRoutes,
     paymentActionRoutes,

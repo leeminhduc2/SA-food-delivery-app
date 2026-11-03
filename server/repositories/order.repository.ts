@@ -11,6 +11,10 @@ export type OrderRow = {
   total: number;
   currency: string;
   address: string;
+  delivery_latitude: number | null;
+  delivery_longitude: number | null;
+  walking_distance_meters: number | null;
+  walking_duration_seconds: number | null;
   note: string;
   idempotency_key: string;
   fingerprint: string;
@@ -31,6 +35,10 @@ export type OrderInsert = {
   idempotencyKey: string;
   fingerprint: string;
   expiresAt: Date;
+  deliveryLatitude?: number;
+  deliveryLongitude?: number;
+  walkingDistanceMeters?: number;
+  walkingDurationSeconds?: number;
 };
 
 /** Serialize concurrent checkouts that share the same customer/key. */
@@ -49,6 +57,10 @@ export async function insert(order: OrderInsert, db: DB = prisma): Promise<void>
       delivery_fee: order.deliveryFee,
       total: order.total,
       address: order.address,
+      delivery_latitude: order.deliveryLatitude,
+      delivery_longitude: order.deliveryLongitude,
+      walking_distance_meters: order.walkingDistanceMeters,
+      walking_duration_seconds: order.walkingDurationSeconds,
       note: order.note,
       idempotency_key: order.idempotencyKey,
       fingerprint: order.fingerprint,

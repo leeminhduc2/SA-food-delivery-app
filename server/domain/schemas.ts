@@ -12,6 +12,9 @@ export const imageSchema = z
   .string()
   .max(1000)
   .refine(
-    (s) => !s || /^https:\/\//.test(s) || /^\/images\/[a-z0-9.-]+$/.test(s),
-    'Use an HTTPS image URL.',
+    (s) =>
+      !s ||
+      /^https:\/\//.test(s) ||
+      (/^\/images\/[a-z0-9][a-z0-9._/-]*$/.test(s) && !s.includes('..')),
+    'Use an HTTPS image URL or a local /images/ path.',
   );

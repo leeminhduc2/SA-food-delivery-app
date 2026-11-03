@@ -5,6 +5,8 @@ import {
   Bike,
   Check,
   Clock,
+  Footprints,
+  Globe2,
   Heart,
   LayoutDashboard,
   Leaf,
@@ -12,6 +14,7 @@ import {
   MapPin,
   Minus,
   Package,
+  Phone,
   Pizza,
   Plus,
   Search,
@@ -28,11 +31,64 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, ApiError, label, money } from './api';
 import { Auth, Profile } from './components/Account';
 import { Dish } from './components/Catalog';
+import { AddressMap, AddressSettings, type SavedAddress } from './components/DeliveryAddress';
 import { OrderCard } from './components/Orders';
 import { Empty, Field, Modal } from './components/Primitives';
+import { SmartImage } from './components/SmartImage';
 import { AdminPanels, ItemForm, RestaurantForm } from './components/Workspace';
 import type { Actor, Basket, Line } from './types';
 import { errorText } from './types';
+
+const menuCategoryOrder = ['Starters', 'Main dishes', 'Drinks'];
+
+function groupByCategory(items: any[]): [string, any[]][] {
+  const groups: Record<string, any[]> = {};
+  for (const item of items) (groups[item.category || 'Menu'] ||= []).push(item);
+  return Object.entries(groups).sort(([a], [b]) => {
+    const ai = menuCategoryOrder.indexOf(a);
+    const bi = menuCategoryOrder.indexOf(b);
+    if (ai !== -1 || bi !== -1) return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+    return a.localeCompare(b);
+  });
+}
+
+function cuisineIcon(name: string) {
+  if (/vietnam|thai|soup|noodle|pho|bun/i.test(name)) return Soup;
+  if (/italian|pizza|pasta/i.test(name)) return Pizza;
+  if (/healthy|salad|veget|vegan/i.test(name)) return Leaf;
+  return Utensils;
+}
+
+function distanceLabel(meters: number): string {
+  return meters < 1000 ? `${meters} m` : `${(meters / 1000).toFixed(1)} km`;
+}
+
+function walkingLabel(seconds: number): string {
+  return `${Math.max(1, Math.round(seconds / 60))} min walk`;
+}
+
+function deliverySummary(info: any): string {
+  if (!info) return '';
+  if (info.supported)
+    return `${distanceLabel(info.distanceMeters)} · ${walkingLabel(info.durationSeconds)} · ${money(
+      info.shippingFee,
+    )}`;
+  if (info.status === 'NO_ADDRESS') return 'Set your delivery address';
+  if (info.status === 'UNSUPPORTED')
+    return info.reason === 'NO_WALKING_ROUTE'
+      ? 'No walking route to this address'
+      : 'Outside the 15 km walking area';
+  return 'Walking route unavailable';
+}
+
+function websiteLabel(value: string): string {
+  try {
+    return new URL(value).hostname.replace(/^www\./, '');
+  } catch {
+    return 'Website';
+  }
+}
+
 export function App() {
   const [actor, setActor] = useState<Actor | null>(null),
     [config, setConfig] = useState<any>({}),
@@ -46,6 +102,7 @@ export function App() {
     [selected, setSelected] = useState<any>(null),
     [query, setQuery] = useState(''),
     [cuisine, setCuisine] = useState(''),
+    [cuisineOptions, setCuisineOptions] = useState<string[]>([]),
     [sort, setSort] = useState('recommended'),
     [loading, setLoading] = useState(false);
   const [basket, setBasket] = useState<Basket>({ items: [], version: 0 }),
@@ -63,7 +120,8 @@ export function App() {
     [menuItem, setMenuItem] = useState<any>(null),
     [managedRestaurant, setManagedRestaurant] = useState<any>(null);
   const [address, setAddress] = useState(''),
-    [note, setNote] = useState('');
+    [note, setNote] = useState(''),
+    [defaultAddress, setDefaultAddress] = useState<SavedAddress | null>(null);
   const checkoutKey = useRef(crypto.randomUUID());
   const checkoutPayload = useRef<any>(null);
   const navigate = (p: string) => {
@@ -104,6 +162,26 @@ export function App() {
       .finally(() => setReady(true));
   }, []);
   useEffect(() => {
+    if (!actor) {
+      setDefaultAddress(null);
+      return;
+    }
+    let active = true;
+    api('/users/me/delivery-address')
+      .then((row) => {
+        if (active) setDefaultAddress(row);
+      })
+      .catch((e) => {
+        if (active) setError(errorText(e));
+      });
+    return () => {
+      active = false;
+    };
+  }, [actor]);
+  useEffect(() => {
+    if (defaultAddress) setAddress(defaultAddress.address);
+  }, [defaultAddress]);
+  useEffect(() => {
     let active = true;
     setLoading(true);
     const timer = setTimeout(() => {
@@ -122,7 +200,22 @@ export function App() {
       active = false;
       clearTimeout(timer);
     };
-  }, [query, cuisine, sort]);
+  }, [query, cuisine, sort, defaultAddress?.updatedAt]);
+  useEffect(() => {
+    let active = true;
+    api('/restaurants?sort=name')
+      .then((rows) => {
+        if (!active) return;
+        const cuisines: string[] = rows
+          .map((row: any) => row.cuisine)
+          .filter((value: unknown): value is string => typeof value === 'string' && !!value);
+        setCuisineOptions([...new Set(cuisines)].sort((a, b) => a.localeCompare(b)));
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, []);
   const refresh = useCallback(async () => {
     if (!actor) return;
     const [o, n] = await Promise.all([api('/orders'), api('/notifications')]);
@@ -171,7 +264,21 @@ export function App() {
     return () => {
       active = false;
     };
-  }, [basket]);
+  }, [basket, defaultAddress?.updatedAt]);
+  useEffect(() => {
+    if (!selected) return;
+    let active = true;
+    api('/restaurants/' + selected.id)
+      .then((row) => {
+        if (active) setSelected(row);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+    // Refresh the open restaurant when the saved address changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [defaultAddress?.updatedAt, selected?.id]);
   useEffect(() => {
     if (!notice) return;
     const timer = setTimeout(() => setNotice(''), 4500);
@@ -299,10 +406,19 @@ export function App() {
             ))}
           </nav>
           <div className="header-actions">
-            <span className="location">
+            <span className="location" title={defaultAddress?.formattedAddress || undefined}>
               <MapPin size={17} />
               <span>
-                Ho Chi Minh City<small>Good food, in your neighborhood</small>
+                {defaultAddress
+                  ? defaultAddress.formattedAddress || defaultAddress.address
+                  : 'Hanoi · Ho Chi Minh City'}
+                <small>
+                  {defaultAddress
+                    ? 'Walking delivery to your saved address'
+                    : actor
+                      ? 'Set your delivery address in Account'
+                      : 'Good food, in your neighborhood'}
+                </small>
               </span>
             </span>
             {actor && (
@@ -341,7 +457,7 @@ export function App() {
       {config.simulatedPayments && (
         <div className="demo-strip">
           <ShieldCheck size={14} />
-          Local demo · Payments are simulated. No money is charged.
+          Local development · Payments are simulated. No money is charged.
         </div>
       )}
       <main id="main" tabIndex={-1}>
@@ -369,43 +485,141 @@ export function App() {
                   <div>
                     <span className="eyebrow">YOUR NEIGHBORHOOD KITCHEN</span>
                     <h1>{selected.name}</h1>
-                    <p>{selected.description}</p>
+                    {selected.description && <p>{selected.description}</p>}
                     <div className="meta">
                       <span>
                         <Utensils size={16} />
                         {selected.cuisine}
                       </span>
+                      {selected.rating ? (
+                        <span>
+                          <Star size={16} />
+                          {selected.rating} / 5 ({selected.review_count || 0})
+                        </span>
+                      ) : null}
                       <span>
                         <Clock size={16} />
                         {selected.eta_minutes}–{selected.eta_minutes + 10} min
                       </span>
-                      <span>
-                        <Bike size={16} />
-                        {money(selected.delivery_fee)}
-                      </span>
+                      {selected.deliveryInfo?.supported && (
+                        <span>
+                          <Bike size={16} />
+                          {money(selected.deliveryInfo.shippingFee)}
+                        </span>
+                      )}
+                      {selected.phone && (
+                        <span>
+                          <Phone size={16} />
+                          {selected.phone}
+                        </span>
+                      )}
+                      {selected.opening_hours && (
+                        <span>
+                          <Clock size={16} />
+                          {selected.opening_hours}
+                        </span>
+                      )}
+                      {selected.website && (
+                        <a
+                          className="meta-link"
+                          href={selected.website}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          <Globe2 size={16} />
+                          {websiteLabel(selected.website)}
+                        </a>
+                      )}
                     </div>
                     <p className="subtle">
                       <MapPin size={15} />
                       {selected.address}
                     </p>
                   </div>
-                  <img
-                    src={selected.image || '/images/vietnamese.svg'}
-                    alt={`Illustration for ${selected.name}`}
-                  />
+                  <SmartImage src={selected.image} alt={`Ảnh món ăn của ${selected.name}`} />
                 </section>
-                <div className="section-title">
-                  <div>
-                    <span className="eyebrow">FRESH FROM THE KITCHEN</span>
-                    <h2>The menu</h2>
+                <section
+                  className={
+                    'delivery-overview ' +
+                    (selected.deliveryInfo?.supported ? 'available' : 'unavailable')
+                  }
+                  aria-label="Delivery information"
+                >
+                  {selected.deliveryInfo?.supported ? (
+                    <>
+                      <div>
+                        <span className="eyebrow">WALKING DELIVERY</span>
+                        <strong>
+                          {distanceLabel(selected.deliveryInfo.distanceMeters)} ·{' '}
+                          {walkingLabel(selected.deliveryInfo.durationSeconds)}
+                        </strong>
+                        <p>
+                          Shipping fee <b>{money(selected.deliveryInfo.shippingFee)}</b> for this
+                          address.
+                        </p>
+                      </div>
+                      {selected.deliveryInfo.routeGeometry && (
+                        <button
+                          type="button"
+                          className="button secondary"
+                          onClick={() => setModal('route')}
+                        >
+                          <Footprints size={16} />
+                          View walking route
+                        </button>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <MapPin size={20} />
+                      <div>
+                        <strong>{deliverySummary(selected.deliveryInfo)}</strong>
+                        <p>
+                          {selected.deliveryInfo?.status === 'NO_ADDRESS'
+                            ? 'Save an address in Account to see walking distance and the shipping fee.'
+                            : 'No walking distance or fee is shown when the route cannot be calculated. You can still browse the menu.'}
+                        </p>
+                      </div>
+                      {selected.deliveryInfo?.status === 'NO_ADDRESS' && (
+                        <button
+                          type="button"
+                          className="button secondary"
+                          onClick={() => setModal('profile')}
+                        >
+                          Set delivery address
+                        </button>
+                      )}
+                    </>
+                  )}
+                </section>
+                {!selected.items.length && (
+                  <div className="demo-note" role="note">
+                    <Utensils size={18} />
+                    <div>
+                      <strong>Chưa có thực đơn.</strong> Nhà hàng này chưa có món ăn nên chưa thể
+                      đặt hàng.
+                    </div>
                   </div>
-                  <span>{selected.items.length} dishes</span>
-                </div>
-                <div className="menu-grid">
-                  {selected.items.map((i: any) => (
-                    <Dish key={i.id} item={i} busy={busy} add={add} />
-                  ))}
-                </div>
+                )}
+                {selected.items.length > 0 && (
+                  <div className="section-title">
+                    <div>
+                      <span className="eyebrow">FRESH FROM THE KITCHEN</span>
+                      <h2>The menu</h2>
+                    </div>
+                    <span>{selected.items.length} dishes</span>
+                  </div>
+                )}
+                {groupByCategory(selected.items).map(([category, items]) => (
+                  <section className="menu-section" key={category}>
+                    <h3 className="menu-category">{category}</h3>
+                    <div className="menu-grid">
+                      {items.map((i: any) => (
+                        <Dish key={i.id} item={i} busy={busy} add={add} />
+                      ))}
+                    </div>
+                  </section>
+                ))}
                 <section className="reviews">
                   <h2>From the neighborhood</h2>
                   {selected.reviews.length ? (
@@ -488,9 +702,14 @@ export function App() {
                     <div className="categories">
                       {[
                         { name: 'All kitchens', value: '', icon: Utensils },
-                        { name: 'Vietnamese', value: 'Vietnamese', icon: Soup },
-                        { name: 'Italian', value: 'Italian', icon: Pizza },
-                        { name: 'Healthy', value: 'Healthy', icon: Leaf },
+                        ...(cuisineOptions.length
+                          ? cuisineOptions
+                          : ['Vietnamese', 'Italian', 'Healthy']
+                        ).map((name) => ({
+                          name,
+                          value: name,
+                          icon: cuisineIcon(name),
+                        })),
                       ].map((c) => (
                         <button
                           key={c.value}
@@ -539,53 +758,77 @@ export function App() {
                     </label>
                   </div>
                   <div className="restaurant-grid" aria-busy={loading}>
-                    {restaurants.map((r, i) => (
-                      <button
-                        className="restaurant-card"
-                        key={r.id}
-                        onClick={() => openRestaurant(r.id)}
-                      >
-                        <div className={'card-image tone-' + i}>
-                          <img
-                            loading="lazy"
-                            src={r.image || '/images/vietnamese.svg'}
-                            alt={`Illustration of ${r.cuisine} food`}
-                          />
-                          <span className="image-label">
-                            {i === 0
-                              ? 'Neighborhood favorite'
-                              : r.cuisine === 'Healthy'
-                                ? 'Feel-good food'
-                                : 'Made with love'}
-                          </span>
-                          <span className="image-arrow">
-                            <ArrowRight size={18} />
-                          </span>
-                        </div>
-                        <div className="card-copy">
-                          <div className="between">
-                            <h3>{r.name}</h3>
-                            <span className="rating">
-                              <Star size={14} />
-                              {r.rating || 'New'}
+                    {restaurants.map((r, i) => {
+                      return (
+                        <button
+                          className="restaurant-card"
+                          key={r.id}
+                          onClick={() => openRestaurant(r.id)}
+                        >
+                          <div className={'card-image tone-' + i}>
+                            <SmartImage
+                              loading="lazy"
+                              src={r.image}
+                              alt={`Ảnh món ăn của ${r.name}`}
+                            />
+                            <span className="image-label">
+                              {i === 0
+                                ? 'Neighborhood favorite'
+                                : r.cuisine === 'Healthy'
+                                  ? 'Feel-good food'
+                                  : 'Made with love'}
+                            </span>
+                            <span className="image-arrow">
+                              <ArrowRight size={18} />
                             </span>
                           </div>
-                          <p>
-                            {r.cuisine} <span>·</span> {r.description.split('.')[0]}
-                          </p>
-                          <div className="card-bottom">
-                            <span>
-                              <Clock size={15} />
-                              {r.eta_minutes}–{r.eta_minutes + 10} min
-                            </span>
-                            <span>
-                              <Bike size={16} />
-                              {money(r.delivery_fee)}
-                            </span>
+                          <div className="card-copy">
+                            <div className="between">
+                              <h3>{r.name}</h3>
+                              <span className="rating">
+                                <Star size={14} />
+                                {r.rating || 'New'}
+                                {r.rating && r.review_count ? (
+                                  <small> ({r.review_count})</small>
+                                ) : null}
+                              </span>
+                            </div>
+                            <p>
+                              {r.cuisine}
+                              {r.district ? (
+                                <>
+                                  <span> · </span>
+                                  {r.district}
+                                </>
+                              ) : null}
+                              <span> · </span>
+                              {r.description ? r.description.split('.')[0] : 'Món ăn đặc sắc'}
+                            </p>
+                            <div className="card-bottom">
+                              {r.deliveryInfo?.supported ? (
+                                <>
+                                  <span>
+                                    <Footprints size={15} />
+                                    {distanceLabel(r.deliveryInfo.distanceMeters)} ·{' '}
+                                    {Math.max(1, Math.round(r.deliveryInfo.durationSeconds / 60))}{' '}
+                                    min walk
+                                  </span>
+                                  <span>
+                                    <Bike size={16} />
+                                    {money(r.deliveryInfo.shippingFee)}
+                                  </span>
+                                </>
+                              ) : (
+                                <span className="delivery-hint">
+                                  <MapPin size={15} />
+                                  {deliverySummary(r.deliveryInfo)}
+                                </span>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      </button>
-                    ))}
+                        </button>
+                      );
+                    })}
                   </div>
                   {!loading && !restaurants.length && (
                     <Empty title="No kitchens found">
@@ -804,14 +1047,6 @@ export function App() {
         <span>
           Made for the neighborhood <Heart size={13} />
         </span>
-        <a
-          className="osm-attribution"
-          href="https://www.openstreetmap.org/copyright"
-          target="_blank"
-          rel="noreferrer"
-        >
-          Restaurant data © OpenStreetMap contributors (ODbL)
-        </a>
       </footer>
       {notice && (
         <div className="toast" role="status">
@@ -948,19 +1183,48 @@ export function App() {
                 {error}
               </p>
             )}
-            <Field
-              label="Delivery address"
-              required
-              minLength={8}
-              maxLength={300}
-              placeholder="Street, building, apartment, district"
-              value={address}
-              onChange={(e) => {
-                setAddress(e.target.value);
-                checkoutPayload.current = null;
-                checkoutKey.current = crypto.randomUUID();
-              }}
-            />
+            {defaultAddress ? (
+              <div className="checkout-address">
+                <MapPin size={19} />
+                <div>
+                  <strong>Deliver to your saved address</strong>
+                  <p>{defaultAddress.formattedAddress || defaultAddress.address}</p>
+                </div>
+                <button type="button" className="text-button" onClick={() => setModal('profile')}>
+                  Change
+                </button>
+              </div>
+            ) : (
+              <Field
+                label="Delivery address"
+                required
+                minLength={8}
+                maxLength={300}
+                placeholder="Street, building, apartment, district"
+                value={address}
+                onChange={(e) => {
+                  setAddress(e.target.value);
+                  checkoutPayload.current = null;
+                  checkoutKey.current = crypto.randomUUID();
+                }}
+              />
+            )}
+            {quote?.deliveryInfo?.supported && (
+              <p className="info delivery-quote-line">
+                <Footprints size={16} />
+                {distanceLabel(quote.deliveryInfo.distanceMeters)} ·{' '}
+                {walkingLabel(quote.deliveryInfo.durationSeconds)} · shipping{' '}
+                {money(quote.deliveryInfo.shippingFee)}
+              </p>
+            )}
+            {quote?.deliveryInfo &&
+              !quote.deliveryInfo.supported &&
+              quote.deliveryInfo.status !== 'NO_ADDRESS' && (
+                <p className="form-error" role="alert">
+                  {deliverySummary(quote.deliveryInfo)}. Choose another saved address before
+                  ordering.
+                </p>
+              )}
             <label className="field">
               Note for the kitchen
               <textarea
@@ -983,11 +1247,55 @@ export function App() {
               <span>Total to pay</span>
               <strong>{money(quote?.total || 0)}</strong>
             </div>
-            <button className="button full" disabled={busy || !quote}>
+            <button
+              className="button full"
+              disabled={
+                busy ||
+                !quote ||
+                Boolean(
+                  quote.deliveryInfo &&
+                  !quote.deliveryInfo.supported &&
+                  quote.deliveryInfo.status !== 'NO_ADDRESS',
+                )
+              }
+            >
               {busy ? 'Placing your order…' : 'Place order'}
               <ArrowRight size={18} />
             </button>
           </form>
+        </Modal>
+      )}
+      {modal === 'route' && selected && defaultAddress && selected.deliveryInfo?.routeGeometry && (
+        <Modal title="Walking route" close={() => setModal(null)}>
+          <AddressMap
+            center={[defaultAddress.latitude, defaultAddress.longitude]}
+            marker={[defaultAddress.latitude, defaultAddress.longitude]}
+            restaurant={
+              selected.latitude && selected.longitude
+                ? {
+                    latitude: selected.latitude,
+                    longitude: selected.longitude,
+                    name: selected.name,
+                  }
+                : null
+            }
+            route={selected.deliveryInfo.routeGeometry}
+            height={360}
+          />
+          <div className="route-summary">
+            <span>
+              <Footprints size={17} />
+              {distanceLabel(selected.deliveryInfo.distanceMeters)} on foot
+            </span>
+            <span>
+              <Clock size={17} />
+              {walkingLabel(selected.deliveryInfo.durationSeconds)}
+            </span>
+            <span>
+              <Bike size={17} />
+              {money(selected.deliveryInfo.shippingFee)}
+            </span>
+          </div>
         </Modal>
       )}
       {modal === 'notifications' && (
@@ -1020,6 +1328,16 @@ export function App() {
       {modal === 'profile' && actor && (
         <Modal title="Your account" close={() => setModal(null)}>
           <Profile actor={actor} setActor={setActor} />
+          {actor.role === 'CUSTOMER' && (
+            <AddressSettings
+              saved={defaultAddress}
+              onSaved={(row) => {
+                setDefaultAddress(row);
+                setAddress(row.address);
+                setNotice('Delivery address updated');
+              }}
+            />
+          )}
           <p className="muted">
             {actor.email} · {label(actor.role)}
           </p>

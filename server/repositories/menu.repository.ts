@@ -75,6 +75,53 @@ export async function upsertMenu(
   });
 }
 
+export type SeededMenuGroup = {
+  name: string;
+  items: {
+    id: string;
+    name: string;
+    description: string;
+    price: number;
+    image: string;
+    available: boolean;
+    stock: number;
+    options: unknown;
+  }[];
+};
+
+/**
+ * Create missing menu groups and items without updating or deleting existing
+ * rows. Deterministic item ids make repeated demo imports idempotent, and
+ * `skipDuplicates` protects any item a user edited later.
+ */
+export async function ensureSeededMenus(
+  restaurantId: string,
+  groups: SeededMenuGroup[],
+  db: DB = prisma,
+): Promise<{ menus: number; itemsCreated: number }> {
+  let itemsCreated = 0;
+  for (const group of groups) {
+    const menu = await upsertMenu(restaurantId, group.name, db);
+    const result = await db.menuItem.createMany({
+      data: group.items.map((item) => ({
+        id: item.id,
+        restaurant_id: restaurantId,
+        menu_id: menu.id,
+        name: item.name,
+        description: item.description,
+        price: item.price,
+        image: item.image,
+        available: item.available,
+        stock: item.stock,
+        options: item.options as Prisma.InputJsonValue,
+      })),
+      skipDuplicates: true,
+    });
+    itemsCreated += result.count;
+  }
+  return { menus: groups.length, itemsCreated };
+}
+
 export async function insert(
   item: {
     restaurantId: string;

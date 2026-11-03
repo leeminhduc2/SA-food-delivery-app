@@ -27,6 +27,22 @@ export type RestaurantRow = {
   osm_tags: Prisma.JsonValue;
   imported_at: Date | string | null;
   last_synced_at: Date | string | null;
+  catalog_visible: boolean;
+  geocoded_address: string | null;
+  geocoded_at: Date | string | null;
+  slug: string | null;
+  district: string | null;
+  mock: boolean;
+  rating: number | null;
+  review_count: number;
+  google_place_id: string | null;
+  google_maps_uri: string | null;
+  google_primary_type: string | null;
+  google_business_status: string | null;
+  photo_name: string | null;
+  photo_attribution: Prisma.JsonValue;
+  photo_verified_food: boolean;
+  places_synced_at: Date | string | null;
 };
 
 export async function search(
@@ -34,7 +50,7 @@ export async function search(
   orderColumn: string,
   db: DB = prisma,
 ): Promise<any[]> {
-  const where: Prisma.RestaurantWhereInput = { status: 'APPROVED' };
+  const where: Prisma.RestaurantWhereInput = { status: 'APPROVED', catalog_visible: true };
   if (query.cuisine) where.cuisine = query.cuisine;
   if (query.q)
     where.OR = [
@@ -58,15 +74,21 @@ export async function search(
     take: 100,
     include: { reviews: { where: { hidden: false }, select: { rating: true } } },
   });
-  return rows.map(({ reviews, ...restaurant }) => ({
-    ...restaurant,
-    rating: reviews.length
-      ? Math.round(
-          (reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length) * 10,
-        ) / 10
-      : null,
-    review_count: reviews.length,
-  }));
+  return rows.map(({ reviews, ...restaurant }) => {
+    // Real reviews always win. Mock listings carry a simulated rating only
+    // because their review count is part of the demo dataset.
+    const realRating =
+      reviews.length > 0
+        ? Math.round(
+            (reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length) * 10,
+          ) / 10
+        : null;
+    return {
+      ...restaurant,
+      rating: realRating ?? restaurant.rating ?? null,
+      review_count: reviews.length || restaurant.review_count,
+    };
+  });
 }
 
 export async function findById(
@@ -138,12 +160,42 @@ export async function update(
   },
   db: DB = prisma,
 ): Promise<RestaurantRow | undefined> {
+  const existing = await findById(restaurantId, db);
+  if (!existing) return undefined;
+  const addressChanged = existing.address.trim() !== input.address.trim();
   const updated = await db.restaurant.updateMany({
     where: { id: restaurantId },
-    data: { ...input, owner_managed: true },
+    data: {
+      ...input,
+      owner_managed: true,
+      // A changed address invalidates the previous route origin. Coordinates
+      // are resolved lazily from the new address; the address itself is never
+      // overwritten by a failed lookup.
+      ...(addressChanged
+        ? { latitude: null, longitude: null, geocoded_address: null, geocoded_at: null }
+        : {}),
+    },
   });
   if (!updated.count) return undefined;
   return findById(restaurantId, db);
+}
+
+export async function setCoordinates(
+  restaurantId: string,
+  address: string,
+  latitude: number,
+  longitude: number,
+  db: DB = prisma,
+): Promise<void> {
+  await db.restaurant.updateMany({
+    where: { id: restaurantId, address },
+    data: {
+      latitude,
+      longitude,
+      geocoded_address: address,
+      geocoded_at: new Date(),
+    },
+  });
 }
 
 export async function setStatus(

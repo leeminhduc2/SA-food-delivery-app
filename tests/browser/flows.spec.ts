@@ -1,5 +1,5 @@
 import AxeBuilder from '@axe-core/playwright';
-import { expect, test, type BrowserContext, type Page } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 async function login(page: Page, role: string) {
   await page.goto('/');
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
@@ -8,14 +8,6 @@ async function login(page: Page, role: string) {
   await dialog.getByLabel('Password', { exact: true }).fill('BrowserTest123!');
   await dialog.getByRole('button', { name: 'Sign in', exact: true }).click();
   await expect(dialog).not.toBeVisible();
-}
-async function request(context: BrowserContext, path: string, body?: unknown) {
-  const result = await context.request.post('/api' + path, {
-    data: body,
-    headers: { 'X-Requested-With': 'Bep' },
-  });
-  expect(result.ok(), await result.text()).toBeTruthy();
-  return result.json();
 }
 test('responsive discovery, search, empty state, keyboard dialog and navigation', async ({
   page,
@@ -26,20 +18,20 @@ test('responsive discovery, search, empty state, keyboard dialog and navigation'
   await expect(
     page.getByRole('heading', { name: 'A little hungry? You’re in the right place.' }),
   ).toBeVisible();
-  await expect(page.locator('.restaurant-card')).toHaveCount(3);
+  await expect(page.locator('.restaurant-card')).toHaveCount(10);
   await page.screenshot({ path: 'test-results/discovery-desktop.png', fullPage: true });
   expect(
     (await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze())
       .violations,
   ).toEqual([]);
   await page.getByRole('link', { name: 'Find your next favorite' }).click();
-  await expect(page.locator('.restaurant-card')).toHaveCount(3);
-  await page.getByLabel('Search restaurants or dishes').fill('phở');
+  await expect(page.locator('.restaurant-card')).toHaveCount(10);
+  await page.getByLabel('Search restaurants or dishes').fill('Bếp Phố');
   await expect(page.locator('.restaurant-card')).toHaveCount(1);
   await page.getByLabel('Search restaurants or dishes').fill('missing-kitchen');
   await expect(page.getByText('No kitchens found')).toBeVisible();
   await page.getByRole('button', { name: 'Clear filters', exact: true }).click();
-  await expect(page.locator('.restaurant-card')).toHaveCount(3);
+  await expect(page.locator('.restaurant-card')).toHaveCount(10);
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await expect(page.getByRole('dialog')).toBeVisible();
   expect(
@@ -59,17 +51,58 @@ test('responsive discovery, search, empty state, keyboard dialog and navigation'
   await page.screenshot({ path: 'test-results/discovery-mobile.png', fullPage: true });
   expect(errors).toEqual([]);
 });
+test('catalog shows the seeded dataset, grouped menu, cuisine filter and safe image fallback', async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('/');
+  await page.getByRole('link', { name: 'Find your next favorite' }).click();
+  await expect(page.locator('.restaurant-card')).toHaveCount(10);
+  await expect(page.locator('.demo-note')).toHaveCount(0);
+  await expect(page.locator('.image-label').first()).not.toHaveText('Demo');
+  const card = page.locator('.restaurant-card').filter({ hasText: 'Bếp Phố Hà Thành' });
+  await expect(card).toContainText('Hoàn Kiếm');
+  await card.click();
+  await expect(page.getByRole('heading', { name: 'Bếp Phố Hà Thành' })).toBeVisible();
+  await expect(page.locator('.demo-note')).toHaveCount(0);
+  await expect(page.locator('.source-line')).toHaveCount(0);
+  await expect(page.locator('.meta')).toContainText('4.8 / 5 (512)');
+  await expect(page.locator('.subtle')).toContainText('Hoàn Kiếm');
+  await expect(page.locator('.menu-section')).toHaveCount(2);
+  await expect(page.locator('.dish')).toHaveCount(6);
+  await expect(page.locator('.menu-category')).toHaveText(['Món chính', 'Món khai vị']);
+  // No raster files ship with the workspace yet, so the honest placeholder must
+  // appear instead of an SVG or a fake photo.
+  await expect(
+    page.locator('.restaurant-hero img, .restaurant-hero .image-placeholder'),
+  ).toHaveCount(1);
+  await expect(page.locator('.dish .image-placeholder')).toHaveCount(6);
+  await page.getByRole('button', { name: 'All restaurants' }).click();
+  await page.getByRole('button', { name: 'Japanese', exact: true }).click();
+  await expect(page.locator('.restaurant-card')).toHaveCount(1);
+  await expect(page.locator('.restaurant-card')).toContainText('Sushi Mori');
+  await page.getByRole('button', { name: 'All kitchens', exact: true }).click();
+  await expect(page.locator('.restaurant-card')).toHaveCount(10);
+  for (const width of [375, 768, 1024, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    ).toBeTruthy();
+  }
+  expect(errors).toEqual([]);
+});
 test('customer checkout through restaurant preparation, assignment, driver delivery, review and complaint', async ({
   browser,
 }) => {
   const customer = await browser.newContext();
   const page = await customer.newPage();
   await login(page, 'customer');
-  await page.locator('.restaurant-card').filter({ hasText: 'Bếp Nhà Sài Gòn' }).click();
+  await page.locator('.restaurant-card').filter({ hasText: 'Bếp Phố Hà Thành' }).click();
   await expect(page.getByRole('heading', { name: 'The menu' })).toBeVisible();
   await page.getByRole('button', { name: 'Add Phở bò đặc biệt', exact: true }).click();
   await page.getByRole('button', { name: /Basket/ }).click();
-  await expect(page.getByRole('dialog')).toContainText('80.000');
+  await expect(page.getByRole('dialog')).toContainText('90.000');
   await page.getByRole('button', { name: 'Continue to checkout' }).click();
   await page.getByLabel('Delivery address').fill('12 Nguyễn Huệ, District 1');
   await page.getByRole('button', { name: 'Place order', exact: true }).click();
@@ -123,19 +156,62 @@ test('customer checkout through restaurant preparation, assignment, driver deliv
 });
 test('restaurant edits menu options and stock with persistent results', async ({ page }) => {
   await login(page, 'restaurant');
-  await page.getByRole('button', { name: 'Manage menu', exact: true }).click();
-  const dish = page.getByRole('dialog').locator('.manage-item').filter({ hasText: 'Gỏi cuốn tôm' });
+  const kitchen = page.locator('.manage-row').filter({ hasText: 'Bếp Phố Hà Thành' });
+  await kitchen.getByRole('button', { name: 'Manage menu', exact: true }).click();
+  const dish = page.getByRole('dialog').locator('.manage-item').filter({ hasText: 'Nem rán' });
   await dish.getByRole('button', { name: 'Edit', exact: true }).click();
-  await page.getByLabel('Price (VND)').fill('49000');
+  await page.getByLabel('Price (VND)').fill('39000');
   await page.getByLabel('Available servings').fill('25');
   await page.getByRole('button', { name: 'Save dish', exact: true }).click();
   await expect(
-    page.getByRole('dialog').locator('.manage-item').filter({ hasText: 'Gỏi cuốn tôm' }),
-  ).toContainText('49.000');
+    page.getByRole('dialog').locator('.manage-item').filter({ hasText: 'Nem rán' }),
+  ).toContainText('39.000');
   await page.getByRole('button', { name: 'Close dialog' }).click();
   await page.reload();
-  await page.getByRole('button', { name: 'Manage menu', exact: true }).click();
+  await page
+    .locator('.manage-row')
+    .filter({ hasText: 'Bếp Phố Hà Thành' })
+    .getByRole('button', { name: 'Manage menu', exact: true })
+    .click();
   await expect(
-    page.getByRole('dialog').locator('.manage-item').filter({ hasText: 'Gỏi cuốn tôm' }),
-  ).toContainText('25 available');
+    page.getByRole('dialog').locator('.manage-item').filter({ hasText: 'Nem rán' }),
+  ).toContainText('39.000');
+});
+
+test('saved delivery address drives walking distance, fee and address changes', async ({
+  page,
+}) => {
+  await login(page, 'customer');
+  await page.getByRole('button', { name: 'Account settings' }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByLabel('Street address').fill('18 Phố Hàng Bạc, Hoàn Kiếm, Hà Nội');
+  await dialog.getByRole('button', { name: 'Find address' }).click();
+  await expect(dialog.locator('.resolved-address')).toContainText('Hà Nội');
+  await dialog.getByRole('button', { name: 'Save delivery address' }).click();
+  await expect(dialog.locator('.current-address')).toContainText('18 Phố Hàng Bạc');
+  await dialog.getByRole('button', { name: 'Close dialog' }).click();
+
+  await page.getByRole('link', { name: 'Find your next favorite' }).click();
+  const card = page.locator('.restaurant-card').filter({ hasText: 'Bếp Phố Hà Thành' });
+  await expect(card).toContainText('1.2 km');
+  await expect(card).toContainText('10.000');
+  await card.click();
+  await expect(page.locator('.delivery-overview')).toContainText('1.2 km');
+  await expect(page.locator('.delivery-overview')).toContainText('10.000');
+
+  await page.getByRole('button', { name: 'Account settings' }).click();
+  await dialog.getByLabel('Street address').fill('50 Phố Huế, Hai Bà Trưng, Hà Nội');
+  await dialog.getByRole('button', { name: 'Find address' }).click();
+  await expect(dialog.locator('.resolved-address')).toContainText('Hà Nội');
+  await dialog.getByRole('button', { name: 'Save delivery address' }).click();
+  await expect(dialog.locator('.current-address')).toContainText('50 Phố Huế');
+  await dialog.getByRole('button', { name: 'Close dialog' }).click();
+
+  await page.getByRole('link', { name: 'Bếp home' }).click();
+  await expect(
+    page.locator('.restaurant-card').filter({ hasText: 'Bếp Phố Hà Thành' }),
+  ).toContainText('5.0 km');
+  await expect(
+    page.locator('.restaurant-card').filter({ hasText: 'Bếp Phố Hà Thành' }),
+  ).toContainText('19.000');
 });

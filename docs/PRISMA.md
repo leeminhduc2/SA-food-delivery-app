@@ -27,16 +27,16 @@ accepts the transaction-scoped `DB` client (`Prisma.TransactionClient`) with
 
 ## Configuration
 
-| Item             | Value                                                                  |
-| ---------------- | ---------------------------------------------------------------------- |
-| Prisma CLI       | `prisma` 6.19.3 (devDependency)                                        |
-| Client           | `@prisma/client` 6.19.3 (dependency)                                   |
-| Schema           | [`prisma/schema.prisma`](../prisma/schema.prisma)                      |
-| Datasource       | PostgreSQL, `env("DATABASE_URL")`                                      |
-| Generator        | `prisma-client-js`                                                     |
-| Naming           | Existing `snake_case` table and column names are preserved via `@@map` |
-| Migrations       | [`prisma/migrations/`](../prisma/migrations) (baseline only)           |
-| Client singleton | [`server/db.ts`](../server/db.ts)                                      |
+| Item             | Value                                                                       |
+| ---------------- | --------------------------------------------------------------------------- |
+| Prisma CLI       | `prisma` 6.19.3 (devDependency)                                             |
+| Client           | `@prisma/client` 6.19.3 (dependency)                                        |
+| Schema           | [`prisma/schema.prisma`](../prisma/schema.prisma)                           |
+| Datasource       | PostgreSQL, `env("DATABASE_URL")`                                           |
+| Generator        | `prisma-client-js`                                                          |
+| Naming           | Existing `snake_case` table and column names are preserved via `@@map`      |
+| Migrations       | [`prisma/migrations/`](../prisma/migrations) (baseline + additive delivery) |
+| Client singleton | [`server/db.ts`](../server/db.ts)                                           |
 
 The schema was produced by `prisma db pull` against the existing database and
 then committed. Field names were intentionally left in `snake_case` so API
@@ -110,6 +110,7 @@ There is no string interpolation of user input.
 | `server/notification.repository.ts` `deliverEvent`    | `SAVEPOINT` / `ROLLBACK TO` / `RELEASE`                                   | Per-notification isolation inside one transaction. Prisma has no savepoint API.                                                                                                                               |
 | `server/services/restaurant-import.service.ts`        | `SAVEPOINT import_record`                                                 | One bad OSM record must not roll back the whole batch.                                                                                                                                                        |
 | `server/repositories/restaurant-import.repository.ts` | `INSERT ... ON CONFLICT ... DO UPDATE ... WHERE ... RETURNING (xmax = 0)` | Atomic protected upsert: never overwrites verified or owner-managed rows, and reports insert-vs-update. Prisma's `upsert` cannot express the `WHERE` guard or `xmax`.                                         |
+| `server/repositories/restaurant-import.repository.ts` | `UPDATE ... WHERE source='OSM' AND NOT verified AND NOT owner_managed`    | Second guarded write for curated presentation fields and `_bep` metadata. Repeating the predicate is race-safe; `osm_tags` uses JSONB concatenation so a later sync cannot erase provenance.                  |
 | `server/db.ts` `dbNow`                                | `SELECT now()`                                                            | Due-window predicates must use the database clock. The Docker database can be several hundred milliseconds ahead of the host, which otherwise makes `next_reconcile_at = now()` rows invisible to the worker. |
 | `server/app.ts`, `server/index.ts`                    | `SELECT 1`                                                                | Health/startup connectivity check.                                                                                                                                                                            |
 
@@ -253,6 +254,18 @@ scripts. No application code imports `pg`.
 | Fresh database deploy   | 22 tables (incl. `_prisma_migrations`), 18 checks, 4 partials; explicit seed 6 users / 3 restaurants / 8 items            |
 | Isolated-schema deploy  | 22 tables in `test_*` schema, 0 in `public`; `_prisma_migrations` present                                                 |
 | Live schema inspection  | 21 tables, 18 CHECK constraints, all 4 partial indexes present; demo data intact (3 restaurants, 6 users, 1 order)        |
+
+## Delivery routing migration (2026-11-03)
+
+`prisma/migrations/20261103090000_delivery_routing/` is a separate additive
+migration; the applied baseline was not edited. It creates `addresses` with a
+user foreign key, a user lookup index and a partial unique index enforcing one
+default address per user. It adds nullable `geocoded_address` / `geocoded_at`
+columns to `restaurants`, and nullable delivery snapshot columns to `orders`
+(`delivery_latitude`, `delivery_longitude`, `walking_distance_meters`,
+`walking_duration_seconds`). No existing row, order fee, relation or CHECK
+constraint is removed or rewritten. Existing orders remain unchanged and keep
+their historical delivery fee. Apply it with `npm.cmd run db:migrate`.
 
 ## Known limitations
 
