@@ -13,6 +13,7 @@
     "db:migrate": "prisma migrate deploy",
     "db:seed": "tsx server/seed.ts",
     "db:seed:mock": "tsx server/seed-mock.ts",
+    "db:seed:notifications": "tsx server/seed-notifications.ts",
     "assets:prompts": "tsx scripts/export-mock-image-prompts.ts",
     "db:generate": "prisma generate",
     "db:validate": "prisma validate",
