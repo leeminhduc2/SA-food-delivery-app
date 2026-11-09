@@ -27,7 +27,8 @@
     "test:load": "tsx scripts/load.ts",
     "check:openapi": "tsx scripts/check-openapi.ts",
     "format": "prettier --write src server tests scripts docs README.md design-system *.json *.ts compose.yaml",
-    "format:check": "prettier --check src server tests scripts docs README.md design-system *.json *.ts compose.yaml"
+    "format:check": "prettier --check src server tests scripts docs README.md design-system *.json *.ts compose.yaml",
+    "ci:local": "bash scripts/ci-local.sh"
   },
   "dependencies": {
     "@fontsource-variable/dm-sans": "^5.3.0",

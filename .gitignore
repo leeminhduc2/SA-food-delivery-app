@@ -8,3 +8,5 @@ backups/
 *.log
 *.dump
 .tmp/
+
+CLAUDE.md

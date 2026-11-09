@@ -1,4 +1,4 @@
-import { dbNow, id, lockRow, prisma, type DB } from '../db.js';
+import { id, lockRow, prisma, type DB } from '../db.js';
 
 export type PaymentRow = {
   id: string;
@@ -140,27 +140,24 @@ export async function listPendingReconcile(
   limit = 100,
   db: DB = prisma,
 ): Promise<(PaymentRow & { expires_at: Date | string; order_status: string })[]> {
-  const now = await dbNow(db);
-  const rows = await db.payment.findMany({
-    where: {
-      next_reconcile_at: { lte: now },
-      OR: [
-        { status: { in: ['PENDING', 'REFUND_PENDING'] } },
-        {
-          status: 'EXPIRED',
-          order: { created_at: { gt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } },
-        },
-      ],
-    },
-    include: { order: { select: { expires_at: true, status: true } } },
-    orderBy: [{ next_reconcile_at: 'asc' }, { created_at: 'asc' }],
-    take: limit,
-  });
-  return rows.map(({ order, ...payment }) => ({
-    ...payment,
-    expires_at: order.expires_at,
-    order_status: order.status,
-  })) as (PaymentRow & { expires_at: Date | string; order_status: string })[];
+  // The due-window predicate is evaluated entirely by PostgreSQL. Reading now()
+  // into a JS Date first truncates microseconds to milliseconds, so a row whose
+  // next_reconcile_at was just set with now() could compare as "not yet due".
+  return db.$queryRaw<(PaymentRow & { expires_at: Date; order_status: string })[]>`
+    SELECT p.id, p.order_id, p.reference, p.amount, p.currency, p.status,
+           p.external_transaction_id, p.provider_created, p.reconciliation_required,
+           p.next_reconcile_at, p.created_at,
+           o.expires_at, o.status AS order_status
+    FROM payments p
+    JOIN orders o ON o.id = p.order_id
+    WHERE p.next_reconcile_at <= now()
+      AND (
+        p.status IN ('PENDING', 'REFUND_PENDING')
+        OR (p.status = 'EXPIRED' AND o.created_at > now() - interval '7 days')
+      )
+    ORDER BY p.next_reconcile_at ASC, p.created_at ASC
+    LIMIT ${limit}
+  `;
 }
 
 export async function setNextReconcile(paymentId: string, db: DB = prisma): Promise<void> {
