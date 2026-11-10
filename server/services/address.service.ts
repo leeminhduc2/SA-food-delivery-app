@@ -1,7 +1,7 @@
 import { z } from 'zod';
-import { check } from '../domain/errors.js';
-import { isValidCoordinate, type LatLng } from '../domain/delivery.js';
-import type { User } from '../domain/types.js';
+import { check } from '../shared/errors.js';
+import { isValidCoordinate, type LatLng } from '../modules/location/domain/geo.js';
+import type { User } from '../shared/types.js';
 import { GeocodingProviderError } from '../integrations/geocoding.js';
 import * as addresses from '../repositories/address.repository.js';
 import { geocodeAddress, reverseGeocode } from './geocoding.service.js';

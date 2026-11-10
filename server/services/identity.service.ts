@@ -1,8 +1,8 @@
 import { createHash, randomBytes, scrypt as scryptCb, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
 import { z } from 'zod';
-import { check } from '../domain/errors.js';
-import type { Role, User } from '../domain/types.js';
+import { check } from '../shared/errors.js';
+import type { Role, User } from '../shared/types.js';
 import * as sessions from '../repositories/session.repository.js';
 import * as users from '../repositories/user.repository.js';
 

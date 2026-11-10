@@ -1,6 +1,6 @@
 import { Router, type Response } from 'express';
 import * as identity from '../services/identity.service.js';
-import { actor, tokenFrom } from './middleware/actor.js';
+import { actor, tokenFrom } from '../shared/http/actor.js';
 
 export const identityRoutes = Router();
 

@@ -1,4 +1,4 @@
-import type { User } from '../domain/types.js';
+import type { User } from '../shared/types.js';
 import * as reports from '../repositories/report.repository.js';
 
 export async function report(actor: User): Promise<any> {

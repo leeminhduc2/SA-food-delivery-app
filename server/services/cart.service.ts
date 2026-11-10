@@ -1,8 +1,8 @@
 import { z } from 'zod';
-import { transaction } from '../db.js';
-import { check } from '../domain/errors.js';
-import { linesSchema } from '../domain/schemas.js';
-import type { User } from '../domain/types.js';
+import { transaction } from '../shared/db.js';
+import { check } from '../shared/errors.js';
+import { linesSchema } from '../modules/catalog/domain/catalog.schemas.js';
+import type { User } from '../shared/types.js';
 import * as cartRepository from '../repositories/cart.repository.js';
 import { priceCart } from './catalog.service.js';
 

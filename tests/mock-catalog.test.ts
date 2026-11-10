@@ -9,7 +9,7 @@ import {
   MOCK_IMAGE_PATHS,
   MOCK_RESTAURANT_IDS,
   MOCK_RESTAURANTS,
-} from '../server/domain/mock-catalog.js';
+} from '../server/seed/data/mock-catalog.js';
 
 /**
  * Integration coverage for the fictional demo catalog against a real
@@ -40,12 +40,12 @@ let seedMockCatalog: () => Promise<{
 
 before(async () => {
   await admin.query(`CREATE SCHEMA ${schema}`);
-  db = await import('../server/db.js');
+  db = await import('../server/shared/db.js');
   const { migrate } = await import('../server/migrate.js');
   await migrate();
-  const { seed } = await import('../server/seed.js');
+  const { seed } = await import('../server/seed/seed.js');
   await seed();
-  ({ seedMockCatalog } = await import('../server/seed-mock.js'));
+  ({ seedMockCatalog } = await import('../server/seed/seed-mock.js'));
   await seedMockCatalog();
 });
 
@@ -153,8 +153,8 @@ test('the public catalog makes no external provider request', async () => {
   const files = [
     'server/api/catalog.routes.ts',
     'server/services/catalog.service.ts',
-    'server/domain/mock-catalog.ts',
-    'server/seed-mock.ts',
+    'server/seed/data/mock-catalog.ts',
+    'server/seed/seed-mock.ts',
     'src/App.tsx',
     'src/components/Catalog.tsx',
   ];

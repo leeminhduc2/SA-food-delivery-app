@@ -1,5 +1,5 @@
-import { prisma, type DB } from '../db.js';
-import type { User } from '../domain/types.js';
+import { prisma, type DB } from '../shared/db.js';
+import type { User } from '../shared/types.js';
 
 export async function insert(tokenHash: string, userId: string, db: DB = prisma): Promise<void> {
   await db.session.create({

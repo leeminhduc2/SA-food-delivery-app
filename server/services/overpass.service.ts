@@ -1,4 +1,4 @@
-import { DEFAULT_HANOI_BBOX, parseBBox, type BBox } from '../domain/osm.js';
+import { DEFAULT_HANOI_BBOX, parseBBox, type BBox } from '../modules/catalog/import/osm.js';
 
 export type OverpassFetch = (input: string, init?: RequestInit) => Promise<Response>;
 export type OverpassDeps = {

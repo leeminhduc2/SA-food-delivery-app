@@ -1,5 +1,5 @@
-import { id, prisma, type DB } from '../db.js';
-import type { NormalizedRestaurant } from '../domain/osm.js';
+import { id, prisma, type DB } from '../shared/db.js';
+import type { NormalizedRestaurant } from '../modules/catalog/import/osm.js';
 import type { Prisma } from '@prisma/client';
 
 export type OsmOwnershipRow = {

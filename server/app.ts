@@ -14,8 +14,8 @@ import { authenticate } from './api/middleware/authenticate.js';
 import { operationsRoutes } from './api/operations.routes.js';
 import { orderRoutes } from './api/orders.routes.js';
 import { paymentActionRoutes, paymentRoutes } from './api/payments.routes.js';
-import { AppError } from './domain/errors.js';
-import { isPrismaError, prisma } from './db.js';
+import { AppError } from './shared/errors.js';
+import { isPrismaError, prisma } from './shared/db.js';
 
 export function createApp() {
   const app = express();

@@ -1,6 +1,6 @@
 import type { Request } from 'express';
-import { requireActor } from '../../domain/authz.js';
-import type { Role, User } from '../../domain/types.js';
+import { requireActor } from '../authz.js';
+import type { Role, User } from '../types.js';
 
 declare global {
   namespace Express {

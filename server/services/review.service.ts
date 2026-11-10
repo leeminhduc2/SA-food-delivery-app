@@ -1,8 +1,8 @@
 import { z } from 'zod';
-import { transaction } from '../db.js';
-import { check } from '../domain/errors.js';
-import type { User } from '../domain/types.js';
-import * as audits from '../repositories/audit.repository.js';
+import { transaction } from '../shared/db.js';
+import { check } from '../shared/errors.js';
+import type { User } from '../shared/types.js';
+import * as audits from '../shared/audit.repository.js';
 import * as reviews from '../repositories/review.repository.js';
 import { accessOrder } from './order.service.js';
 

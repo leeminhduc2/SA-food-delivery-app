@@ -77,10 +77,10 @@ async function pay(o: any, status = 'SUCCEEDED', eventId = randomUUID(), changes
 }
 before(async () => {
   await admin.query(`CREATE SCHEMA ${schema}`);
-  db = await import('../server/db.js');
+  db = await import('../server/shared/db.js');
   const { migrate } = await import('../server/migrate.js');
   await migrate();
-  const { seed } = await import('../server/seed.js');
+  const { seed } = await import('../server/seed/seed.js');
   await seed();
   payment = await import('../server/services/payment.service.js');
   ops = await import('../server/services/notification.service.js');

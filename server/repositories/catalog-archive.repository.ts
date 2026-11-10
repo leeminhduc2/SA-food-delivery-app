@@ -4,8 +4,8 @@
  * lines, reviews, menus and menu items stay untouched so history remains
  * readable. Rows created by real users after the demo seed are not touched.
  */
-import { id, prisma, type DB } from '../db.js';
-import { LEGACY_DEMO_RESTAURANT_IDS } from '../domain/mock-catalog.js';
+import { id, prisma, type DB } from '../shared/db.js';
+import { LEGACY_DEMO_RESTAURANT_IDS } from '../seed/data/mock-catalog.js';
 
 export type LegacyImpact = {
   total: number;

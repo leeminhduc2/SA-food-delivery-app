@@ -1,7 +1,7 @@
 import { Router } from 'express';
-import { check } from '../domain/errors.js';
+import { check } from '../shared/errors.js';
 import * as payments from '../services/payment.service.js';
-import { actor } from './middleware/actor.js';
+import { actor } from '../shared/http/actor.js';
 
 /** Mounted before express.json so HMAC verification sees the exact raw bytes. */
 export const paymentRoutes = Router();

@@ -1,6 +1,6 @@
-import { lockRow, prisma, type DB } from '../db.js';
+import { lockRow, prisma, type DB } from '../shared/db.js';
 import type { z } from 'zod';
-import type { lineSchema } from '../domain/schemas.js';
+import type { lineSchema } from '../modules/catalog/domain/catalog.schemas.js';
 import type { Prisma } from '@prisma/client';
 
 export type CartRow = {

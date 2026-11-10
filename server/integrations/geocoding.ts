@@ -1,4 +1,4 @@
-import { isValidCoordinate } from '../domain/delivery.js';
+import { isValidCoordinate } from '../modules/location/domain/geo.js';
 
 export type GeocodeResult = {
   address: string;

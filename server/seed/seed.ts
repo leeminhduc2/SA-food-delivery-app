@@ -1,6 +1,6 @@
 import 'dotenv/config';
-import { prisma, transaction } from './db.js';
-import { hashPassword } from './services/identity.service.js';
+import { prisma, transaction } from '../shared/db.js';
+import { hashPassword } from '../services/identity.service.js';
 import type { Prisma } from '@prisma/client';
 
 export async function seed() {

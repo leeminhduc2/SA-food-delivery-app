@@ -1,10 +1,10 @@
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
-import { id, transaction, type DB } from '../db.js';
-import { check } from '../domain/errors.js';
-import { linesSchema } from '../domain/schemas.js';
-import type { User } from '../domain/types.js';
-import * as audits from '../repositories/audit.repository.js';
+import { id, transaction, type DB } from '../shared/db.js';
+import { check } from '../shared/errors.js';
+import { linesSchema } from '../modules/catalog/domain/catalog.schemas.js';
+import type { User } from '../shared/types.js';
+import * as audits from '../shared/audit.repository.js';
 import * as carts from '../repositories/cart.repository.js';
 import * as orders from '../repositories/order.repository.js';
 import { assertMember, priceCart, releaseStock } from './catalog.service.js';

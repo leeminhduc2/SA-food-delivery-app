@@ -1,9 +1,9 @@
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
-import { id, transaction, type DB } from '../db.js';
-import { check } from '../domain/errors.js';
-import type { User } from '../domain/types.js';
-import * as audits from '../repositories/audit.repository.js';
+import { id, transaction, type DB } from '../shared/db.js';
+import { check } from '../shared/errors.js';
+import type { User } from '../shared/types.js';
+import * as audits from '../shared/audit.repository.js';
 import * as orders from '../repositories/order.repository.js';
 import * as payments from '../repositories/payment.repository.js';
 import { cancelDelivery } from './delivery.service.js';

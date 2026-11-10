@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { rateLimit } from 'express-rate-limit';
 import * as imports from '../services/restaurant-import.service.js';
-import { actor } from './middleware/actor.js';
+import { actor } from '../shared/http/actor.js';
 
 export const importRoutes = Router();
 

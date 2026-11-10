@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import type { Prisma } from '@prisma/client';
-import { prisma, transaction } from './db.js';
+import { prisma, transaction } from '../shared/db.js';
 
 /**
  * Demo-only: give every account up to five fake in-app notifications so the

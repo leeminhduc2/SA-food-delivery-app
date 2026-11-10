@@ -3,7 +3,7 @@ import {
   type LatLng,
   type RouteGeometry,
   type WalkingRoute,
-} from '../domain/delivery.js';
+} from '../modules/location/domain/geo.js';
 
 export type RoutingProvider = {
   name: string;

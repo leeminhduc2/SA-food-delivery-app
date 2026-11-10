@@ -22,11 +22,11 @@ process.env.LOG_REQUESTS = 'false';
 process.env.NODE_ENV = 'test';
 const { migrate } = await import('../server/migrate.js');
 await migrate();
-const { seed } = await import('../server/seed.js');
+const { seed } = await import('../server/seed/seed.js');
 await seed();
 // The public catalog is the fictional Hanoi dataset; legacy demo rows are
 // hidden by the same seed the application uses. No external API is called.
-const { seedMockCatalog } = await import('../server/seed-mock.js');
+const { seedMockCatalog } = await import('../server/seed/seed-mock.js');
 await seedMockCatalog();
 // Browser tests must not depend on public geocoding/routing services. These
 // deterministic adapters exercise the real service and fee code paths.
@@ -73,7 +73,7 @@ setRoutingProvider({
   },
 });
 const { createApp } = await import('../server/app.js');
-const { prisma } = await import('../server/db.js');
+const { prisma } = await import('../server/shared/db.js');
 const server = createApp().listen(3002, '127.0.0.1');
 async function close() {
   server.close(async () => {

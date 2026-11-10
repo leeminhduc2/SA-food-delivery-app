@@ -1,5 +1,5 @@
-import { id, prisma, type DB } from '../db.js';
-import type { Role, User } from '../domain/types.js';
+import { id, prisma, type DB } from '../shared/db.js';
+import type { Role, User } from '../shared/types.js';
 
 export type UserRow = User & { password_hash: string };
 

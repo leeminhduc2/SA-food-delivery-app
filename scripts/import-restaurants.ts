@@ -1,6 +1,6 @@
 import 'dotenv/config';
-import { prisma } from '../server/db.js';
-import { parseBBox, type BBox } from '../server/domain/osm.js';
+import { prisma } from '../server/shared/db.js';
+import { parseBBox, type BBox } from '../server/modules/catalog/import/osm.js';
 import {
   overpassBBox,
   overpassEndpoint,

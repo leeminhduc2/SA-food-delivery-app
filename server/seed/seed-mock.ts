@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import type { Prisma } from '@prisma/client';
-import { prisma, transaction } from './db.js';
+import { prisma, transaction } from '../shared/db.js';
 import {
   LEGACY_DEMO_RESTAURANT_IDS,
   MOCK_MENU_NOTE,
@@ -8,7 +8,7 @@ import {
   MOCK_SOURCE,
   itemImage,
   restaurantImage,
-} from './domain/mock-catalog.js';
+} from './data/mock-catalog.js';
 
 /**
  * Idempotent seed for the fictional Hanoi demo catalog.

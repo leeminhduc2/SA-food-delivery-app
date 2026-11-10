@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { transaction, uniqueViolation, type DB } from '../db.js';
-import { AppError } from '../domain/errors.js';
+import { transaction, uniqueViolation, type DB } from '../shared/db.js';
+import { AppError } from '../shared/errors.js';
 import {
   bboxToString,
   normalizeOsmElements,
@@ -9,8 +9,8 @@ import {
   type ImportFailure,
   type ImportReport,
   type NormalizedRestaurant,
-} from '../domain/osm.js';
-import type { User } from '../domain/types.js';
+} from '../modules/catalog/import/osm.js';
+import type { User } from '../shared/types.js';
 import * as importRepository from '../repositories/restaurant-import.repository.js';
 import {
   fetchOsmRestaurants,

@@ -1,6 +1,6 @@
 import 'dotenv/config';
-import { prisma } from '../server/db.js';
-import { CURATED_HANOI_RESTAURANTS } from '../server/domain/hanoi.js';
+import { prisma } from '../server/shared/db.js';
+import { CURATED_HANOI_RESTAURANTS } from '../server/modules/catalog/import/hanoi.js';
 import { runHanoiDemoImport } from '../server/services/hanoi-import.service.js';
 import {
   overpassEndpoint,

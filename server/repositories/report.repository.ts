@@ -1,4 +1,4 @@
-import { prisma, type DB } from '../db.js';
+import { prisma, type DB } from '../shared/db.js';
 import type { Prisma } from '@prisma/client';
 
 function accessWhere(role: string, userId: string): Prisma.OrderWhereInput {

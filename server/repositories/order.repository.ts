@@ -1,4 +1,4 @@
-import { lockRow, prisma, type DB } from '../db.js';
+import { lockRow, prisma, type DB } from '../shared/db.js';
 import type { Prisma } from '@prisma/client';
 
 export type OrderRow = {

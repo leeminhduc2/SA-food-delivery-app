@@ -1,6 +1,6 @@
 import type { RequestHandler } from 'express';
 import { resolveByToken } from '../../services/identity.service.js';
-import { tokenFrom } from './actor.js';
+import { tokenFrom } from '../../shared/http/actor.js';
 
 /**
  * HTTP middleware only: read the cookie, ask the identity service who it is.

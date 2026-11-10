@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import * as catalog from '../services/catalog.service.js';
-import { actor } from './middleware/actor.js';
+import { actor } from '../shared/http/actor.js';
 
 export const catalogRoutes = Router();
 

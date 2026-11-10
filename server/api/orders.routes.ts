@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import * as cart from '../services/cart.service.js';
 import * as orders from '../services/order.service.js';
-import { actor } from './middleware/actor.js';
+import { actor } from '../shared/http/actor.js';
 
 export const orderRoutes = Router();
 

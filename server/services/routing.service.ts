@@ -1,4 +1,8 @@
-import { isValidCoordinate, type LatLng, type WalkingRoute } from '../domain/delivery.js';
+import {
+  isValidCoordinate,
+  type LatLng,
+  type WalkingRoute,
+} from '../modules/location/domain/geo.js';
 import { RoutingProviderError, activeRoutingProvider } from '../integrations/routing.js';
 
 type CacheEntry = { value: WalkingRoute; expiresAt: number };

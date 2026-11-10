@@ -1,5 +1,5 @@
-import { transaction, type DB } from '../db.js';
-import type { User } from '../domain/types.js';
+import { transaction, type DB } from '../shared/db.js';
+import type { User } from '../shared/types.js';
 import * as notifications from '../repositories/notification.repository.js';
 
 /** Queue an in-app notification inside the caller's business transaction. */

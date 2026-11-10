@@ -5,7 +5,7 @@ import {
   hashString,
   MENU_PROFILES,
   type MenuProfileKey,
-} from '../server/domain/hanoi.js';
+} from '../server/modules/catalog/import/hanoi.js';
 
 /**
  * Generate the project-owned SVG illustrations used by the Hanoi demo data.

@@ -1,4 +1,4 @@
-import { transaction } from '../db.js';
+import { transaction } from '../shared/db.js';
 import {
   buildDemoMenu,
   coverImage,
@@ -10,13 +10,13 @@ import {
   etaFor,
   formatCuisine,
   type CuratedRestaurant,
-} from '../domain/hanoi.js';
+} from '../modules/catalog/import/hanoi.js';
 import {
   normalizeOsmElements,
   type ImportFailure,
   type MissingFieldCounts,
   type NormalizedRestaurant,
-} from '../domain/osm.js';
+} from '../modules/catalog/import/osm.js';
 import * as menuRepository from '../repositories/menu.repository.js';
 import * as importRepository from '../repositories/restaurant-import.repository.js';
 import {

@@ -1,4 +1,4 @@
-import { id, lockRow, prisma, type DB } from '../db.js';
+import { id, lockRow, prisma, type DB } from '../shared/db.js';
 
 export type DeliveryRow = {
   id: string;

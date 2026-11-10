@@ -1,4 +1,4 @@
-import { id, prisma, type DB } from '../db.js';
+import { id, prisma, type DB } from '../shared/db.js';
 
 export type AddressRow = {
   id: string;

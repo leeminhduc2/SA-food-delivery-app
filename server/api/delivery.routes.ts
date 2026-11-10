@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import * as delivery from '../services/delivery.service.js';
-import { actor } from './middleware/actor.js';
+import { actor } from '../shared/http/actor.js';
 
 export const deliveryRoutes = Router();
 

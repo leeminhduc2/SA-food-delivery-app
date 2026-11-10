@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { prisma } from '../server/db.js';
+import { prisma } from '../server/shared/db.js';
 import {
   auditLegacyChange,
   hideLegacy,

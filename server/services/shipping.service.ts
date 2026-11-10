@@ -5,7 +5,7 @@ import {
   type LatLng,
   type RouteGeometry,
   type ShippingConfig,
-} from '../domain/delivery.js';
+} from '../modules/location/domain/geo.js';
 import { GeocodingProviderError } from '../integrations/geocoding.js';
 import { RoutingProviderError } from '../integrations/routing.js';
 import * as restaurants from '../repositories/restaurant.repository.js';

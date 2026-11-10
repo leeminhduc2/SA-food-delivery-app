@@ -810,5 +810,5 @@ export const MOCK_IMAGE_PATHS = [
   ),
 ];
 
-/** Legacy demo rows created by `server/seed.ts`; hidden, never deleted. */
+/** Legacy demo rows created by `server/seed/seed.ts`; hidden, never deleted. */
 export const LEGACY_DEMO_RESTAURANT_IDS = ['saigon', 'pizza', 'green'];

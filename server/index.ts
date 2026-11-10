@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { createApp } from './app.js';
-import { prisma } from './db.js';
+import { prisma } from './shared/db.js';
 import { deliverNotifications } from './services/notification.service.js';
 import { reconcilePayments } from './services/payment.service.js';
 if (

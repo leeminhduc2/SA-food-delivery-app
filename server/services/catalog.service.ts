@@ -1,10 +1,10 @@
 import { z } from 'zod';
-import { transaction, type DB } from '../db.js';
-import { requireActor } from '../domain/authz.js';
-import { check } from '../domain/errors.js';
-import { imageSchema, linesSchema } from '../domain/schemas.js';
-import type { User } from '../domain/types.js';
-import * as audits from '../repositories/audit.repository.js';
+import { transaction, type DB } from '../shared/db.js';
+import { requireActor } from '../shared/authz.js';
+import { check } from '../shared/errors.js';
+import { imageSchema, linesSchema } from '../modules/catalog/domain/catalog.schemas.js';
+import type { User } from '../shared/types.js';
+import * as audits from '../shared/audit.repository.js';
 import * as menu from '../repositories/menu.repository.js';
 import * as restaurants from '../repositories/restaurant.repository.js';
 import {

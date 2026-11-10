@@ -1,4 +1,4 @@
-import { id, prisma, type DB } from '../db.js';
+import { id, prisma, type DB } from './db.js';
 import type { Prisma } from '@prisma/client';
 
 export async function audit(

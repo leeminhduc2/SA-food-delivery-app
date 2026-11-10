@@ -14,8 +14,8 @@ import {
   setRoutingProvider,
   type RoutingProvider,
 } from '../server/integrations/routing.js';
-import { shippingQuote } from '../server/domain/delivery.js';
-import { MOCK_RESTAURANTS } from '../server/domain/mock-catalog.js';
+import { shippingQuote } from '../server/modules/location/domain/geo.js';
+import { MOCK_RESTAURANTS } from '../server/seed/data/mock-catalog.js';
 
 const schema = 'test_delivery_' + randomUUID().replaceAll('-', '');
 const originalUrl =
@@ -159,12 +159,12 @@ async function quote() {
 
 before(async () => {
   await admin.query(`CREATE SCHEMA ${schema}`);
-  db = await import('../server/db.js');
+  db = await import('../server/shared/db.js');
   const { migrate } = await import('../server/migrate.js');
   await migrate();
-  const { seed } = await import('../server/seed.js');
+  const { seed } = await import('../server/seed/seed.js');
   await seed();
-  const { seedMockCatalog } = await import('../server/seed-mock.js');
+  const { seedMockCatalog } = await import('../server/seed/seed-mock.js');
   await seedMockCatalog();
   routing = await import('../server/services/routing.service.js');
   addressService = await import('../server/services/address.service.js');

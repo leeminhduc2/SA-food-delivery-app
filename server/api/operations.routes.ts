@@ -5,7 +5,7 @@ import * as notifications from '../services/notification.service.js';
 import * as reports from '../services/report.service.js';
 import * as reviews from '../services/review.service.js';
 import * as support from '../services/support.service.js';
-import { actor } from './middleware/actor.js';
+import { actor } from '../shared/http/actor.js';
 
 export const operationsRoutes = Router();
 
