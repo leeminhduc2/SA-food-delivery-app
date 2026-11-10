@@ -11,7 +11,7 @@ Requires Node.js 22 or newer and Docker Desktop running Linux containers, or Pos
 ```powershell
 npm ci
 Copy-Item .env.example .env
-docker compose up -d db
+docker compose up -d db redis
 npm run db:migrate
 npm run db:seed
 npm run db:seed:mock

@@ -1397,6 +1397,35 @@ paths:
                 items: { $ref: '#/components/schemas/Notification' }
         '401': { $ref: '#/components/responses/Unauthorized' }
 
+  /api/notifications/stream:
+    get:
+      tags: [Support]
+      operationId: streamNotifications
+      summary: Live notifications over Server-Sent Events
+      description: >-
+        Each new inbox notification arrives as a `notification` event whose `id` is the notification id.
+        On reconnect send `Last-Event-ID` to replay rows missed since then. Other events: `resync`
+        (the cursor is unknown, so reload the snapshot), `revoked` (the session ended), and `shutdown`
+        (the server is restarting). A comment heartbeat is sent every 25 seconds. Delivery is
+        at-most-once through Redis Pub/Sub, so the inbox remains the source of truth.
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - name: Last-Event-ID
+          in: header
+          required: false
+          schema: { type: string }
+      responses:
+        '200':
+          description: Event stream
+          content:
+            text/event-stream:
+              schema: { type: string }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429':
+          description: The user already holds the maximum of five open streams
+        '503':
+          description: Live notifications are not configured (REDIS_URL is unset)
+
   /api/notifications/read:
     post:
       tags: [Support]
