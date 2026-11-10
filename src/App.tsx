@@ -216,11 +216,17 @@ export function App() {
       active = false;
     };
   }, []);
-  const refresh = useCallback(async () => {
+  const refreshOrders = useCallback(async () => {
     if (!actor) return;
-    const [o, n] = await Promise.all([api('/orders'), api('/notifications')]);
-    setOrderList(o);
-    setNotifications(n);
+    setOrderList(await api('/orders'));
+  }, [actor]);
+  const refreshNotifications = useCallback(async () => {
+    if (!actor) return;
+    setNotifications(await api('/notifications'));
+  }, [actor]);
+  /** Role-specific dashboards and complaints. Polled slowly; not pushed. */
+  const refreshStaff = useCallback(async () => {
+    if (!actor) return;
     if (['ADMIN', 'RESTAURANT'].includes(actor.role)) {
       setReports(await api('/reports'));
       setManaged(await api('/manage/restaurants'));
@@ -228,6 +234,9 @@ export function App() {
     if (actor.role === 'ADMIN') setOverview(await api('/admin/overview'));
     if (['CUSTOMER', 'ADMIN'].includes(actor.role)) setComplaints(await api('/complaints'));
   }, [actor]);
+  const refresh = useCallback(async () => {
+    await Promise.all([refreshOrders(), refreshNotifications(), refreshStaff()]);
+  }, [refreshOrders, refreshNotifications, refreshStaff]);
   useEffect(() => {
     if (!actor) {
       setBasket({ items: [], version: 0 });
@@ -241,10 +250,67 @@ export function App() {
         .then(setBasket)
         .catch((e) => setError(errorText(e)));
     const interval = setInterval(() => {
-      refresh().catch((e) => setError(errorText(e)));
-    }, 7000);
+      refreshStaff().catch((e) => setError(errorText(e)));
+    }, 30000);
     return () => clearInterval(interval);
-  }, [actor, refresh]);
+  }, [actor, refresh, refreshStaff]);
+  // Live updates over Server-Sent Events. Pushes carry the notification;
+  // order and staff data are refetched only when a push says it changed.
+  useEffect(() => {
+    if (!actor) return;
+    let fallback: ReturnType<typeof setInterval> | undefined;
+    const startFallback = () => {
+      fallback ??= setInterval(() => {
+        refreshOrders().catch((e) => setError(errorText(e)));
+        refreshNotifications().catch((e) => setError(errorText(e)));
+      }, 30000);
+    };
+    const stopFallback = () => {
+      if (fallback) clearInterval(fallback);
+      fallback = undefined;
+    };
+    if (typeof EventSource === 'undefined') {
+      startFallback();
+      return stopFallback;
+    }
+    const source = new EventSource('/api/notifications/stream');
+    source.onopen = () => {
+      stopFallback();
+      // Replay covers missed notifications; the order snapshot is refreshed here.
+      refreshOrders().catch((e) => setError(errorText(e)));
+    };
+    source.addEventListener('notification', (event) => {
+      let row: any;
+      try {
+        row = JSON.parse((event as MessageEvent<string>).data);
+      } catch {
+        return;
+      }
+      setNotifications((rows) =>
+        rows.some((n) => n.id === row.id) ? rows : [{ ...row, read: false }, ...rows].slice(0, 50),
+      );
+      if (String(row.type).startsWith('ORDER_'))
+        refreshOrders().catch((e) => setError(errorText(e)));
+      if (row.type === 'COMPLAINT_RESOLVED') refreshStaff().catch((e) => setError(errorText(e)));
+    });
+    source.addEventListener('resync', () => {
+      refreshOrders().catch((e) => setError(errorText(e)));
+      refreshNotifications().catch((e) => setError(errorText(e)));
+    });
+    source.addEventListener('revoked', () => {
+      source.close();
+      setActor(null);
+    });
+    // The browser retries transient failures itself. A CLOSED source means the
+    // server refused the stream (stream disabled, limit hit, or not signed in).
+    source.onerror = () => {
+      if (source.readyState === EventSource.CLOSED) startFallback();
+    };
+    return () => {
+      source.close();
+      stopFallback();
+    };
+  }, [actor, refreshOrders, refreshNotifications, refreshStaff]);
   useEffect(() => {
     let active = true;
     if (!basket.items.length) {
