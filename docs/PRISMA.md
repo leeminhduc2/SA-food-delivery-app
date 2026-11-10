@@ -214,13 +214,13 @@ cannot preserve CHECK constraints or partial indexes) on a database with data.
 ## Developer commands
 
 ```powershell
-npm.cmd run db:generate   # regenerate the client after schema edits
-npm.cmd run db:validate   # validate prisma/schema.prisma
-npm.cmd run db:pull       # re-introspect (read-only; review the diff carefully)
-npm.cmd run db:studio     # Prisma Studio at http://localhost:5555
-npm.cmd run db:migrate    # apply pending migrations (prisma migrate deploy)
-npm.cmd exec prisma migrate status   # show applied and pending migrations
-npm.cmd run db:seed       # demo data; requires DEMO_MODE=true
+npm run db:generate   # regenerate the client after schema edits
+npm run db:validate   # validate prisma/schema.prisma
+npm run db:pull       # re-introspect (read-only; review the diff carefully)
+npm run db:studio     # Prisma Studio at http://localhost:5555
+npm run db:migrate    # apply pending migrations (prisma migrate deploy)
+npm exec prisma migrate status   # show applied and pending migrations
+npm run db:seed       # demo data; requires DEMO_MODE=true
 ```
 
 `prisma studio` opens a read/write browser UI. Treat it as an administrative
@@ -268,7 +268,7 @@ columns to `restaurants`, and nullable delivery snapshot columns to `orders`
 (`delivery_latitude`, `delivery_longitude`, `walking_distance_meters`,
 `walking_duration_seconds`). No existing row, order fee, relation or CHECK
 constraint is removed or rewritten. Existing orders remain unchanged and keep
-their historical delivery fee. Apply it with `npm.cmd run db:migrate`.
+their historical delivery fee. Apply it with `npm run db:migrate`.
 
 ## Known limitations
 

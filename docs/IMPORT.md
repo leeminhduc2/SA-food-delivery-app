@@ -36,9 +36,9 @@ configuration only.
 ## CLI
 
 ```powershell
-npm.cmd run import:restaurants -- --dry-run
-npm.cmd run import:restaurants
-npm.cmd run import:restaurants -- --bbox=20.9,105.7,21.1,105.9 --json
+npm run import:restaurants -- --dry-run
+npm run import:restaurants
+npm run import:restaurants -- --bbox=20.9,105.7,21.1,105.9 --json
 ```
 
 Dry runs fetch, validate, deduplicate, and classify records without writing
@@ -47,13 +47,13 @@ reported; the command exits non-zero only when every attempted write failed.
 
 ### Curated Hanoi demo import
 
-`npm.cmd run import:hanoi` reuses this pipeline for 30 real Hanoi OSM nodes and
+`npm run import:hanoi` reuses this pipeline for 30 real Hanoi OSM nodes and
 attaches deterministic demo menus. The public Overpass endpoint can take longer
 than 30 seconds for the combined node query, so the recommended command is:
 
 ```powershell
-npm.cmd run import:hanoi -- --dry-run
-npm.cmd run import:hanoi -- --timeout=120000
+npm run import:hanoi -- --dry-run
+npm run import:hanoi -- --timeout=120000
 ```
 
 The curated import does not create a second catalog or endpoint. Imported rows

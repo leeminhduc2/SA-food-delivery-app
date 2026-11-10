@@ -87,16 +87,16 @@ Review ODbL obligations before redistributing a derived database.
 
 ```powershell
 # Preview the live plan without writing restaurant/menu/job rows
-npm.cmd run import:hanoi -- --dry-run
+npm run import:hanoi -- --dry-run
 
 # Import all 30 curated records (long timeout recommended on the public endpoint)
-npm.cmd run import:hanoi -- --timeout=120000
+npm run import:hanoi -- --timeout=120000
 
 # Import one curated record
-npm.cmd run import:hanoi -- --only=node/3678370944 --timeout=120000
+npm run import:hanoi -- --only=node/3678370944 --timeout=120000
 
 # Regenerate the local SVG illustrations (only needed when profiles change)
-npm.cmd run assets:hanoi
+npm run assets:hanoi
 ```
 
 Flags: `--dry-run`, `--only=<type>/<id>` (repeatable), `--endpoint=<url>`,
