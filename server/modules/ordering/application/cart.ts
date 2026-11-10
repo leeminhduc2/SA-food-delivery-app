@@ -1,10 +1,10 @@
 import { z } from 'zod';
 import { transaction } from '../../../shared/db.js';
 import { check } from '../../../shared/errors.js';
-import { linesSchema } from '../../catalog/domain/catalog.schemas.js';
+import { linesSchema } from '../../catalog/index.js';
 import type { User } from '../../../shared/types.js';
 import * as cartRepository from '../infrastructure/cart.repository.js';
-import { priceCart } from '../../catalog/application/catalog.service.js';
+import { priceCart } from '../../catalog/index.js';
 
 const cartSchema = z.object({
   items: linesSchema.or(z.array(z.never()).length(0)),

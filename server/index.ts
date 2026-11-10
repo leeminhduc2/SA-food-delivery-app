@@ -1,8 +1,8 @@
 import 'dotenv/config';
 import { createApp } from './app.js';
 import { prisma } from './shared/db.js';
-import { deliverNotifications } from './modules/notification/notification.service.js';
-import { reconcilePayments } from './modules/payment/application/payment.service.js';
+import { deliverNotifications } from './modules/notification/index.js';
+import { reconcilePayments } from './modules/payment/index.js';
 if (
   process.env.NODE_ENV === 'production' &&
   (!process.env.DATABASE_URL ||

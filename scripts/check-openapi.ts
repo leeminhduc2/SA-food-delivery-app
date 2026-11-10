@@ -29,9 +29,16 @@ const routeFiles: Array<{ file: string; router: string; prefix: string }> = [
     prefix: '/api',
   },
   { file: 'server/modules/delivery/delivery.routes.ts', router: 'deliveryRoutes', prefix: '/api' },
+  { file: 'server/modules/review/review.routes.ts', router: 'reviewRoutes', prefix: '/api' },
+  { file: 'server/modules/support/support.routes.ts', router: 'supportRoutes', prefix: '/api' },
+  {
+    file: 'server/modules/notification/notification.routes.ts',
+    router: 'notificationRoutes',
+    prefix: '/api',
+  },
   {
     file: 'server/modules/backoffice/backoffice.routes.ts',
-    router: 'operationsRoutes',
+    router: 'backofficeRoutes',
     prefix: '/api',
   },
   {

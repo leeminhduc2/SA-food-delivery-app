@@ -4,7 +4,7 @@ import { check } from '../../shared/errors.js';
 import type { User } from '../../shared/types.js';
 import * as audits from '../../shared/audit.repository.js';
 import * as reviews from './review.repository.js';
-import { accessOrder } from '../ordering/application/order.service.js';
+import { accessOrder } from '../ordering/index.js';
 
 const reviewSchema = z.object({
   rating: z.number().int().min(1).max(5),

@@ -2,29 +2,21 @@ import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { id, transaction, type DB } from '../../../shared/db.js';
 import { check } from '../../../shared/errors.js';
-import { linesSchema } from '../../catalog/domain/catalog.schemas.js';
+import { linesSchema } from '../../catalog/index.js';
 import type { User } from '../../../shared/types.js';
 import * as audits from '../../../shared/audit.repository.js';
 import * as carts from '../infrastructure/cart.repository.js';
 import * as orders from '../infrastructure/order.repository.js';
-import {
-  assertMember,
-  priceCart,
-  releaseStock,
-} from '../../catalog/application/catalog.service.js';
-import { cancelDelivery, createDelivery } from '../../delivery/application/delivery.service.js';
-import { notify } from '../../notification/notification.service.js';
-import {
-  cancelPayment,
-  createPayment,
-  ensurePayment,
-} from '../../payment/application/payment.service.js';
-import { defaultAddressFor } from '../../location/application/address.service.js';
+import { assertMember, priceCart, releaseStock } from '../../catalog/index.js';
+import { cancelDelivery, createDelivery } from '../../delivery/index.js';
+import { notify } from '../../notification/index.js';
+import { cancelPayment, createPayment, ensurePayment } from '../../payment/index.js';
+import { defaultAddressFor } from '../../location/index.js';
 import {
   checkoutDeliveryQuote,
   deliveryInfoForRestaurantId,
   noAddressInfo,
-} from '../../location/application/shipping.service.js';
+} from '../../location/index.js';
 
 const checkoutSchema = z.object({
   items: linesSchema,

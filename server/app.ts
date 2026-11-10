@@ -4,16 +4,17 @@ import helmet from 'helmet';
 import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
 import { ZodError } from 'zod';
-import { addressRoutes } from './modules/location/address.routes.js';
-import { catalogRoutes } from './modules/catalog/catalog.routes.js';
-import { deliveryRoutes } from './modules/delivery/delivery.routes.js';
 import { docsRoutes } from './docs.routes.js';
-import { identityRoutes } from './modules/identity/identity.routes.js';
-import { importRoutes } from './modules/catalog/import/import.routes.js';
-import { authenticate } from './modules/identity/authenticate.middleware.js';
-import { operationsRoutes } from './modules/backoffice/backoffice.routes.js';
-import { orderRoutes } from './modules/ordering/ordering.routes.js';
-import { paymentActionRoutes, paymentRoutes } from './modules/payment/payment.routes.js';
+import { backofficeRoutes } from './modules/backoffice/index.js';
+import { catalogRoutes, importRoutes } from './modules/catalog/index.js';
+import { deliveryRoutes } from './modules/delivery/index.js';
+import { authenticate, identityRoutes } from './modules/identity/index.js';
+import { addressRoutes } from './modules/location/index.js';
+import { notificationRoutes } from './modules/notification/index.js';
+import { orderRoutes } from './modules/ordering/index.js';
+import { paymentActionRoutes, paymentRoutes } from './modules/payment/index.js';
+import { reviewRoutes } from './modules/review/index.js';
+import { supportRoutes } from './modules/support/index.js';
 import { AppError } from './shared/errors.js';
 import { isPrismaError, prisma } from './shared/db.js';
 
@@ -115,7 +116,10 @@ export function createApp() {
     orderRoutes,
     paymentActionRoutes,
     deliveryRoutes,
-    operationsRoutes,
+    reviewRoutes,
+    supportRoutes,
+    notificationRoutes,
+    backofficeRoutes,
     importRoutes,
   );
   app.use('/api', (_req, _res, next) =>

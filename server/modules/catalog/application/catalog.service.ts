@@ -12,7 +12,7 @@ import {
   deliveryInfoForRestaurant,
   noAddressInfo,
   type DeliveryInfo,
-} from '../../location/application/shipping.service.js';
+} from '../../location/index.js';
 
 /**
  * Hide retired provider columns from public responses. The columns stay in the

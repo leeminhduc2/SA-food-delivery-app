@@ -49,3 +49,9 @@ catalogRoutes.delete('/items/:id', async (req, res) => {
   await catalog.archiveItem(owner, String(req.params.id));
   res.json({ ok: true });
 });
+
+catalogRoutes.post('/admin/restaurants/:id/approval', async (req, res) => {
+  const administrator = actor(req, 'ADMIN');
+  await catalog.setApproval(administrator, String(req.params.id), req.body);
+  res.json({ ok: true });
+});

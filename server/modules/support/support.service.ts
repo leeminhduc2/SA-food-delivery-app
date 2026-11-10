@@ -4,8 +4,8 @@ import { check } from '../../shared/errors.js';
 import type { User } from '../../shared/types.js';
 import * as audits from '../../shared/audit.repository.js';
 import * as complaints from './complaint.repository.js';
-import { accessOrder } from '../ordering/application/order.service.js';
-import { notify } from '../notification/notification.service.js';
+import { accessOrder } from '../ordering/index.js';
+import { notify } from '../notification/index.js';
 
 export async function createComplaint(actor: User, orderId: string, raw: unknown): Promise<any> {
   const { content } = z.object({ content: z.string().trim().min(10).max(2000) }).parse(raw);
