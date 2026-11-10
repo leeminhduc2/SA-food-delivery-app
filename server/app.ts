@@ -43,8 +43,11 @@ export function createApp() {
       const elapsed = performance.now() - start;
       metrics.requests++;
       metrics.errors += Number(res.statusCode >= 500);
-      metrics.durations.push(elapsed);
-      if (metrics.durations.length > 10000) metrics.durations.shift();
+      // A stream stays open for minutes; timing it would distort p95/p99.
+      if (req.path !== '/api/notifications/stream') {
+        metrics.durations.push(elapsed);
+        if (metrics.durations.length > 10000) metrics.durations.shift();
+      }
       if (process.env.LOG_REQUESTS !== 'false')
         console.log(
           JSON.stringify({

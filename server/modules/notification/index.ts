@@ -2,3 +2,4 @@
 export { notificationRoutes } from './notification.routes.js';
 export { deliverNotifications, notify, outboxHealth } from './notification.service.js';
 export { closeNotificationBus, initNotificationBus } from './notification.bus.js';
+export { closeAllStreams, dispatchPush } from './notification.stream.js';

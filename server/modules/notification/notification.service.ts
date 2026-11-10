@@ -17,6 +17,11 @@ export async function inbox(actor: User): Promise<any[]> {
   return notifications.listInbox(actor.id);
 }
 
+/** Stream reconnect: notifications the client missed after its last event id. */
+export async function replaySince(userId: string, cursorId: string): Promise<any[] | null> {
+  return notifications.listAfter(userId, cursorId, 100);
+}
+
 export async function markRead(actor: User): Promise<void> {
   await notifications.markRead(actor.id);
 }

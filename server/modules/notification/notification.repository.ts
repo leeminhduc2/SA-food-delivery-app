@@ -25,6 +25,35 @@ export async function listInbox(userId: string, db: DB = prisma): Promise<any[]>
   });
 }
 
+/**
+ * Notifications after the cursor, ordered by (created_at, id). Rows written
+ * in one transaction share a timestamp, so the id breaks ties. Returns null
+ * when the cursor is unknown for this user (expired, foreign or mistyped).
+ */
+export async function listAfter(
+  userId: string,
+  cursorId: string,
+  limit: number,
+  db: DB = prisma,
+): Promise<any[] | null> {
+  const cursor = await db.notification.findFirst({
+    where: { id: cursorId, user_id: userId },
+    select: { created_at: true },
+  });
+  if (!cursor) return null;
+  return db.notification.findMany({
+    where: {
+      user_id: userId,
+      OR: [
+        { created_at: { gt: cursor.created_at } },
+        { created_at: cursor.created_at, id: { gt: cursorId } },
+      ],
+    },
+    orderBy: [{ created_at: 'asc' }, { id: 'asc' }],
+    take: limit,
+  });
+}
+
 export async function markRead(userId: string, db: DB = prisma): Promise<void> {
   await db.notification.updateMany({ where: { user_id: userId }, data: { read: true } });
 }

@@ -2,6 +2,12 @@ import 'dotenv/config';
 import { createApp } from './app.js';
 import { runBackgroundCycle } from './jobs.js';
 import { prisma } from './shared/db.js';
+import {
+  closeAllStreams,
+  closeNotificationBus,
+  dispatchPush,
+  initNotificationBus,
+} from './modules/notification/index.js';
 if (
   process.env.NODE_ENV === 'production' &&
   (!process.env.DATABASE_URL ||
@@ -17,6 +23,7 @@ if (!process.env.PAYMENT_WEBHOOK_SECRET || process.env.PAYMENT_WEBHOOK_SECRET.le
 await prisma.$queryRaw`SELECT 1`;
 const port = Number(process.env.PORT || 3001);
 const host = process.env.HOST || '127.0.0.1';
+initNotificationBus(dispatchPush);
 const server = createApp().listen(port, host, () =>
   console.log('Bếp API: http://' + (host === '0.0.0.0' ? 'localhost' : host) + ':' + port),
 );
@@ -35,8 +42,11 @@ const worker = setInterval(async () => {
 for (const signal of ['SIGINT', 'SIGTERM'])
   process.on(signal, () => {
     clearInterval(worker);
+    // Open SSE responses never end on their own; close them so server.close() can finish.
+    closeAllStreams();
     server.close(async () => {
       while (running) await new Promise((resolve) => setTimeout(resolve, 50));
+      await closeNotificationBus();
       await prisma.$disconnect();
       process.exit(0);
     });
