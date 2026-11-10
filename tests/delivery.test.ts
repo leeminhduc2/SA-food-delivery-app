@@ -270,6 +270,10 @@ test('address validation, geocoding failures and coordinate bounds', async () =>
 
 test('catalog uses pedestrian distance, sorts nearest first and keeps the menu intact', async () => {
   geocodeCalls = 0;
+  // The address save prefetched and persisted quotes. Clearing the in-memory
+  // route cache proves the persisted snapshots are what serve these reads.
+  routing.clearRoutingCache();
+  const callsBeforeList = routingCalls;
   const list = await request('/restaurants');
   assert.equal(list.status, 200);
   const ids = list.data.map((row: any) => row.id);
@@ -313,17 +317,23 @@ test('catalog uses pedestrian distance, sorts nearest first and keeps the menu i
     nearby.data.map((row: any) => row.id),
     ids,
   );
-  const callsBeforeCacheHit = routingCalls;
+  assert.equal(routingCalls, callsBeforeList, 'valid persisted quotes must not call the router');
+  const callsBeforeReuse = routingCalls;
+  routing.clearRoutingCache();
   await request('/restaurants/nearby');
+  await request('/restaurants/mock-restaurant-01');
+  await request('/restaurants/mock-restaurant-01/shipping-quote');
   assert.equal(
     routingCalls,
-    callsBeforeCacheHit,
-    'repeated catalog loads must use the route cache',
+    callsBeforeReuse,
+    'catalog, detail and shipping-quote must reuse stored quotes without rerouting',
   );
   assert.equal(geocodeCalls, 0, 'stored restaurant coordinates must not be re-geocoded');
 });
 
 test('one restaurant routing failure does not break the rest of the catalog', async () => {
+  // Drop the fresh quotes from the prefetch so the failing route is recomputed.
+  await db.prisma.deliveryQuote.deleteMany();
   routeMode = 'partial-error';
   routing.clearRoutingCache();
   const list = await request('/restaurants');
@@ -418,6 +428,8 @@ test('unsupported and unavailable routes fail checkout explicitly', async () => 
   assert.equal(blocked.data.code, 'DELIVERY_UNSUPPORTED');
 
   await saveAddress('18 Phố Hàng Bạc, Hoàn Kiếm, Hà Nội', 21.03, 105.85);
+  // The save prefetched valid quotes; remove them before simulating an outage.
+  await db.prisma.deliveryQuote.deleteMany();
   routing.clearRoutingCache();
   routeMode = 'provider-error';
   const providerQuote = await quote();
@@ -498,6 +510,16 @@ test('a customer without an address still sees the catalog and gets a clear chec
   assert.equal(list.status, 200);
   assert.equal(list.data.length, 10);
   assert.equal(list.data[0].deliveryInfo.status, 'NO_ADDRESS');
+  const preview = await request(
+    '/checkout/quote',
+    'POST',
+    { items: [{ itemId: 'mock-item-001', quantity: 1, optionIds: [] }] },
+    cookie,
+  );
+  assert.equal(preview.status, 200);
+  assert.equal(preview.data.deliveryInfo.status, 'NO_ADDRESS');
+  assert.equal(preview.data.deliveryFee, 0);
+  assert.equal(preview.data.total, preview.data.subtotal);
   const checkout = await request(
     '/checkout',
     'POST',
@@ -566,13 +588,13 @@ test('changing a restaurant address invalidates old coordinates and resolves onc
   assert.equal(changed?.longitude, null);
   assert.equal(changed?.geocoded_address, null);
 
-  await saveAddress('18 Phố Hàng Bạc, Hoàn Kiếm, Hà Nội', 21.03, 105.85);
   routing.clearRoutingCache();
   geocodeCalls = 0;
+  await saveAddress('18 Phố Hàng Bạc, Hoàn Kiếm, Hà Nội', 21.03, 105.85);
+  assert.ok(geocodeCalls >= 1, 'prefetch geocodes a restaurant with no stored location once');
   const quoted = await request('/restaurants/mock-restaurant-02/shipping-quote');
   assert.equal(quoted.status, 200, JSON.stringify(quoted.data));
   assert.equal(quoted.data.supported, true);
-  assert.ok(geocodeCalls >= 1, 'a missing restaurant location should be geocoded once');
   const resolved = await repository.findById(original.id);
   assert.equal(resolved?.address, newAddress);
   assert.equal(resolved?.latitude, 21.0301);

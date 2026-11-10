@@ -5,6 +5,8 @@
  * Safe to call more than once.
  */
 import { setDeliveryOrderGateway } from './delivery/index.js';
+import { prefetchDeliveryQuotes } from './catalog/index.js';
+import { setAddressSavedListener } from './location/index.js';
 import {
   deliveryOrderGateway,
   paymentOrderGateway,
@@ -20,4 +22,7 @@ export function registerModules(): void {
   setPaymentOrderGateway(paymentOrderGateway);
   setDeliveryOrderGateway(deliveryOrderGateway);
   registerOrderingHandlers();
+  // Saving a delivery address prefetches one persisted quote per visible
+  // restaurant; the catalog owns restaurant knowledge, location owns the event.
+  setAddressSavedListener(prefetchDeliveryQuotes);
 }

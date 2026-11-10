@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { Prisma } from '@prisma/client';
 import { transaction, type DB } from '../../../shared/db.js';
 import { requireActor } from '../../../shared/authz.js';
 import { check } from '../../../shared/errors.js';
@@ -7,7 +8,12 @@ import type { User } from '../../../shared/types.js';
 import * as audits from '../../../shared/audit.repository.js';
 import * as menu from '../infrastructure/menu.repository.js';
 import * as restaurants from '../infrastructure/restaurant.repository.js';
-import { deliveryAddressForActor, noAddressInfo, type DeliveryInfo } from '../../location/index.js';
+import {
+  deliveryAddressForActor,
+  forgetRestaurantQuotes,
+  noAddressInfo,
+  type DeliveryInfo,
+} from '../../location/index.js';
 import { deliveryInfoForRestaurant } from './restaurant-location.js';
 import * as listing from '../infrastructure/restaurant-listing.projection.js';
 
@@ -38,29 +44,66 @@ export const restaurantSchema = z.object({
   image: imageSchema.default(''),
 });
 
+/** PATCH accepts any subset; coordinates must be supplied together. */
+export const restaurantPatchSchema = z
+  .object({
+    name: z.string().trim().min(2).max(100),
+    description: z.string().max(500),
+    address: z.string().trim().min(8).max(300),
+    cuisine: z.string().min(2).max(60),
+    image: imageSchema,
+    accepting_orders: z.boolean(),
+    catalog_visible: z.boolean(),
+    latitude: z.number().min(-90).max(90),
+    longitude: z.number().min(-180).max(180),
+  })
+  .partial()
+  .refine((value) => Object.keys(value).length > 0, 'Supply at least one field to update.')
+  .refine(
+    (value) => (value.latitude === undefined) === (value.longitude === undefined),
+    'Latitude and longitude must be supplied together.',
+  );
+
+const optionSchema = z.object({
+  id: z.string().min(1).max(60),
+  name: z.string().min(1).max(80),
+  extraPrice: z.number().int().min(0).max(1000000),
+});
+
+const optionsSchema = z
+  .array(optionSchema)
+  .max(10)
+  .refine(
+    (options) => new Set(options.map((option) => option.id)).size === options.length,
+    'Option identifiers must be unique.',
+  );
+
 export const itemSchema = z.object({
   name: z.string().trim().min(2).max(100),
   description: z.string().max(500).default(''),
   price: z.number().int().min(1000).max(10000000),
   stock: z.number().int().min(0).max(100000),
   available: z.boolean(),
+  visible: z.boolean().default(true),
   image: imageSchema.default(''),
   category: z.string().min(1).max(60).default('Main dishes'),
-  options: z
-    .array(
-      z.object({
-        id: z.string().min(1).max(60),
-        name: z.string().min(1).max(80),
-        extraPrice: z.number().int().min(0).max(1000000),
-      }),
-    )
-    .max(10)
-    .refine(
-      (options) => new Set(options.map((option) => option.id)).size === options.length,
-      'Option identifiers must be unique.',
-    )
-    .default([]),
+  options: optionsSchema.default([]),
 });
+
+export const itemPatchSchema = z
+  .object({
+    name: z.string().trim().min(2).max(100),
+    description: z.string().max(500),
+    price: z.number().int().min(1000).max(10000000),
+    stock: z.number().int().min(0).max(100000),
+    available: z.boolean(),
+    visible: z.boolean(),
+    image: imageSchema,
+    category: z.string().min(1).max(60),
+    options: optionsSchema,
+  })
+  .partial()
+  .refine((value) => Object.keys(value).length > 0, 'Supply at least one field to update.');
 
 const listQuerySchema = z.object({
   q: z.string().max(100).default(''),
@@ -163,13 +206,15 @@ export async function getRestaurant(actor: User | undefined, restaurantId: strin
     const privileged = requireActor(actor, 'RESTAURANT', 'ADMIN');
     await assertMember(undefined, privileged, restaurant.id);
   }
+  const privilegedViewer =
+    actor?.role === 'ADMIN' ||
+    Boolean(actor && (await restaurants.isMember(actor.id, restaurant.id)));
   if (!restaurant.catalog_visible) {
-    const privileged =
-      actor?.role === 'ADMIN' ||
-      Boolean(actor && (await restaurants.isMember(actor.id, restaurant.id)));
-    check(privileged, 404, 'NOT_FOUND', 'Restaurant not found.');
+    check(privilegedViewer, 404, 'NOT_FOUND', 'Restaurant not found.');
   }
-  const items = await menu.listByRestaurant(restaurant.id);
+  const items = await menu.listByRestaurant(restaurant.id, {
+    includeHidden: privilegedViewer,
+  });
   const reviews = await listing.listVisibleReviews(restaurant.id);
   const address = await deliveryAddressForActor(actor?.id);
   const deliveryInfo = await boundedDelivery(
@@ -178,11 +223,39 @@ export async function getRestaurant(actor: User | undefined, restaurantId: strin
   return { ...publicRestaurant(restaurant), items, reviews, deliveryInfo };
 }
 
+/** Public menu for one restaurant; hidden dishes never leave the server. */
+export async function listPublicItems(
+  actor: User | undefined,
+  restaurantId: string,
+): Promise<any[]> {
+  const restaurant = await restaurants.findById(restaurantId);
+  check(restaurant, 404, 'NOT_FOUND', 'Restaurant not found.');
+  const privileged =
+    actor?.role === 'ADMIN' ||
+    Boolean(actor && (await restaurants.isMember(actor.id, restaurantId)));
+  if (restaurant.status !== 'APPROVED' || !restaurant.catalog_visible)
+    check(privileged, 404, 'NOT_FOUND', 'Restaurant not found.');
+  return menu.listByRestaurant(restaurantId, { includeHidden: privileged });
+}
+
+export async function getItem(actor: User | undefined, itemId: string): Promise<any> {
+  const item = await menu.findById(itemId);
+  check(item, 404, 'NOT_FOUND', 'Item not found.');
+  if (!item.visible) {
+    const privileged =
+      actor?.role === 'ADMIN' ||
+      Boolean(actor && (await restaurants.isMember(actor.id, item.restaurant_id)));
+    check(privileged, 404, 'NOT_FOUND', 'Item not found.');
+  }
+  return item;
+}
+
 export async function createRestaurant(actor: User, raw: unknown): Promise<any> {
   const input = restaurantSchema.parse(raw);
   return transaction(async (db) => {
     const row = await restaurants.insert(input, db);
-    await restaurants.addMember(actor.id, row.id, db);
+    // An administrator creating a kitchen does not become its owner.
+    if (actor.role !== 'ADMIN') await restaurants.addMember(actor.id, row.id, db);
     await audits.audit(actor.id, 'RESTAURANT_REGISTERED', row.id, {}, db);
     return row;
   });
@@ -193,13 +266,38 @@ export async function updateRestaurant(
   restaurantId: string,
   raw: unknown,
 ): Promise<any> {
-  const input = restaurantSchema.parse(raw);
-  return transaction(async (db) => {
+  const input = restaurantPatchSchema.parse(raw);
+  const row = await transaction(async (db) => {
     await assertMember(db, actor, restaurantId);
-    const row = await restaurants.update(restaurantId, input, db);
-    await audits.audit(actor.id, 'RESTAURANT_UPDATED', restaurantId, {}, db);
-    return row;
+    const updated = await restaurants.updatePartial(restaurantId, input, db);
+    check(updated, 404, 'NOT_FOUND', 'Restaurant not found.');
+    await audits.audit(
+      actor.id,
+      'RESTAURANT_UPDATED',
+      restaurantId,
+      {
+        fields: Object.keys(input),
+      },
+      db,
+    );
+    return updated;
   });
+  // A profile write may move the kitchen or change what it sells; its price
+  // snapshots can no longer be trusted.
+  await forgetRestaurantQuotes(restaurantId);
+  return publicRestaurant(row);
+}
+
+/** Soft archive: hides the kitchen and stops orders without deleting history. */
+export async function archiveRestaurant(actor: User, restaurantId: string): Promise<void> {
+  await transaction(async (db) => {
+    const row = await restaurants.findById(restaurantId, db);
+    check(row, 404, 'NOT_FOUND', 'Restaurant not found.');
+    await assertMember(db, actor, restaurantId);
+    await restaurants.archive(restaurantId, db);
+    await audits.audit(actor.id, 'RESTAURANT_ARCHIVED', restaurantId, {}, db);
+  });
+  await forgetRestaurantQuotes(restaurantId);
 }
 
 export async function listManaged(actor: User): Promise<any[]> {
@@ -220,48 +318,44 @@ export async function createItem(actor: User, restaurantId: string, raw: unknown
         price: input.price,
         stock: input.stock,
         available: input.available,
+        visible: input.visible,
         image: input.image,
         options: input.options,
       },
       db,
     );
     await audits.audit(actor.id, 'ITEM_CREATED', row.id, {}, db);
-    return row;
+    return { ...row, category: input.category };
   });
 }
 
 export async function updateItem(actor: User, itemId: string, raw: unknown): Promise<any> {
-  const input = itemSchema.parse(raw);
+  const input = itemPatchSchema.parse(raw);
   return transaction(async (db) => {
     const old = await menu.findForUpdate(itemId, db);
     check(old, 404, 'NOT_FOUND', 'Item not found.');
     await assertMember(db, actor, old.restaurant_id);
-    const category = await menu.upsertMenu(old.restaurant_id, input.category, db);
-    const row = await menu.update(
-      old.id,
-      {
-        name: input.name,
-        description: input.description,
-        price: input.price,
-        stock: input.stock,
-        available: input.available,
-        image: input.image,
-        options: input.options,
-        menuId: category.id,
-      },
-      db,
-    );
+    const fields: Prisma.MenuItemUncheckedUpdateInput = {};
+    for (const key of ['name', 'description', 'price', 'stock', 'available', 'visible', 'image'])
+      if (input[key as keyof typeof input] !== undefined)
+        (fields as any)[key] = input[key as keyof typeof input];
+    if (input.options !== undefined) fields.options = input.options as Prisma.InputJsonValue;
+    if (input.category !== undefined) {
+      const category = await menu.upsertMenu(old.restaurant_id, input.category, db);
+      fields.menu_id = category.id;
+    }
+    const row = await menu.updatePartial(old.id, fields, db);
     await audits.audit(
       actor.id,
       'ITEM_UPDATED',
       old.id,
       {
-        oldPrice: old.price,
-        newPrice: input.price,
+        ...(input.price !== undefined ? { oldPrice: old.price, newPrice: input.price } : {}),
+        fields: Object.keys(input),
       },
       db,
     );
-    return row;
+    return { ...row, category: input.category ?? old.category };
   });
 }
 
@@ -301,7 +395,7 @@ export async function priceCart(db: DB, raw: unknown, reserve = false): Promise<
     ? await restaurants.findForShare(first.restaurant_id, db)
     : await restaurants.findById(first.restaurant_id, db);
   check(
-    restaurant?.status === 'APPROVED' && restaurant.catalog_visible,
+    restaurant?.status === 'APPROVED' && restaurant.catalog_visible && restaurant.accepting_orders,
     409,
     'UNAVAILABLE',
     'This restaurant is not accepting orders.',
@@ -317,6 +411,7 @@ export async function priceCart(db: DB, raw: unknown, reserve = false): Promise<
       'SINGLE_RESTAURANT',
       'Your basket must contain items from one restaurant.',
     );
+    check(item.visible, 409, 'UNAVAILABLE', `${item.name} is no longer available.`);
     check(item.available, 409, 'UNAVAILABLE', `${item.name} is no longer available.`);
     check(
       item.stock >= quantity,

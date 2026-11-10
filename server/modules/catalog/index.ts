@@ -11,4 +11,5 @@ export {
   checkoutDeliveryQuote,
   deliveryInfoForRestaurantId,
 } from './application/restaurant-location.js';
+export { prefetchDeliveryQuotes } from './application/quote-prefetch.js';
 export { lineSchema, linesSchema } from './domain/catalog.schemas.js';

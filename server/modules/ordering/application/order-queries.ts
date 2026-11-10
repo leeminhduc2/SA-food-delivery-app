@@ -57,7 +57,8 @@ export async function quote(actor: User, items: unknown): Promise<any> {
   if (!address)
     return {
       ...base,
-      total: base.subtotal + base.deliveryFee,
+      deliveryFee: 0,
+      total: base.subtotal,
       deliveryInfo: noAddressInfo(),
     };
   const info = await deliveryInfoForRestaurantId(base.restaurantId, address, {

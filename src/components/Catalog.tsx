@@ -6,10 +6,12 @@ export function Dish({
   item,
   busy,
   add,
+  disabled = false,
 }: {
   item: any;
   busy: boolean;
   add: (i: any, o: string[]) => void;
+  disabled?: boolean;
 }) {
   const [options, setOptions] = useState<string[]>([]);
   return (
@@ -44,11 +46,13 @@ export function Dish({
           </strong>
           <button
             className="add-button"
-            disabled={busy || !item.available || item.stock === 0}
+            disabled={busy || disabled || !item.available || item.stock === 0}
             aria-label={`Add ${item.name}`}
             onClick={() => add(item, options)}
           >
-            {!item.available || !item.stock ? (
+            {disabled ? (
+              'Paused'
+            ) : !item.available || !item.stock ? (
               'Sold out'
             ) : (
               <>

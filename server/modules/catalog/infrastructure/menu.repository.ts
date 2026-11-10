@@ -10,8 +10,10 @@ export type MenuItemRow = {
   price: number;
   image: string;
   available: boolean;
+  visible: boolean;
   stock: number;
   options: { id: string; name: string; extraPrice: number }[];
+  category?: string;
 };
 
 function withOptions(
@@ -25,9 +27,16 @@ function withOptions(
   };
 }
 
-export async function listByRestaurant(restaurantId: string, db: DB = prisma): Promise<any[]> {
+export async function listByRestaurant(
+  restaurantId: string,
+  options: { includeHidden?: boolean } = {},
+  db: DB = prisma,
+): Promise<any[]> {
   const rows = await db.menuItem.findMany({
-    where: { restaurant_id: restaurantId },
+    where: {
+      restaurant_id: restaurantId,
+      ...(options.includeHidden ? {} : { visible: true }),
+    },
     include: { menu: { select: { name: true } } },
     orderBy: [{ menu: { name: 'asc' } }, { name: 'asc' }],
   });
@@ -38,8 +47,13 @@ export async function listByRestaurant(restaurantId: string, db: DB = prisma): P
 }
 
 export async function findById(itemId: string, db: DB = prisma): Promise<MenuItemRow | undefined> {
-  const row = await db.menuItem.findUnique({ where: { id: itemId } });
-  return row ? withOptions(row) : undefined;
+  const row = await db.menuItem.findUnique({
+    where: { id: itemId },
+    include: { menu: { select: { name: true } } },
+  });
+  if (!row) return undefined;
+  const { menu, ...item } = row;
+  return { ...withOptions(item), category: menu.name };
 }
 
 export async function findForUpdate(
@@ -131,6 +145,7 @@ export async function insert(
     price: number;
     stock: number;
     available: boolean;
+    visible: boolean;
     image: string;
     options: unknown;
   },
@@ -146,6 +161,7 @@ export async function insert(
       price: item.price,
       stock: item.stock,
       available: item.available,
+      visible: item.visible,
       image: item.image,
       options: item.options as Prisma.InputJsonValue,
     },
@@ -161,6 +177,7 @@ export async function update(
     price: number;
     stock: number;
     available: boolean;
+    visible: boolean;
     image: string;
     options: unknown;
     menuId: string;
@@ -175,6 +192,7 @@ export async function update(
       price: item.price,
       stock: item.stock,
       available: item.available,
+      visible: item.visible,
       image: item.image,
       options: item.options as Prisma.InputJsonValue,
       menu_id: item.menuId,
@@ -183,8 +201,21 @@ export async function update(
   return withOptions(row);
 }
 
+/** Partial update used by PATCH; only supplied fields are written. */
+export async function updatePartial(
+  itemId: string,
+  fields: Prisma.MenuItemUncheckedUpdateInput,
+  db: DB = prisma,
+): Promise<MenuItemRow> {
+  const row = await db.menuItem.update({ where: { id: itemId }, data: fields });
+  return withOptions(row);
+}
+
 export async function archive(itemId: string, db: DB = prisma): Promise<void> {
-  await db.menuItem.updateMany({ where: { id: itemId }, data: { available: false } });
+  await db.menuItem.updateMany({
+    where: { id: itemId },
+    data: { available: false, visible: false },
+  });
 }
 
 export async function reserve(itemId: string, quantity: number, db: DB = prisma): Promise<void> {

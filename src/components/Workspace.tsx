@@ -17,6 +17,10 @@ export function RestaurantForm({
       cuisine: r?.cuisine || 'Vietnamese',
       image: r?.image || '',
     }),
+    [flags, setFlags] = useState({
+      catalog_visible: r?.catalog_visible ?? true,
+      accepting_orders: r?.accepting_orders ?? true,
+    }),
     [error, setError] = useState(''),
     [busy, setBusy] = useState(false);
   return (
@@ -25,7 +29,10 @@ export function RestaurantForm({
         e.preventDefault();
         setBusy(true);
         try {
-          await api('/restaurants' + (r ? '/' + r.id : ''), r ? 'PATCH' : 'POST', form);
+          await api('/restaurants' + (r ? '/' + r.id : ''), r ? 'PATCH' : 'POST', {
+            ...form,
+            ...(r ? flags : {}),
+          });
           await saved();
         } catch (e) {
           setError(errorText(e));
@@ -48,10 +55,60 @@ export function RestaurantForm({
           onChange={(e) => setForm({ ...form, [k]: e.target.value })}
         />
       ))}
+      {r && (
+        <>
+          <label className="option">
+            <input
+              type="checkbox"
+              checked={flags.catalog_visible}
+              onChange={(e) => setFlags({ ...flags, catalog_visible: e.target.checked })}
+            />
+            Listed in public catalog
+          </label>
+          <label className="option">
+            <input
+              type="checkbox"
+              checked={flags.accepting_orders}
+              onChange={(e) => setFlags({ ...flags, accepting_orders: e.target.checked })}
+            />
+            Accepting orders
+          </label>
+          <p className="small-text muted">
+            Hiding the kitchen removes it from public search. Pausing orders keeps it visible with
+            an “Orders paused” badge, but blocks checkout until you resume.
+          </p>
+        </>
+      )}
       {!r && <p className="info">Your kitchen will be listed after administrator approval.</p>}
       <button className="button full" disabled={busy}>
         {busy ? 'Saving…' : r ? 'Save kitchen' : 'Submit for approval'}
       </button>
+      {r && (
+        <button
+          type="button"
+          className="text-button full"
+          disabled={busy}
+          onClick={async () => {
+            if (
+              !window.confirm(
+                'Archive this kitchen? It will be hidden from customers and stop accepting orders. Existing orders are kept.',
+              )
+            )
+              return;
+            setBusy(true);
+            try {
+              await api('/restaurants/' + r.id, 'DELETE');
+              await saved();
+            } catch (e) {
+              setError(errorText(e));
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          Archive kitchen
+        </button>
+      )}
     </form>
   );
 }
@@ -71,6 +128,7 @@ export function ItemForm({
       stock: i?.stock ?? 30,
       category: i?.category || 'House favorites',
       available: i?.available ?? true,
+      visible: i?.visible ?? true,
       image: i?.image || '',
     }),
     [options, setOptions] = useState<any[]>(i?.options || []),
@@ -84,7 +142,7 @@ export function ItemForm({
         try {
           await api(
             i ? '/items/' + i.id : `/restaurants/${restaurantId}/items`,
-            i ? 'PUT' : 'POST',
+            i ? 'PATCH' : 'POST',
             { ...form, options },
           );
           await saved();
@@ -147,11 +205,23 @@ export function ItemForm({
       <label className="option">
         <input
           type="checkbox"
+          checked={form.visible}
+          onChange={(e) => setForm({ ...form, visible: e.target.checked })}
+        />
+        Show on public menu
+      </label>
+      <label className="option">
+        <input
+          type="checkbox"
           checked={form.available}
           onChange={(e) => setForm({ ...form, available: e.target.checked })}
         />
-        Available on menu
+        Available to order
       </label>
+      <p className="small-text muted">
+        Hidden dishes stay in your menu and order history but are not shown to customers.
+        Unavailable dishes stay visible and show “Sold out”.
+      </p>
       <h3>Optional extras</h3>
       {options.map((o, index) => (
         <div className="option-editor" key={o.id}>
@@ -205,6 +275,12 @@ export function ItemForm({
           className="text-button full"
           disabled={busy}
           onClick={async () => {
+            if (
+              !window.confirm(
+                'Archive this dish? It will be hidden and unavailable for new orders. Past orders are kept.',
+              )
+            )
+              return;
             setBusy(true);
             try {
               await api('/items/' + i.id, 'DELETE');

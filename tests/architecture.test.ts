@@ -4,6 +4,57 @@ import { randomUUID } from 'node:crypto';
 import type { Server } from 'node:http';
 import { after, before, test } from 'node:test';
 import pg from 'pg';
+import {
+  setGeocodingProvider,
+  type GeocodingProvider,
+} from '../server/modules/location/infrastructure/geocoding.client.js';
+import {
+  setRoutingProvider,
+  type RoutingProvider,
+} from '../server/modules/location/infrastructure/routing.client.js';
+
+// Checkout now requires a saved, routed address. Keep these integration tests
+// hermetic by replacing the external providers with instant fakes.
+const fakeGeocoding: GeocodingProvider = {
+  name: 'architecture-fake-geocoder',
+  async search(query) {
+    return {
+      address: query,
+      formattedAddress: query + ', Hà Nội, Việt Nam',
+      latitude: 21.0301,
+      longitude: 105.8527,
+      provider: 'architecture-fake-geocoder',
+    };
+  },
+  async reverse(latitude, longitude) {
+    return {
+      address: `${latitude}, ${longitude}`,
+      formattedAddress: `Saved address (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`,
+      latitude,
+      longitude,
+      provider: 'architecture-fake-geocoder',
+    };
+  },
+};
+const fakeRouting: RoutingProvider = {
+  name: 'architecture-fake-router',
+  async walkingRoute(from, to) {
+    return {
+      distanceMeters: 1_200,
+      durationSeconds: 1_000,
+      routeGeometry: {
+        type: 'LineString',
+        coordinates: [
+          [from.longitude, from.latitude],
+          [to.longitude, to.latitude],
+        ],
+      },
+      provider: 'architecture-fake-router',
+    };
+  },
+};
+setGeocodingProvider(fakeGeocoding);
+setRoutingProvider(fakeRouting);
 const schema = 'test_' + randomUUID().replaceAll('-', '');
 const originalUrl =
   process.env.TEST_DATABASE_URL ||
@@ -99,6 +150,13 @@ before(async () => {
     assert.equal(r.status, 200);
     cookies[actor] = r.headers.get('set-cookie')!.split(';')[0];
   }
+  const saved = await request(
+    '/users/me/delivery-address',
+    'PUT',
+    { address: '12 Test Street, District 1', latitude: 21.03, longitude: 105.85 },
+    'customer',
+  );
+  assert.equal(saved.status, 200, JSON.stringify(saved.data));
 });
 after(async () => {
   if (server)
@@ -142,6 +200,17 @@ test('authentication, CSRF, registration, profile, role and account suspension',
   });
   assert.equal(registration.status, 201);
   cookies.buyer2 = registration.headers.get('set-cookie')!.split(';')[0];
+  assert.equal(
+    (
+      await request(
+        '/users/me/delivery-address',
+        'PUT',
+        { address: '12 Test Street, District 1', latitude: 21.03, longitude: 105.85 },
+        'buyer2',
+      )
+    ).status,
+    200,
+  );
   assert.equal(
     (await request('/auth/me', 'PATCH', { name: 'New name' }, 'buyer2')).data.name,
     'New name',
@@ -188,7 +257,7 @@ test('checkout retry is atomic and payload conflicts are rejected', async () => 
   const body = {
     items: lines,
     address: '12 Test Street, District 1',
-    expectedTotal: 80000,
+    expectedTotal: 75_000,
     idempotencyKey: key,
     total: 1,
   };
@@ -200,9 +269,11 @@ test('checkout retry is atomic and payload conflicts are rejected', async () => 
     JSON.stringify(responses),
   );
   assert.equal(new Set(responses.map((r) => r.data.id)).size, 1);
-  assert.equal(responses[0].data.total, 80000);
+  assert.equal(responses[0].data.total, 75_000);
+  // A client-supplied address is ignored, so the conflict must come from a
+  // field that is actually part of the canonical order payload.
   assert.equal(
-    (await request('/checkout', 'POST', { ...body, address: '99 Different Street' })).data.code,
+    (await request('/checkout', 'POST', { ...body, note: 'different' })).data.code,
     'IDEMPOTENCY_CONFLICT',
   );
   assert.equal(
@@ -215,7 +286,7 @@ test('last serving concurrency permits exactly one checkout and never negative s
   const body = {
     items: [{ itemId: 'banhmi', quantity: 1, optionIds: [] }],
     address: '12 Test Street, District 1',
-    expectedTotal: 50000,
+    expectedTotal: 45_000,
   };
   const responses = await Promise.all([
     request('/checkout', 'POST', { ...body, idempotencyKey: randomUUID() }),
@@ -255,7 +326,7 @@ test('all-or-nothing checkout, price revalidation, unavailable items, and option
   const quote = await request('/checkout/quote', 'POST', {
     items: [{ itemId: 'pho', quantity: 2, optionIds: ['extra'] }],
   });
-  assert.equal(quote.data.total, 175000);
+  assert.equal(quote.data.total, 170_000);
   await schemaPool.query("UPDATE menu_items SET available=false WHERE id='rolls'");
   assert.equal(
     (

@@ -25,19 +25,26 @@ export async function seedMockCatalog(): Promise<{
   restaurants: number;
   itemsCreated: number;
   legacyHidden: number;
+  initialized: boolean;
 }> {
   if (process.env.DEMO_MODE !== 'true')
     throw new Error('Mock catalog seeding is only available with DEMO_MODE=true.');
 
   let itemsCreated = 0;
   let legacyHidden = 0;
+  let initialized = false;
 
   await transaction(async (db) => {
+    // The marker makes initialization one-time. Later runs may fill in missing
+    // demo rows, but they must never overwrite an operator's edits or flags.
+    const marker = await db.seedRun.findUnique({ where: { name: 'mock-catalog' } });
+    initialized = !marker;
+
     for (const restaurant of MOCK_RESTAURANTS) {
       await db.restaurant.upsert({
         where: { id: restaurant.id },
-        // Preserve edits made after the first seed; only re-assert demo flags.
-        update: { catalog_visible: true, mock: true, source: MOCK_SOURCE },
+        // Preserve edits made after the first seed.
+        update: {},
         create: {
           id: restaurant.id,
           slug: restaurant.slug,
@@ -63,6 +70,7 @@ export async function seedMockCatalog(): Promise<{
           verified: false,
           owner_managed: false,
           catalog_visible: true,
+          accepting_orders: true,
           mock: true,
           osm_tags: {
             demo: true,
@@ -92,6 +100,7 @@ export async function seedMockCatalog(): Promise<{
             price: menuItem.price,
             image: itemImage(menuItem.id),
             available: menuItem.available,
+            visible: true,
             stock: menuItem.stock,
             options: [] as Prisma.InputJsonValue,
             mock: true,
@@ -103,16 +112,19 @@ export async function seedMockCatalog(): Promise<{
     }
 
     // Retire the earlier OSM/demo catalog from the public list without deleting
-    // anything. Only known legacy sources are touched; rows created later by
-    // real users keep their visibility.
-    const hidden = await db.restaurant.updateMany({
-      where: {
-        mock: false,
-        OR: [{ source: 'OSM' }, { id: { in: LEGACY_DEMO_RESTAURANT_IDS } }],
-      },
-      data: { catalog_visible: false },
-    });
-    legacyHidden = hidden.count;
+    // anything. Only the one-time initialization does this: a row an operator
+    // later restores must stay visible.
+    if (initialized) {
+      const hidden = await db.restaurant.updateMany({
+        where: {
+          mock: false,
+          OR: [{ source: 'OSM' }, { id: { in: LEGACY_DEMO_RESTAURANT_IDS } }],
+        },
+        data: { catalog_visible: false },
+      });
+      legacyHidden = hidden.count;
+      await db.seedRun.create({ data: { name: 'mock-catalog', version: 1 } });
+    }
 
     // Demo accounts can manage two mock kitchens when they exist. This adds
     // missing membership rows only; it never removes or rewrites memberships.
@@ -133,6 +145,7 @@ export async function seedMockCatalog(): Promise<{
     restaurants: MOCK_RESTAURANTS.length,
     itemsCreated,
     legacyHidden,
+    initialized,
   };
 }
 

@@ -3,6 +3,7 @@ import { check } from '../../../shared/errors.js';
 import { isValidCoordinate, type LatLng } from '../domain/geo.js';
 import type { User } from '../../../shared/types.js';
 import * as addresses from '../infrastructure/address.repository.js';
+import { emitAddressSaved } from './address-events.js';
 import { GeocodingProviderError, geocodeAddress, reverseGeocode } from './geocoding.service.js';
 
 const coordinates = {
@@ -117,6 +118,15 @@ export async function saveDefault(actor: User, raw: unknown): Promise<any> {
     latitude: resolved.latitude,
     longitude: resolved.longitude,
   });
+  // The save is complete only once quote snapshots for the new position exist.
+  await emitAddressSaved({
+    id: row.id,
+    userId: actor.id,
+    address: row.address,
+    formattedAddress: row.formatted_address || row.address,
+    latitude: row.latitude,
+    longitude: row.longitude,
+  });
   return publicAddress(row);
 }
 
@@ -137,15 +147,11 @@ export async function resolveForPreview(raw: unknown): Promise<any> {
 }
 
 /** Internal: load the default address as a coordinate pair for routing. */
-export async function defaultAddressFor(userId: string): Promise<{
-  address: string;
-  formattedAddress: string;
-  latitude: number;
-  longitude: number;
-} | null> {
+export async function defaultAddressFor(userId: string): Promise<DeliveryAddress | null> {
   const row = await addresses.findDefault(userId);
   if (!row) return null;
   return {
+    id: row.id,
     address: row.address,
     formattedAddress: row.formatted_address || row.address,
     latitude: row.latitude,
@@ -154,6 +160,7 @@ export async function defaultAddressFor(userId: string): Promise<{
 }
 
 export type DeliveryAddress = {
+  id: string;
   address: string;
   formattedAddress: string;
   latitude: number;

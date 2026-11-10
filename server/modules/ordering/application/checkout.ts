@@ -16,32 +16,30 @@ import { orderDetail } from './order-queries.js';
 export async function checkout(actor: User, raw: unknown): Promise<any> {
   const input = checkoutSchema.parse(raw);
   const savedAddress = await defaultAddressFor(actor.id);
-  const addressText = savedAddress?.address ?? input.address;
-  check(addressText, 400, 'ADDRESS_REQUIRED', 'Add a delivery address before placing an order.');
-  let routed: Awaited<ReturnType<typeof checkoutDeliveryQuote>> | null = null;
-  if (savedAddress) {
-    // Resolve the walking route before opening the stock-locking transaction.
-    const preview = await transaction((db) => priceCart(db, input.items));
-    routed = await checkoutDeliveryQuote(preview.restaurantId, savedAddress);
-    if (!routed.info.supported) {
-      if (routed.info.reason === 'OUT_OF_RANGE')
-        check(
-          false,
-          409,
-          'DELIVERY_UNSUPPORTED',
-          `This restaurant is ${((routed.info.distanceMeters || 0) / 1000).toFixed(1)} km away on foot, beyond the 15 km delivery limit.`,
-        );
+  // The delivery address is a saved, routed location. A client-supplied string
+  // is never an authoritative destination.
+  check(savedAddress, 400, 'ADDRESS_REQUIRED', 'Add a delivery address before placing an order.');
+  const addressText = savedAddress.address;
+  // Resolve the walking route before opening the stock-locking transaction.
+  const preview = await transaction((db) => priceCart(db, input.items));
+  const routed = await checkoutDeliveryQuote(preview.restaurantId, savedAddress);
+  if (!routed.info.supported) {
+    if (routed.info.reason === 'OUT_OF_RANGE')
       check(
         false,
         409,
-        'DELIVERY_ROUTE_UNAVAILABLE',
-        'We cannot calculate a walking delivery route to this address right now. Please try again or choose another address.',
+        'DELIVERY_UNSUPPORTED',
+        `This restaurant is ${((routed.info.distanceMeters || 0) / 1000).toFixed(1)} km away on foot, beyond the 15 km delivery limit.`,
       );
-    }
+    check(
+      false,
+      409,
+      'DELIVERY_ROUTE_UNAVAILABLE',
+      'We cannot calculate a walking delivery route to this address right now. Please try again or choose another address.',
+    );
   }
-  const canonicalAddress = savedAddress?.address ?? addressText;
   const canonical = {
-    address: canonicalAddress,
+    address: addressText,
     note: input.note,
     expectedTotal: input.expectedTotal,
     items: input.items
@@ -66,7 +64,7 @@ export async function checkout(actor: User, raw: unknown): Promise<any> {
       return old.id;
     }
     const quote = await priceCart(db, input.items, true);
-    const deliveryFee = routed ? (routed.info.shippingFee as number) : quote.deliveryFee;
+    const deliveryFee = routed.info.shippingFee as number;
     const total = quote.subtotal + deliveryFee;
     check(
       total === input.expectedTotal,
@@ -89,14 +87,10 @@ export async function checkout(actor: User, raw: unknown): Promise<any> {
         idempotencyKey: input.idempotencyKey,
         fingerprint,
         expiresAt: expiry,
-        deliveryLatitude: routed?.info.supported ? savedAddress?.latitude : undefined,
-        deliveryLongitude: routed?.info.supported ? savedAddress?.longitude : undefined,
-        walkingDistanceMeters: routed?.info.supported
-          ? (routed.info.distanceMeters as number)
-          : undefined,
-        walkingDurationSeconds: routed?.info.supported
-          ? (routed.info.durationSeconds as number)
-          : undefined,
+        deliveryLatitude: savedAddress.latitude,
+        deliveryLongitude: savedAddress.longitude,
+        walkingDistanceMeters: routed.info.distanceMeters as number,
+        walkingDurationSeconds: routed.info.durationSeconds as number,
       },
       db,
     );

@@ -28,6 +28,7 @@ export type RestaurantRow = {
   imported_at: Date | string | null;
   last_synced_at: Date | string | null;
   catalog_visible: boolean;
+  accepting_orders: boolean;
   geocoded_address: string | null;
   geocoded_at: Date | string | null;
   slug: string | null;
@@ -77,6 +78,19 @@ export async function listForManager(
 
 export async function listAll(db: DB = prisma): Promise<RestaurantRow[]> {
   const rows = await db.restaurant.findMany({ orderBy: { created_at: 'desc' } });
+  return rows as RestaurantRow[];
+}
+
+/**
+ * Restaurants whose delivery price is worth prefetching for a saved address.
+ * Paused kitchens stay visible, so they are included; hidden or unapproved
+ * rows are not.
+ */
+export async function listQuotable(db: DB = prisma): Promise<RestaurantRow[]> {
+  const rows = await db.restaurant.findMany({
+    where: { status: 'APPROVED', catalog_visible: true },
+    orderBy: { id: 'asc' },
+  });
   return rows as RestaurantRow[];
 }
 
@@ -134,6 +148,62 @@ export async function update(
   return findById(restaurantId, db);
 }
 
+export type RestaurantPatch = {
+  name?: string;
+  description?: string;
+  address?: string;
+  cuisine?: string;
+  image?: string;
+  accepting_orders?: boolean;
+  catalog_visible?: boolean;
+  latitude?: number;
+  longitude?: number;
+};
+
+export async function updatePartial(
+  restaurantId: string,
+  input: RestaurantPatch,
+  db: DB = prisma,
+): Promise<RestaurantRow | undefined> {
+  const existing = await findById(restaurantId, db);
+  if (!existing) return undefined;
+  const { latitude, longitude, ...fields } = input;
+  const addressChanged =
+    fields.address !== undefined && existing.address.trim() !== fields.address.trim();
+  const coordinatesGiven = latitude !== undefined || longitude !== undefined;
+  const updated = await db.restaurant.updateMany({
+    where: { id: restaurantId },
+    data: {
+      ...fields,
+      owner_managed: true,
+      ...(coordinatesGiven
+        ? {
+            latitude: latitude ?? null,
+            longitude: longitude ?? null,
+            geocoded_address: fields.address ?? existing.address,
+            geocoded_at: new Date(),
+          }
+        : addressChanged
+          ? { latitude: null, longitude: null, geocoded_address: null, geocoded_at: null }
+          : {}),
+    },
+  });
+  if (!updated.count) return undefined;
+  return findById(restaurantId, db);
+}
+
+/** Soft archive: the row and its order history survive; discovery stops. */
+export async function archive(
+  restaurantId: string,
+  db: DB = prisma,
+): Promise<{ id: string } | undefined> {
+  const updated = await db.restaurant.updateMany({
+    where: { id: restaurantId },
+    data: { catalog_visible: false, accepting_orders: false },
+  });
+  return updated.count ? { id: restaurantId } : undefined;
+}
+
 export async function setCoordinates(
   restaurantId: string,
   address: string,
@@ -151,7 +221,6 @@ export async function setCoordinates(
     },
   });
 }
-
 export async function setStatus(
   restaurantId: string,
   status: 'APPROVED' | 'REJECTED',

@@ -3,14 +3,14 @@
 Kết quả review bản triển khai trên nhánh `feat/notification-sse` (commit `45afc96` → `5121ac8`).
 Các mục xếp theo mức độ nghiêm trọng. Trạng thái: **chưa sửa**.
 
-| # | Mức độ | Vấn đề | Trạng thái |
-|---|--------|--------|------------|
-| 1 | 🔴 Nghiêm trọng (fatal) | Restaurant, driver, admin không nhận đơn mới theo thời gian thực | Chưa sửa |
-| 2 | 🟠 Lớn | Redis sập làm treo worker nghiệp vụ | Chưa sửa |
-| 3 | 🟠 Lớn | Mất push khi SSE vẫn mở, client không khôi phục | Chưa sửa |
-| 4 | 🟠 Lớn | Replay theo `Last-Event-ID` có thể bỏ sót thông báo | Chưa sửa |
-| 5 | 🟡 Trung bình | Kết nối ma (ghost connection) + 429 khiến client fallback vĩnh viễn | Chưa sửa |
-| 6–9 | 🟢 Nhỏ | Revocation chậm, lỗi replay sau header, shutdown, đồng hồ | Chưa sửa |
+| #   | Mức độ                  | Vấn đề                                                              | Trạng thái |
+| --- | ----------------------- | ------------------------------------------------------------------- | ---------- |
+| 1   | 🔴 Nghiêm trọng (fatal) | Restaurant, driver, admin không nhận đơn mới theo thời gian thực    | Chưa sửa   |
+| 2   | 🟠 Lớn                  | Redis sập làm treo worker nghiệp vụ                                 | Chưa sửa   |
+| 3   | 🟠 Lớn                  | Mất push khi SSE vẫn mở, client không khôi phục                     | Chưa sửa   |
+| 4   | 🟠 Lớn                  | Replay theo `Last-Event-ID` có thể bỏ sót thông báo                 | Chưa sửa   |
+| 5   | 🟡 Trung bình           | Kết nối ma (ghost connection) + 429 khiến client fallback vĩnh viễn | Chưa sửa   |
+| 6–9 | 🟢 Nhỏ                  | Revocation chậm, lỗi replay sau header, shutdown, đồng hồ           | Chưa sửa   |
 
 ---
 
@@ -32,6 +32,7 @@ hoặc khi chính họ thực hiện một hành động. `refreshStaff` (poll 3
 **Vì sao không bị phát hiện.** Kịch bản e2e chỉ test bằng tài khoản customer.
 
 **Đề xuất sửa.**
+
 - Publish thêm một tín hiệu nhẹ "orders changed" (không lưu vào inbox) tới chủ restaurant,
   driver được giao và admin khi đơn được tạo hoặc đổi trạng thái. Client nhận tín hiệu thì refetch `/orders`.
 - Giải pháp tạm: thêm `/orders` vào poll của `refreshStaff` cho role khác customer.
@@ -48,6 +49,7 @@ và **hết hạn đơn chưa thanh toán**, có cờ `running` chặn tick ti�
 **Hậu quả.** Redis vốn là thành phần tùy chọn, nhưng khi sập sẽ làm chậm lõi nghiệp vụ trong nhiều phút.
 
 **Đề xuất sửa.**
+
 - Publisher dùng `enableOfflineQueue: false` để fail ngay khi mất kết nối.
 - Publish song song (`Promise.allSettled`) có timeout, hoặc fire-and-forget không chặn worker.
 
@@ -64,6 +66,7 @@ Client không reconnect, không fallback (fallback chỉ chạy khi `readyState 
 và thông báo mất âm thầm cho đến khi reload trang.
 
 **Đề xuất sửa.**
+
 - Khi subscriber kết nối lại Redis (event `ready` sau một lần lỗi), gửi frame `resync`
   tới mọi stream local để client refetch.
 - Cân nhắc một lần refresh an toàn chậm (ví dụ 2–5 phút) phía client.
@@ -90,6 +93,7 @@ request mới nhận 429, `EventSource` chuyển sang `CLOSED` và client poll 3
 không thử lại SSE.
 
 **Đề xuất sửa.**
+
 - Server: đuổi kết nối cũ nhất của user thay vì từ chối kết nối mới.
 - Client: khi `CLOSED`, thử mở lại SSE sau một khoảng backoff thay vì chỉ poll.
 

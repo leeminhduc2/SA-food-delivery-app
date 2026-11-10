@@ -1,8 +1,11 @@
 import {
+  cachedDeliveryInfo,
   deliveryInfo,
   isValidCoordinate,
   locatePlace,
   noAddressInfo,
+  rememberDeliveryInfo,
+  shippingConfig,
   unavailableDeliveryInfo,
   type DeliveryAddress,
   type DeliveryInfo,
@@ -37,7 +40,25 @@ export async function deliveryInfoForRestaurant(
   options: Options = {},
 ): Promise<DeliveryInfo> {
   if (!address) return noAddressInfo();
-  return deliveryInfo(await restaurantCoordinates(restaurant), address, options);
+  const destination = await restaurantCoordinates(restaurant);
+  if (destination === null || destination === 'GEOCODING_FAILED')
+    return deliveryInfo(destination, address, options);
+  const config = options.config ?? shippingConfig();
+  const cached = await cachedDeliveryInfo(address.id, address, restaurant.id, destination, {
+    includeGeometry: options.includeGeometry,
+    config,
+  });
+  if (cached) return cached;
+  // Always compute geometry so the snapshot can serve later route previews.
+  const fresh = await deliveryInfo(destination, address, {
+    ...options,
+    config,
+    includeGeometry: true,
+  });
+  await rememberDeliveryInfo(address.id, address, restaurant.id, destination, fresh, config);
+  if (options.includeGeometry) return fresh;
+  const { routeGeometry, ...rest } = fresh;
+  return rest;
 }
 
 export async function deliveryInfoForRestaurantId(

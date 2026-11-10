@@ -5,7 +5,10 @@
  * readable. Rows created by real users after the demo seed are not touched.
  */
 import { id, prisma, type DB } from '../../../shared/db.js';
-import { LEGACY_DEMO_RESTAURANT_IDS } from '../../../seed/data/mock-catalog.js';
+
+// Kept here rather than imported from the seed dataset: runtime code must not
+// depend on demo fixtures (see tests/mock-catalog.test.ts).
+const LEGACY_DEMO_RESTAURANT_IDS = ['saigon', 'pizza', 'green'] as const;
 
 export type LegacyImpact = {
   total: number;

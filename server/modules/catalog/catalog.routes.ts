@@ -21,13 +21,23 @@ catalogRoutes.get('/restaurants/:id', async (req, res) => {
 });
 
 catalogRoutes.post('/restaurants', async (req, res) => {
-  const owner = actor(req, 'RESTAURANT');
+  const owner = actor(req, 'RESTAURANT', 'ADMIN');
   res.status(201).json(await catalog.createRestaurant(owner, req.body));
 });
 
 catalogRoutes.patch('/restaurants/:id', async (req, res) => {
   const owner = actor(req, 'RESTAURANT', 'ADMIN');
   res.json(await catalog.updateRestaurant(owner, String(req.params.id), req.body));
+});
+
+catalogRoutes.delete('/restaurants/:id', async (req, res) => {
+  const owner = actor(req, 'RESTAURANT', 'ADMIN');
+  await catalog.archiveRestaurant(owner, String(req.params.id));
+  res.json({ ok: true });
+});
+
+catalogRoutes.get('/restaurants/:id/items', async (req, res) => {
+  res.json(await catalog.listPublicItems(req.user, String(req.params.id)));
 });
 
 catalogRoutes.get('/manage/restaurants', async (req, res) => {
@@ -39,7 +49,16 @@ catalogRoutes.post('/restaurants/:id/items', async (req, res) => {
   res.status(201).json(await catalog.createItem(owner, String(req.params.id), req.body));
 });
 
+catalogRoutes.get('/items/:id', async (req, res) => {
+  res.json(await catalog.getItem(req.user, String(req.params.id)));
+});
+
 catalogRoutes.put('/items/:id', async (req, res) => {
+  const owner = actor(req, 'RESTAURANT', 'ADMIN');
+  res.json(await catalog.updateItem(owner, String(req.params.id), req.body));
+});
+
+catalogRoutes.patch('/items/:id', async (req, res) => {
   const owner = actor(req, 'RESTAURANT', 'ADMIN');
   res.json(await catalog.updateItem(owner, String(req.params.id), req.body));
 });
