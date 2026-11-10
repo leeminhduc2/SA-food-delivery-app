@@ -15,13 +15,13 @@ Phạm vi: workspace `SA-food-delivery-app`, nhánh hiện tại, database phát
 React + Vite (src/)
         │  /api
         ▼
-Express 5 routes (server/api/*.routes.ts)
+Express 5 routes (server/modules/*/*.routes.ts)
         │
         ▼
-Services (server/services/*) — business rules, transactions
+Application (server/modules/*/application/*) — business rules, transactions
         │
         ▼
-Repositories (server/repositories/*) — Prisma Client
+Infrastructure (server/modules/*/infrastructure/*) — Prisma Client
         │
         ▼
 PostgreSQL 17 (Docker Compose, port 5433)
@@ -36,20 +36,20 @@ Các điểm chính:
   được sửa file baseline.
 - Test: Node test runner (`tsx --test --test-concurrency=1`) + Playwright.
 - API contract: `openapi.yaml` (OpenAPI 3.1), kiểm tra bởi `npm run check:openapi`.
-- Seed: `server/seed.ts` chỉ chạy khi `DEMO_MODE=true`, upsert 6 user, 3 nhà hàng
+- Seed: `server/seed/seed.ts` chỉ chạy khi `DEMO_MODE=true`, upsert 6 user, 3 nhà hàng
   demo TP.HCM và 8 món; không xóa dữ liệu hiện có.
 
 ### Pipeline import OSM đã có
 
-| Thành phần      | File                                                  | Vai trò                                                                                                                |
-| --------------- | ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| Overpass client | `server/services/overpass.service.ts`                 | POST query, timeout, retry/backoff, `Retry-After`, giới hạn element, coalescing request trùng                          |
-| Normalizer      | `server/domain/osm.ts`                                | Lọc `amenity`, tên, toạ độ; dedupe theo `type/id`; giữ `addr:*`; đếm field thiếu; không bịa dữ liệu                    |
-| Import service  | `server/services/restaurant-import.service.ts`        | fetch → normalize → classify → persist theo batch; savepoint từng record; job history; dry-run                         |
-| Repository      | `server/repositories/restaurant-import.repository.ts` | Protected upsert bằng raw SQL; không ghi đè row `verified` hoặc `owner_managed`; ownership snapshot; job CRUD          |
-| Admin API       | `server/api/import.routes.ts`                         | `POST /api/admin/restaurants/import`, `GET .../history`; chỉ ADMIN; rate limit                                         |
-| CLI             | `scripts/import-restaurants.ts`                       | `npm run import:restaurants -- [--dry-run] [--json] [--bbox]`                                                          |
-| Tests           | `tests/restaurant-import.test.ts`                     | 13 test: retry, timeout, normalize, dedupe, empty, protected upsert, dry-run, savepoint, DB failure, auth, job history |
+| Thành phần      | File                                                            | Vai trò                                                                                                                |
+| --------------- | --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Overpass client | `server/modules/catalog/import/overpass.client.ts`              | POST query, timeout, retry/backoff, `Retry-After`, giới hạn element, coalescing request trùng                          |
+| Normalizer      | `server/modules/catalog/import/osm.ts`                          | Lọc `amenity`, tên, toạ độ; dedupe theo `type/id`; giữ `addr:*`; đếm field thiếu; không bịa dữ liệu                    |
+| Import service  | `server/modules/catalog/import/restaurant-import.service.ts`    | fetch → normalize → classify → persist theo batch; savepoint từng record; job history; dry-run                         |
+| Repository      | `server/modules/catalog/import/restaurant-import.repository.ts` | Protected upsert bằng raw SQL; không ghi đè row `verified` hoặc `owner_managed`; ownership snapshot; job CRUD          |
+| Admin API       | `server/modules/catalog/import/import.routes.ts`                | `POST /api/admin/restaurants/import`, `GET .../history`; chỉ ADMIN; rate limit                                         |
+| CLI             | `scripts/import-restaurants.ts`                                 | `npm run import:restaurants -- [--dry-run] [--json] [--bbox]`                                                          |
+| Tests           | `tests/restaurant-import.test.ts`                               | 13 test: retry, timeout, normalize, dedupe, empty, protected upsert, dry-run, savepoint, DB failure, auth, job history |
 
 Hành vi bảo vệ hiện tại:
 

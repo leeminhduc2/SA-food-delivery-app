@@ -10,17 +10,18 @@ Before the migration, every HTTP route called a service, the service called a
 repository, and every repository used a shared `pg.Pool` with parameterised SQL.
 Transactions were managed by `BEGIN`/`COMMIT` on a checked-out client.
 
-After the migration the same layering holds:
+The same layering now lives inside each module (see "Module boundaries" in
+[DECISIONS.md](DECISIONS.md)):
 
 ```text
-server/api/*.routes.ts        HTTP only
-server/services/*             business rules, transactions
-server/repositories/*         Prisma Client queries
-server/domain/*               pure types, errors, authorization, Zod schemas
-server/db.ts                  one PrismaClient, transaction helper, row locks
+server/modules/<m>/*.routes.ts            HTTP only
+server/modules/<m>/application/*          business rules, transactions
+server/modules/<m>/infrastructure/*       Prisma Client queries (own tables only)
+server/modules/<m>/domain/*               pure rules and Zod schemas
+server/shared/db.ts                       one PrismaClient, transaction helper, row locks
 ```
 
-Services no longer receive a pool. `transaction()` from `server/db.ts` opens an
+Services no longer receive a pool. `transaction()` from `server/shared/db.ts` opens an
 interactive Prisma transaction (`$transaction(fn)`), and every repository
 accepts the transaction-scoped `DB` client (`Prisma.TransactionClient`) with
 `prisma` as the default.
@@ -36,7 +37,7 @@ accepts the transaction-scoped `DB` client (`Prisma.TransactionClient`) with
 | Generator        | `prisma-client-js`                                                          |
 | Naming           | Existing `snake_case` table and column names are preserved via `@@map`      |
 | Migrations       | [`prisma/migrations/`](../prisma/migrations) (baseline + additive delivery) |
-| Client singleton | [`server/db.ts`](../server/db.ts)                                           |
+| Client singleton | [`server/shared/db.ts`](../server/shared/db.ts)                             |
 
 The schema was produced by `prisma db pull` against the existing database and
 then committed. Field names were intentionally left in `snake_case` so API
@@ -78,41 +79,43 @@ Any future migration must keep these SQL fragments. Adding them to
 
 ## Modules migrated
 
-| Layer / module                    | Prisma use                                                                |
-| --------------------------------- | ------------------------------------------------------------------------- |
-| `user.repository.ts`              | `findUnique`, `findFirst`, `create`, `updateMany`, `select`               |
-| `session.repository.ts`           | relation filter (`user: { active: true }`), `deleteMany`                  |
-| `restaurant.repository.ts`        | search filters, `include` reviews, status updates, row share lock         |
-| `menu.repository.ts`              | JSON `options` casts, `upsert` on `(restaurant_id, name)`, stock counters |
-| `cart.repository.ts`              | upsert ensure, row lock, JSON casts, optimistic version increment         |
-| `order.repository.ts`             | compound idempotency lookup, role relation filters, history BigInt cast   |
-| `payment.repository.ts`           | payment/order joins, outbox health counts, simulated upsert               |
-| `delivery.repository.ts`          | delivery lookup, assignment updates, creation                             |
-| `notification.repository.ts`      | `SKIP LOCKED` claim, `createMany({ skipDuplicates })`, savepoints         |
-| `review / complaint / audit`      | `create`, `updateMany`, `findMany`                                        |
-| `report.repository.ts`            | `groupBy` order status, daily aggregation in UTC                          |
-| `restaurant-import.repository.ts` | job CRUD via Prisma; protected OSM upsert via tagged raw SQL              |
-| `server/seed.ts`                  | idempotent `upsert`/`createMany` preserving existing rows                 |
-| `server/migrate.ts`               | runs `prisma migrate deploy`; used by tests and the E2E server            |
-| `server/app.ts`                   | health `SELECT 1`; `P2002` mapped to HTTP 409                             |
-| `server/index.ts`                 | startup ping, session cleanup, `$disconnect()` on shutdown                |
+| Layer / module                     | Prisma use                                                                |
+| ---------------------------------- | ------------------------------------------------------------------------- |
+| `user.repository.ts`               | `findUnique`, `findFirst`, `create`, `updateMany`, `select`               |
+| `session.repository.ts`            | relation filter (`user: { active: true }`), `deleteMany`                  |
+| `restaurant.repository.ts`         | manager filters, status updates, coordinates, row share lock              |
+| `restaurant-listing.projection.ts` | search filters, `include` reviews for ratings                             |
+| `menu.repository.ts`               | JSON `options` casts, `upsert` on `(restaurant_id, name)`, stock counters |
+| `cart.repository.ts`               | upsert ensure, row lock, JSON casts, optimistic version increment         |
+| `order.repository.ts`              | compound idempotency lookup, status updates, stock release markers        |
+| `order-detail.projection.ts`       | role relation filters, detail joins, history BigInt cast                  |
+| `payment.repository.ts`            | reconciliation queue, simulated upsert, row locks                         |
+| `delivery.repository.ts`           | delivery lookup, assignment updates, creation                             |
+| `notification.repository.ts`       | `SKIP LOCKED` claim, `createMany({ skipDuplicates })`, outbox health      |
+| `review / complaint / audit`       | `create`, `updateMany`, `findMany`                                        |
+| `report.repository.ts`             | `groupBy` order status, daily aggregation in UTC                          |
+| `restaurant-import.repository.ts`  | job CRUD via Prisma; protected OSM upsert via tagged raw SQL              |
+| `server/seed/seed.ts`              | idempotent `upsert`/`createMany` preserving existing rows                 |
+| `server/migrate.ts`                | runs `prisma migrate deploy`; used by tests and the E2E server            |
+| `server/app.ts`                    | health `SELECT 1`; `P2002` mapped to HTTP 409                             |
+| `server/index.ts`                  | startup ping, worker loop (`jobs.ts`), `$disconnect()` on shutdown        |
 
 ## Intentional raw SQL exceptions
 
 Every raw statement is parameterised or comes from a closed identifier union.
 There is no string interpolation of user input.
 
-| Location                                              | Statement                                                                 | Why it stays raw                                                                                                                                                                                              |
-| ----------------------------------------------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `server/db.ts` `lockRow`                              | `SELECT <col> FROM <table> WHERE <col> = $1 FOR UPDATE/SHARE`             | Prisma has no row-lock API. Table and column come from a closed TypeScript union; value is a bind parameter.                                                                                                  |
-| `server/order.repository.ts` `advisoryCheckoutLock`   | `pg_advisory_xact_lock(hashtextextended($1, 0))`                          | Serialises concurrent checkouts sharing a customer/idempotency key.                                                                                                                                           |
-| `server/notification.repository.ts` `claimEvents`     | `SELECT ... FOR UPDATE SKIP LOCKED`                                       | Outbox claim with non-blocking skip semantics; Prisma has no equivalent.                                                                                                                                      |
-| `server/notification.repository.ts` `deliverEvent`    | `SAVEPOINT` / `ROLLBACK TO` / `RELEASE`                                   | Per-notification isolation inside one transaction. Prisma has no savepoint API.                                                                                                                               |
-| `server/services/restaurant-import.service.ts`        | `SAVEPOINT import_record`                                                 | One bad OSM record must not roll back the whole batch.                                                                                                                                                        |
-| `server/repositories/restaurant-import.repository.ts` | `INSERT ... ON CONFLICT ... DO UPDATE ... WHERE ... RETURNING (xmax = 0)` | Atomic protected upsert: never overwrites verified or owner-managed rows, and reports insert-vs-update. Prisma's `upsert` cannot express the `WHERE` guard or `xmax`.                                         |
-| `server/repositories/restaurant-import.repository.ts` | `UPDATE ... WHERE source='OSM' AND NOT verified AND NOT owner_managed`    | Second guarded write for curated presentation fields and `_bep` metadata. Repeating the predicate is race-safe; `osm_tags` uses JSONB concatenation so a later sync cannot erase provenance.                  |
-| `server/db.ts` `dbNow`                                | `SELECT now()`                                                            | Due-window predicates must use the database clock. The Docker database can be several hundred milliseconds ahead of the host, which otherwise makes `next_reconcile_at = now()` rows invisible to the worker. |
-| `server/app.ts`, `server/index.ts`                    | `SELECT 1`                                                                | Health/startup connectivity check.                                                                                                                                                                            |
+| Location                                                        | Statement                                                                 | Why it stays raw                                                                                                                                                                                              |
+| --------------------------------------------------------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `server/shared/db.ts` `lockRow`                                 | `SELECT <col> FROM <table> WHERE <col> = $1 FOR UPDATE/SHARE`             | Prisma has no row-lock API. Table and column come from a closed TypeScript union; value is a bind parameter.                                                                                                  |
+| `server/order.repository.ts` `advisoryCheckoutLock`             | `pg_advisory_xact_lock(hashtextextended($1, 0))`                          | Serialises concurrent checkouts sharing a customer/idempotency key.                                                                                                                                           |
+| `server/notification.repository.ts` `claimEvents`               | `SELECT ... FOR UPDATE SKIP LOCKED`                                       | Outbox claim with non-blocking skip semantics; Prisma has no equivalent.                                                                                                                                      |
+| `server/notification.repository.ts` `deliverEvent`              | `SAVEPOINT` / `ROLLBACK TO` / `RELEASE`                                   | Per-notification isolation inside one transaction. Prisma has no savepoint API.                                                                                                                               |
+| `server/modules/catalog/import/restaurant-import.service.ts`    | `SAVEPOINT import_record`                                                 | One bad OSM record must not roll back the whole batch.                                                                                                                                                        |
+| `server/modules/catalog/import/restaurant-import.repository.ts` | `INSERT ... ON CONFLICT ... DO UPDATE ... WHERE ... RETURNING (xmax = 0)` | Atomic protected upsert: never overwrites verified or owner-managed rows, and reports insert-vs-update. Prisma's `upsert` cannot express the `WHERE` guard or `xmax`.                                         |
+| `server/modules/catalog/import/restaurant-import.repository.ts` | `UPDATE ... WHERE source='OSM' AND NOT verified AND NOT owner_managed`    | Second guarded write for curated presentation fields and `_bep` metadata. Repeating the predicate is race-safe; `osm_tags` uses JSONB concatenation so a later sync cannot erase provenance.                  |
+| `server/shared/db.ts` `dbNow`                                   | `SELECT now()`                                                            | Due-window predicates must use the database clock. The Docker database can be several hundred milliseconds ahead of the host, which otherwise makes `next_reconcile_at = now()` rows invisible to the worker. |
+| `server/app.ts`, `server/index.ts`                              | `SELECT 1`                                                                | Health/startup connectivity check.                                                                                                                                                                            |
 
 Notes:
 

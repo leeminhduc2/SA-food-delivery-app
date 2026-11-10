@@ -12,15 +12,15 @@ The audit that preceded this work is in
 
 ## What is real and what is demo
 
-| Data                         | Source                                                  | Status                                               |
-| ---------------------------- | ------------------------------------------------------- | ---------------------------------------------------- |
-| Restaurant name              | OSM `name` tag in the live Overpass response            | Real OSM data, displayed as-is                       |
-| Address, ward/district/city  | OSM `addr:*` tags, normalised by `normalizeOsmElements` | Real OSM data, unverified                            |
-| Latitude / longitude         | OSM element `lat` / `lon`                               | Real OSM data                                        |
-| Cuisine, phone, website      | OSM `cuisine`, `phone`/`contact:phone`, `website` tags  | Real OSM data when present; `Unclassified` otherwise |
-| Opening hours                | OSM `opening_hours` tag                                 | Real OSM data when present                           |
-| Menus, dish names and prices | Curated demo profiles in `server/domain/hanoi.ts`       | **Demo data, not official menus or prices**          |
-| Cover and dish images        | Generated local SVG illustrations in `public/images/`   | **Project demo assets, not venue photographs**       |
+| Data                         | Source                                                            | Status                                               |
+| ---------------------------- | ----------------------------------------------------------------- | ---------------------------------------------------- |
+| Restaurant name              | OSM `name` tag in the live Overpass response                      | Real OSM data, displayed as-is                       |
+| Address, ward/district/city  | OSM `addr:*` tags, normalised by `normalizeOsmElements`           | Real OSM data, unverified                            |
+| Latitude / longitude         | OSM element `lat` / `lon`                                         | Real OSM data                                        |
+| Cuisine, phone, website      | OSM `cuisine`, `phone`/`contact:phone`, `website` tags            | Real OSM data when present; `Unclassified` otherwise |
+| Opening hours                | OSM `opening_hours` tag                                           | Real OSM data when present                           |
+| Menus, dish names and prices | Curated demo profiles in `server/modules/catalog/import/hanoi.ts` | **Demo data, not official menus or prices**          |
+| Cover and dish images        | Generated local SVG illustrations in `public/images/`             | **Project demo assets, not venue photographs**       |
 
 The database records the distinction in `restaurants.osm_tags._bep`:
 
@@ -56,7 +56,7 @@ OpenStreetMap source line, and an illustration tooltip.
 
 ## Curated selection and demo menus
 
-`server/domain/hanoi.ts` contains 30 real Hanoi OSM node identities. Each entry
+`server/modules/catalog/import/hanoi.ts` contains 30 real Hanoi OSM node identities. Each entry
 also names a menu profile and an `expectedName` used only for drift detection;
 the imported name always comes from Overpass.
 
