@@ -1,6 +1,7 @@
 import { transaction, type DB } from '../../shared/db.js';
 import type { User } from '../../shared/types.js';
 import * as notifications from './notification.repository.js';
+import { notificationBus } from './notification.bus.js';
 
 /** Queue an in-app notification inside the caller's business transaction. */
 export async function notify(
@@ -20,13 +21,51 @@ export async function markRead(actor: User): Promise<void> {
   await notifications.markRead(actor.id);
 }
 
-/** Worker entry point: drain the transactional outbox. */
+/**
+ * Worker entry point: drain the transactional outbox.
+ *
+ * Live pushes are published only after the transaction commits. A push sent
+ * inside the transaction could reach a client before its row is visible.
+ */
 export async function deliverNotifications(): Promise<number> {
-  return transaction(async (db) => {
+  const delivered = await transaction(async (db) => {
     const events = await notifications.claimEvents(db);
-    for (const event of events) await notifications.deliverEvent(event, db);
-    return events.length;
+    const done: Array<{ id: string; user_id: string; type: string; payload: unknown }> = [];
+    for (const event of events) {
+      if (await notifications.deliverEvent(event, db))
+        done.push({
+          id: event.id,
+          user_id: event.user_id,
+          type: event.type,
+          payload: event.payload,
+        });
+    }
+    return done;
   });
+  await publishDelivered(delivered);
+  return delivered.length;
+}
+
+/** Push delivered events to live clients. Failures never fail delivery: the database is the source of truth. */
+async function publishDelivered(
+  events: Array<{ id: string; user_id: string; type: string; payload: unknown }>,
+): Promise<void> {
+  const bus = notificationBus();
+  if (!bus) return;
+  const createdAt = new Date().toISOString();
+  for (const event of events) {
+    try {
+      await bus.publish({
+        id: event.id,
+        userId: event.user_id,
+        type: event.type,
+        payload: event.payload,
+        created_at: createdAt,
+      });
+    } catch (error) {
+      console.error('Notification publish failed', error);
+    }
+  }
 }
 
 /** Back-office health figure for the notification outbox. */
