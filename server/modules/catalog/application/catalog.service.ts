@@ -7,12 +7,9 @@ import type { User } from '../../../shared/types.js';
 import * as audits from '../../../shared/audit.repository.js';
 import * as menu from '../infrastructure/menu.repository.js';
 import * as restaurants from '../infrastructure/restaurant.repository.js';
-import {
-  deliveryAddressForActor,
-  deliveryInfoForRestaurant,
-  noAddressInfo,
-  type DeliveryInfo,
-} from '../../location/index.js';
+import { deliveryAddressForActor, noAddressInfo, type DeliveryInfo } from '../../location/index.js';
+import { deliveryInfoForRestaurant } from './restaurant-location.js';
+import * as listing from '../infrastructure/restaurant-listing.projection.js';
 
 /**
  * Hide retired provider columns from public responses. The columns stay in the
@@ -122,7 +119,7 @@ async function withDeliveryInfo(
 
 export async function listRestaurants(raw: unknown, user?: User): Promise<any[]> {
   const query = listQuerySchema.parse(raw);
-  const rows = (await restaurants.search(query, orderColumns[query.sort])).map(publicRestaurant);
+  const rows = (await listing.search(query, orderColumns[query.sort])).map(publicRestaurant);
   const enriched = await withDeliveryInfo(rows, user?.id, false);
   if (query.sort !== 'recommended') return enriched;
   // The default "recommended" order becomes nearest-first once the customer
@@ -173,7 +170,7 @@ export async function getRestaurant(actor: User | undefined, restaurantId: strin
     check(privileged, 404, 'NOT_FOUND', 'Restaurant not found.');
   }
   const items = await menu.listByRestaurant(restaurant.id);
-  const reviews = await restaurants.listVisibleReviews(restaurant.id);
+  const reviews = await listing.listVisibleReviews(restaurant.id);
   const address = await deliveryAddressForActor(actor?.id);
   const deliveryInfo = await boundedDelivery(
     deliveryInfoForRestaurant(restaurant, address, { includeGeometry: true }),
@@ -368,4 +365,9 @@ export async function releaseStock(
   items: { menu_item_id: string; quantity: number }[],
 ): Promise<void> {
   for (const item of items) await menu.release(item.menu_item_id, item.quantity, db);
+}
+
+/** Back-office view of every restaurant, whatever its approval status. */
+export async function listAllRestaurants(): Promise<restaurants.RestaurantRow[]> {
+  return restaurants.listAll();
 }

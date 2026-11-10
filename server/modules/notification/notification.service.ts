@@ -28,3 +28,8 @@ export async function deliverNotifications(): Promise<number> {
     return events.length;
   });
 }
+
+/** Back-office health figure for the notification outbox. */
+export async function outboxHealth(): Promise<{ pending: number; failed: number }> {
+  return notifications.outboxHealth();
+}

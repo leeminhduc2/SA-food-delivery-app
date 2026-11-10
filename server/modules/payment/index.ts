@@ -11,5 +11,5 @@ export {
 } from './payment.ports.js';
 export { cancelPayment, createPayment, ensurePayment } from './application/payment-lifecycle.js';
 export { signature, simulate } from './application/webhook.js';
-export { reconcilePayments } from './application/reconcile.js';
+export { listReconciliationQueue, reconcilePayments } from './application/reconcile.js';
 export { paymentAdapter, simulated } from './infrastructure/payment-provider.js';

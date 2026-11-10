@@ -2,9 +2,8 @@ import { z } from 'zod';
 import { check } from '../../../shared/errors.js';
 import { isValidCoordinate, type LatLng } from '../domain/geo.js';
 import type { User } from '../../../shared/types.js';
-import { GeocodingProviderError } from '../infrastructure/geocoding.client.js';
 import * as addresses from '../infrastructure/address.repository.js';
-import { geocodeAddress, reverseGeocode } from './geocoding.service.js';
+import { GeocodingProviderError, geocodeAddress, reverseGeocode } from './geocoding.service.js';
 
 const coordinates = {
   latitude: z.number().min(-90).max(90).optional(),

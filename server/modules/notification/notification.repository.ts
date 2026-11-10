@@ -93,3 +93,11 @@ export async function deliverEvent(event: any, db: DB = prisma): Promise<boolean
     await db.$executeRawUnsafe('RELEASE SAVEPOINT notification_attempt');
   }
 }
+
+export async function outboxHealth(db: DB = prisma): Promise<{ pending: number; failed: number }> {
+  const [pending, failed] = await Promise.all([
+    db.outbox.count({ where: { processed_at: null } }),
+    db.outbox.count({ where: { processed_at: null, attempts: { gte: 5 } } }),
+  ]);
+  return { pending, failed };
+}

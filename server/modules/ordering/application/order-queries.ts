@@ -1,14 +1,11 @@
 import { transaction, type DB } from '../../../shared/db.js';
 import { check } from '../../../shared/errors.js';
 import type { User } from '../../../shared/types.js';
-import { assertMember, priceCart } from '../../catalog/index.js';
+import { assertMember, deliveryInfoForRestaurantId, priceCart } from '../../catalog/index.js';
 import { isDriverAssigned } from '../../delivery/index.js';
-import {
-  defaultAddressFor,
-  deliveryInfoForRestaurantId,
-  noAddressInfo,
-} from '../../location/index.js';
+import { defaultAddressFor, noAddressInfo } from '../../location/index.js';
 import * as orders from '../infrastructure/order.repository.js';
+import * as projection from '../infrastructure/order-detail.projection.js';
 
 /** Loads an order and checks that the actor may see it. Also used by Review and Support. */
 export async function accessOrder(
@@ -33,19 +30,19 @@ export async function accessOrder(
 }
 
 export async function orderDetail(orderId: string, db?: DB): Promise<any> {
-  const row = await orders.detailRow(orderId, db);
+  const row = await projection.detailRow(orderId, db);
   return {
     ...row,
-    items: await orders.detailItems(orderId, db),
-    payment: await orders.detailPayment(orderId, db),
-    delivery: await orders.detailDelivery(orderId, db),
-    history: await orders.detailHistory(orderId, db),
-    review: await orders.detailReview(orderId, db),
+    items: await projection.detailItems(orderId, db),
+    payment: await projection.detailPayment(orderId, db),
+    delivery: await projection.detailDelivery(orderId, db),
+    history: await projection.detailHistory(orderId, db),
+    review: await projection.detailReview(orderId, db),
   };
 }
 
 export async function list(actor: User): Promise<any[]> {
-  const rows = await orders.listVisibleIds(actor.role, actor.id);
+  const rows = await projection.listVisibleIds(actor.role, actor.id);
   return Promise.all(rows.map((order) => orderDetail(order.id)));
 }
 

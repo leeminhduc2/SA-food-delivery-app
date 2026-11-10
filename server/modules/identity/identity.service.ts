@@ -114,3 +114,18 @@ export async function findActiveDriver(
 export async function purgeExpiredSessions(): Promise<number> {
   return sessions.deleteExpired();
 }
+
+export async function listUsers(): Promise<User[]> {
+  return users.listAll();
+}
+
+/** Activates or suspends an account; suspension also signs the user out everywhere. */
+export async function setAccountActive(
+  userId: string,
+  active: boolean,
+  db?: DB,
+): Promise<{ id: string } | undefined> {
+  const target = await users.setActive(userId, active, db);
+  if (target && !active) await sessions.deleteByUser(target.id, db);
+  return target;
+}

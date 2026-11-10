@@ -80,3 +80,8 @@ export async function reconcilePayments(): Promise<void> {
     }
   }
 }
+
+/** Back-office view: payments needing a human look or a pending refund. */
+export async function listReconciliationQueue(): Promise<any[]> {
+  return payments.listReconciliationQueue();
+}

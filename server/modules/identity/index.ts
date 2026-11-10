@@ -4,6 +4,8 @@ export { authenticate } from './authenticate.middleware.js';
 export {
   findActiveDriver,
   hashPassword,
+  listUsers,
   purgeExpiredSessions,
   resolveByToken,
+  setAccountActive,
 } from './identity.service.js';

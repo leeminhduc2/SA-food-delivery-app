@@ -1,3 +1,4 @@
+export { GeocodingProviderError } from '../infrastructure/geocoding.client.js';
 import type { GeocodeResult } from '../infrastructure/geocoding.client.js';
 import { activeGeocodingProvider } from '../infrastructure/geocoding.client.js';
 

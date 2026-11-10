@@ -6,13 +6,12 @@ import {
   type RouteGeometry,
   type ShippingConfig,
 } from '../domain/geo.js';
-import { GeocodingProviderError } from '../infrastructure/geocoding.client.js';
-import { RoutingProviderError } from '../infrastructure/routing.client.js';
-import * as restaurants from '../../catalog/infrastructure/restaurant.repository.js';
-import type { RestaurantRow } from '../../catalog/infrastructure/restaurant.repository.js';
 import { defaultAddressFor, type DeliveryAddress } from './address.service.js';
-import { geocodeAddress } from './geocoding.service.js';
-import { walkingRoute } from './routing.service.js';
+import { GeocodingProviderError, geocodeAddress } from './geocoding.service.js';
+import { RoutingProviderError, walkingRoute } from './routing.service.js';
+
+/** Where a place is: coordinates, unknown (null), or the geocoder was unreachable. */
+export type PlaceLocation = LatLng | null | 'GEOCODING_FAILED';
 
 export type DeliveryInfo = {
   status: 'AVAILABLE' | 'NO_ADDRESS' | 'UNSUPPORTED' | 'UNAVAILABLE';
@@ -53,7 +52,7 @@ export function noAddressInfo(): DeliveryInfo {
   };
 }
 
-function unavailable(reason: string): DeliveryInfo {
+export function unavailableDeliveryInfo(reason: string): DeliveryInfo {
   return {
     status: 'UNAVAILABLE',
     supported: false,
@@ -64,36 +63,36 @@ function unavailable(reason: string): DeliveryInfo {
     reason,
   };
 }
+const unavailable = unavailableDeliveryInfo;
 
-async function restaurantCoordinates(
-  restaurant: RestaurantRow,
-): Promise<LatLng | null | 'GEOCODING_FAILED'> {
-  if (isValidCoordinate(restaurant.latitude, restaurant.longitude))
-    return { latitude: restaurant.latitude as number, longitude: restaurant.longitude as number };
-  if (!restaurant.address || restaurant.address.trim().length < 5) return null;
+/**
+ * Resolves a place's coordinates: stored ones when valid, otherwise a
+ * geocoder lookup of its address. The caller decides whether to store them.
+ */
+export async function locatePlace(place: {
+  latitude: number | null;
+  longitude: number | null;
+  address: string | null;
+}): Promise<PlaceLocation> {
+  if (isValidCoordinate(place.latitude, place.longitude))
+    return { latitude: place.latitude as number, longitude: place.longitude as number };
+  if (!place.address || place.address.trim().length < 5) return null;
   try {
-    const found = await geocodeAddress(restaurant.address);
-    if (!found) return null;
-    await restaurants.setCoordinates(
-      restaurant.id,
-      restaurant.address,
-      found.latitude,
-      found.longitude,
-    );
-    return { latitude: found.latitude, longitude: found.longitude };
+    const found = await geocodeAddress(place.address);
+    return found ? { latitude: found.latitude, longitude: found.longitude } : null;
   } catch (error) {
     if (error instanceof GeocodingProviderError) return 'GEOCODING_FAILED';
     throw error;
   }
 }
 
-export async function deliveryInfoForRestaurant(
-  restaurant: RestaurantRow,
+/** Walking route, distance and fee from a delivery address to a destination. */
+export async function deliveryInfo(
+  destination: PlaceLocation,
   address: DeliveryAddress | null,
   options: { includeGeometry?: boolean; config?: ShippingConfig } = {},
 ): Promise<DeliveryInfo> {
   if (!address) return noAddressInfo();
-  const destination = await restaurantCoordinates(restaurant);
   if (destination === 'GEOCODING_FAILED') return unavailable('RESTAURANT_GEOCODING_UNAVAILABLE');
   if (!destination) return unavailable('RESTAURANT_LOCATION_UNKNOWN');
   let route;
@@ -150,25 +149,4 @@ export async function deliveryAddressForActor(
   userId: string | undefined,
 ): Promise<DeliveryAddress | null> {
   return userId ? defaultAddressFor(userId) : null;
-}
-
-export async function deliveryInfoForRestaurantId(
-  restaurantId: string,
-  address: DeliveryAddress | null,
-  options: { includeGeometry?: boolean; config?: ShippingConfig } = {},
-): Promise<DeliveryInfo> {
-  const restaurant = await restaurants.findById(restaurantId);
-  if (!restaurant) return unavailable('RESTAURANT_NOT_FOUND');
-  return deliveryInfoForRestaurant(restaurant, address, options);
-}
-
-/** Used by checkout, which must never trust a client-supplied fee. */
-export async function checkoutDeliveryQuote(
-  restaurantId: string,
-  address: DeliveryAddress,
-): Promise<{ info: DeliveryInfo; restaurant: RestaurantRow }> {
-  const restaurant = await restaurants.findById(restaurantId);
-  if (!restaurant) throw new Error('Restaurant disappeared during checkout.');
-  const info = await deliveryInfoForRestaurant(restaurant, address, { includeGeometry: true });
-  return { info, restaurant };
 }

@@ -42,3 +42,8 @@ export async function moderate(actor: User, reviewId: string, raw: unknown): Pro
     await audits.audit(actor.id, 'REVIEW_MODERATED', row.id, { hidden }, db);
   });
 }
+
+/** Back-office moderation queue. */
+export async function listRecent(): Promise<any[]> {
+  return reviews.listRecent();
+}

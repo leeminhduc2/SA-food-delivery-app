@@ -1,6 +1,8 @@
 import { isValidCoordinate, type LatLng, type WalkingRoute } from '../domain/geo.js';
 import { RoutingProviderError, activeRoutingProvider } from '../infrastructure/routing.client.js';
 
+export { RoutingProviderError };
+
 type CacheEntry = { value: WalkingRoute; expiresAt: number };
 
 const cache = new Map<string, CacheEntry>();

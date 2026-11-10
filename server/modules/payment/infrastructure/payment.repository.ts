@@ -207,11 +207,3 @@ export async function listReconciliationQueue(db: DB = prisma): Promise<any[]> {
     where: { OR: [{ reconciliation_required: true }, { status: 'REFUND_PENDING' }] },
   });
 }
-
-export async function outboxHealth(db: DB = prisma): Promise<{ pending: number; failed: number }> {
-  const [pending, failed] = await Promise.all([
-    db.outbox.count({ where: { processed_at: null } }),
-    db.outbox.count({ where: { processed_at: null, attempts: { gte: 5 } } }),
-  ]);
-  return { pending, failed };
-}
