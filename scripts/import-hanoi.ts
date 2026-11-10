@@ -1,12 +1,12 @@
 import 'dotenv/config';
 import { prisma } from '../server/shared/db.js';
 import { CURATED_HANOI_RESTAURANTS } from '../server/modules/catalog/import/hanoi.js';
-import { runHanoiDemoImport } from '../server/services/hanoi-import.service.js';
+import { runHanoiDemoImport } from '../server/modules/catalog/import/hanoi-import.service.js';
 import {
   overpassEndpoint,
   overpassMaxElements,
   overpassTimeout,
-} from '../server/services/overpass.service.js';
+} from '../server/modules/catalog/import/overpass.client.js';
 
 type CliOptions = {
   dryRun: boolean;

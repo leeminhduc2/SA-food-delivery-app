@@ -5,7 +5,7 @@ import {
   hideLegacy,
   legacyImpact,
   restoreLegacy,
-} from '../server/repositories/catalog-archive.repository.js';
+} from '../server/modules/catalog/infrastructure/catalog-archive.repository.js';
 
 type CliOptions = {
   apply: boolean;

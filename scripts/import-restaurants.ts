@@ -5,8 +5,8 @@ import {
   overpassBBox,
   overpassEndpoint,
   overpassMaxElements,
-} from '../server/services/overpass.service.js';
-import { runRestaurantImport } from '../server/services/restaurant-import.service.js';
+} from '../server/modules/catalog/import/overpass.client.js';
+import { runRestaurantImport } from '../server/modules/catalog/import/restaurant-import.service.js';
 
 type CliOptions = {
   dryRun: boolean;

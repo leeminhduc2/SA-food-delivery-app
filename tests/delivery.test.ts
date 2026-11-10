@@ -8,12 +8,12 @@ import {
   GeocodingProviderError,
   setGeocodingProvider,
   type GeocodingProvider,
-} from '../server/integrations/geocoding.js';
+} from '../server/modules/location/infrastructure/geocoding.client.js';
 import {
   RoutingProviderError,
   setRoutingProvider,
   type RoutingProvider,
-} from '../server/integrations/routing.js';
+} from '../server/modules/location/infrastructure/routing.client.js';
 import { shippingQuote } from '../server/modules/location/domain/geo.js';
 import { MOCK_RESTAURANTS } from '../server/seed/data/mock-catalog.js';
 
@@ -130,8 +130,8 @@ let server: Server;
 let base = '';
 let db: any;
 let customerCookie = '';
-let routing: typeof import('../server/services/routing.service.js');
-let addressService: typeof import('../server/services/address.service.js');
+let routing: typeof import('../server/modules/location/application/routing.service.js');
+let addressService: typeof import('../server/modules/location/application/address.service.js');
 
 async function request(path: string, method = 'GET', body?: unknown, cookie = customerCookie) {
   const response = await fetch(base + '/api' + path, {
@@ -166,8 +166,8 @@ before(async () => {
   await seed();
   const { seedMockCatalog } = await import('../server/seed/seed-mock.js');
   await seedMockCatalog();
-  routing = await import('../server/services/routing.service.js');
-  addressService = await import('../server/services/address.service.js');
+  routing = await import('../server/modules/location/application/routing.service.js');
+  addressService = await import('../server/modules/location/application/address.service.js');
   const { createApp } = await import('../server/app.js');
   server = createApp().listen(0, '127.0.0.1');
   await new Promise<void>((resolve) => server.once('listening', resolve));
@@ -547,7 +547,8 @@ test('restaurant coordinate failures do not overwrite the original address', asy
 });
 
 test('changing a restaurant address invalidates old coordinates and resolves once', async () => {
-  const repository = await import('../server/repositories/restaurant.repository.js');
+  const repository =
+    await import('../server/modules/catalog/infrastructure/restaurant.repository.js');
   const original = MOCK_RESTAURANTS[1];
   const current = await repository.findById(original.id);
   assert(current);

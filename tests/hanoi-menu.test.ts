@@ -15,7 +15,7 @@ import {
   sourceUrl,
   type MenuProfileKey,
 } from '../server/modules/catalog/import/hanoi.js';
-import { selectCuratedRestaurants } from '../server/services/hanoi-import.service.js';
+import { selectCuratedRestaurants } from '../server/modules/catalog/import/hanoi-import.service.js';
 
 const publicFile = (path: string) =>
   existsSync(join(process.cwd(), 'public', path.replace(/^\//, '')));

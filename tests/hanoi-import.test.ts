@@ -125,7 +125,7 @@ before(async () => {
   await migrate();
   const { seed } = await import('../server/seed/seed.js');
   await seed();
-  hanoi = await import('../server/services/hanoi-import.service.js');
+  hanoi = await import('../server/modules/catalog/import/hanoi-import.service.js');
   const { createApp } = await import('../server/app.js');
   server = createApp().listen(0, '127.0.0.1');
   await new Promise<void>((resolve) => server.once('listening', resolve));

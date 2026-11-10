@@ -82,8 +82,8 @@ before(async () => {
   await migrate();
   const { seed } = await import('../server/seed/seed.js');
   await seed();
-  payment = await import('../server/services/payment.service.js');
-  ops = await import('../server/services/notification.service.js');
+  payment = await import('../server/modules/payment/application/payment.service.js');
+  ops = await import('../server/modules/notification/notification.service.js');
   const { createApp } = await import('../server/app.js');
   server = createApp().listen(0, '127.0.0.1');
   await new Promise<void>((r) => server.once('listening', r));

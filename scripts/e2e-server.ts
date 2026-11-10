@@ -30,7 +30,8 @@ const { seedMockCatalog } = await import('../server/seed/seed-mock.js');
 await seedMockCatalog();
 // Browser tests must not depend on public geocoding/routing services. These
 // deterministic adapters exercise the real service and fee code paths.
-const { setGeocodingProvider } = await import('../server/integrations/geocoding.js');
+const { setGeocodingProvider } =
+  await import('../server/modules/location/infrastructure/geocoding.client.js');
 setGeocodingProvider({
   name: 'e2e-geocoder',
   async search(query) {
@@ -53,7 +54,8 @@ setGeocodingProvider({
     };
   },
 });
-const { setRoutingProvider } = await import('../server/integrations/routing.js');
+const { setRoutingProvider } =
+  await import('../server/modules/location/infrastructure/routing.client.js');
 setRoutingProvider({
   name: 'e2e-pedestrian',
   async walkingRoute(from, to) {

@@ -128,7 +128,7 @@ test('legacy OSM/demo rows are hidden, never deleted', async () => {
 });
 
 test('the public catalog only exposes the fictional dataset', async () => {
-  const catalog = await import('../server/services/catalog.service.js');
+  const catalog = await import('../server/modules/catalog/application/catalog.service.js');
   const listed = await catalog.listRestaurants({ q: '', cuisine: '', sort: 'recommended' });
   assert.equal(listed.length, 10);
   for (const row of listed) {
@@ -151,8 +151,8 @@ test('the public catalog only exposes the fictional dataset', async () => {
 
 test('the public catalog makes no external provider request', async () => {
   const files = [
-    'server/api/catalog.routes.ts',
-    'server/services/catalog.service.ts',
+    'server/modules/catalog/catalog.routes.ts',
+    'server/modules/catalog/application/catalog.service.ts',
     'server/seed/data/mock-catalog.ts',
     'server/seed/seed-mock.ts',
     'src/App.tsx',
