@@ -23,11 +23,6 @@ const routeFiles: Array<{ file: string; router: string; prefix: string }> = [
     router: 'paymentRoutes',
     prefix: '/api/payments',
   },
-  {
-    file: 'server/modules/payment/payment.routes.ts',
-    router: 'paymentActionRoutes',
-    prefix: '/api',
-  },
   { file: 'server/modules/delivery/delivery.routes.ts', router: 'deliveryRoutes', prefix: '/api' },
   { file: 'server/modules/review/review.routes.ts', router: 'reviewRoutes', prefix: '/api' },
   { file: 'server/modules/support/support.routes.ts', router: 'supportRoutes', prefix: '/api' },

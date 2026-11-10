@@ -136,24 +136,22 @@ export async function insertEvent(
   });
 }
 
-export async function listPendingReconcile(
-  limit = 100,
-  db: DB = prisma,
-): Promise<(PaymentRow & { expires_at: Date | string; order_status: string })[]> {
+export async function listPendingReconcile(limit = 100, db: DB = prisma): Promise<PaymentRow[]> {
   // The due-window predicate is evaluated entirely by PostgreSQL. Reading now()
   // into a JS Date first truncates microseconds to milliseconds, so a row whose
   // next_reconcile_at was just set with now() could compare as "not yet due".
-  return db.$queryRaw<(PaymentRow & { expires_at: Date; order_status: string })[]>`
+  // Only payments columns are read: the order's window is asked of Ordering.
+  // A payment is created in the same transaction as its order, so
+  // p.created_at stands in for the order's creation time.
+  return db.$queryRaw<PaymentRow[]>`
     SELECT p.id, p.order_id, p.reference, p.amount, p.currency, p.status,
            p.external_transaction_id, p.provider_created, p.reconciliation_required,
-           p.next_reconcile_at, p.created_at,
-           o.expires_at, o.status AS order_status
+           p.next_reconcile_at, p.created_at
     FROM payments p
-    JOIN orders o ON o.id = p.order_id
     WHERE p.next_reconcile_at <= now()
       AND (
         p.status IN ('PENDING', 'REFUND_PENDING')
-        OR (p.status = 'EXPIRED' AND o.created_at > now() - interval '7 days')
+        OR (p.status = 'EXPIRED' AND p.created_at > now() - interval '7 days')
       )
     ORDER BY p.next_reconcile_at ASC, p.created_at ASC
     LIMIT ${limit}

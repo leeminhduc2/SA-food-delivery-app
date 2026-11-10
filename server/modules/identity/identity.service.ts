@@ -1,6 +1,7 @@
 import { createHash, randomBytes, scrypt as scryptCb, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
 import { z } from 'zod';
+import type { DB } from '../../shared/db.js';
 import { check } from '../../shared/errors.js';
 import type { Role, User } from '../../shared/types.js';
 import * as sessions from './session.repository.js';
@@ -99,4 +100,17 @@ export async function updateName(actor: User, raw: unknown): Promise<User> {
 export async function resolveByToken(token: string | undefined): Promise<User | null> {
   if (!token) return null;
   return (await sessions.findUserByToken(digest(token))) ?? null;
+}
+
+/** Used by Delivery when assigning a driver, inside its transaction. */
+export async function findActiveDriver(
+  userId: string,
+  db?: DB,
+): Promise<{ id: string } | undefined> {
+  return users.findActiveDriver(userId, db);
+}
+
+/** Worker step: drops sessions past their expiry. */
+export async function purgeExpiredSessions(): Promise<number> {
+  return sessions.deleteExpired();
 }

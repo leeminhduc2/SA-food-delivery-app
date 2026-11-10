@@ -100,3 +100,20 @@ export async function findActiveAssignment(
     })) ?? undefined
   );
 }
+
+/** The delivery for an order that this driver currently holds an active assignment on. */
+export async function findActiveForOrderAndDriver(
+  orderId: string,
+  driverId: string,
+  db: DB = prisma,
+): Promise<{ id: string } | undefined> {
+  return (
+    (await db.delivery.findFirst({
+      where: {
+        order_id: orderId,
+        assignments: { some: { driver_id: driverId, active: true } },
+      },
+      select: { id: true },
+    })) ?? undefined
+  );
+}

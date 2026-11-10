@@ -22,7 +22,7 @@ process.env.DEMO_MODE = 'true';
 process.env.DEMO_PASSWORD = 'ArchitectureTest123!';
 process.env.PAYMENT_MODE = 'simulated';
 process.env.PAYMENT_WEBHOOK_SECRET = 'test-secret-for-signed-callback-validation';
-let server: Server, base: string, db: any, payment: any, ops: any;
+let server: Server, base: string, db: any, payment: any, ops: any, jobs: any;
 const cookies: Record<string, string> = {};
 async function request(
   path: string,
@@ -82,8 +82,9 @@ before(async () => {
   await migrate();
   const { seed } = await import('../server/seed/seed.js');
   await seed();
-  payment = await import('../server/modules/payment/application/payment.service.js');
-  ops = await import('../server/modules/notification/notification.service.js');
+  payment = await import('../server/modules/payment/index.js');
+  jobs = await import('../server/jobs.js');
+  ops = await import('../server/modules/notification/index.js');
   const { createApp } = await import('../server/app.js');
   server = createApp().listen(0, '127.0.0.1');
   await new Promise<void>((r) => server.once('listening', r));
@@ -428,7 +429,7 @@ test('expiration, crash recovery, query reconciliation and simulated refunds', a
   await schemaPool.query("UPDATE orders SET expires_at=now()-interval '1 minute' WHERE id=$1", [
     o.id,
   ]);
-  await payment.reconcilePayments();
+  await jobs.runPaymentMaintenance();
   assert.equal((await request('/orders/' + o.id)).data.status, 'PAYMENT_FAILED');
   const pending = (await checkout()).data;
   await schemaPool.query('DELETE FROM simulated_transactions WHERE reference=$1', [
@@ -437,7 +438,7 @@ test('expiration, crash recovery, query reconciliation and simulated refunds', a
   await schemaPool.query('UPDATE payments SET provider_created=false WHERE id=$1', [
     pending.payment.id,
   ]);
-  await payment.reconcilePayments();
+  await jobs.runPaymentMaintenance();
   assert(
     (
       await schemaPool.query('SELECT * FROM simulated_transactions WHERE reference=$1', [
@@ -452,13 +453,13 @@ test('expiration, crash recovery, query reconciliation and simulated refunds', a
   await schemaPool.query('UPDATE payments SET next_reconcile_at=now() WHERE order_id=$1', [
     pending.id,
   ]);
-  await payment.reconcilePayments();
+  await jobs.runPaymentMaintenance();
   assert.equal((await request('/orders/' + pending.id)).data.status, 'CONFIRMED');
   await request(`/orders/${pending.id}/cancel`, 'POST', { reason: 'Please cancel' });
   await schemaPool.query('UPDATE payments SET next_reconcile_at=now() WHERE order_id=$1', [
     pending.id,
   ]);
-  await payment.reconcilePayments();
+  await jobs.runPaymentMaintenance();
   assert.equal((await request('/orders/' + pending.id)).data.payment.status, 'REFUNDED');
 });
 test('provider timeout keeps a recoverable pending order; outages do not hold stock forever', async () => {
@@ -473,7 +474,7 @@ test('provider timeout keeps a recoverable pending order; outages do not hold st
     await schemaPool.query("UPDATE orders SET expires_at=now()-interval '1 second' WHERE id=$1", [
       o.id,
     ]);
-    await payment.reconcilePayments();
+    await jobs.runPaymentMaintenance();
     assert.equal((await request('/orders/' + o.id)).data.status, 'PAYMENT_FAILED');
   } finally {
     payment.paymentAdapter.create = original;
@@ -484,7 +485,7 @@ test('provider timeout keeps a recoverable pending order; outages do not hold st
     'UPDATE payments SET provider_created=false,next_reconcile_at=now() WHERE id=$1',
     [next.payment.id],
   );
-  await payment.reconcilePayments();
+  await jobs.runPaymentMaintenance();
   assert.equal(
     (
       await schemaPool.query(

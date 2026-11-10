@@ -1,8 +1,7 @@
 import 'dotenv/config';
 import { createApp } from './app.js';
+import { runBackgroundCycle } from './jobs.js';
 import { prisma } from './shared/db.js';
-import { deliverNotifications } from './modules/notification/index.js';
-import { reconcilePayments } from './modules/payment/index.js';
 if (
   process.env.NODE_ENV === 'production' &&
   (!process.env.DATABASE_URL ||
@@ -26,9 +25,7 @@ const worker = setInterval(async () => {
   if (running) return;
   running = true;
   try {
-    await reconcilePayments();
-    await deliverNotifications();
-    await prisma.session.deleteMany({ where: { expires_at: { lt: new Date() } } });
+    await runBackgroundCycle();
   } catch (e) {
     console.error('Worker error', e);
   } finally {

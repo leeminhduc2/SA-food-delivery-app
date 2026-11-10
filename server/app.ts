@@ -9,16 +9,18 @@ import { backofficeRoutes } from './modules/backoffice/index.js';
 import { catalogRoutes, importRoutes } from './modules/catalog/index.js';
 import { deliveryRoutes } from './modules/delivery/index.js';
 import { authenticate, identityRoutes } from './modules/identity/index.js';
+import { registerModules } from './modules/index.js';
 import { addressRoutes } from './modules/location/index.js';
 import { notificationRoutes } from './modules/notification/index.js';
 import { orderRoutes } from './modules/ordering/index.js';
-import { paymentActionRoutes, paymentRoutes } from './modules/payment/index.js';
+import { paymentRoutes } from './modules/payment/index.js';
 import { reviewRoutes } from './modules/review/index.js';
 import { supportRoutes } from './modules/support/index.js';
 import { AppError } from './shared/errors.js';
 import { isPrismaError, prisma } from './shared/db.js';
 
 export function createApp() {
+  registerModules();
   const app = express();
   app.disable('x-powered-by');
   app.use(
@@ -114,7 +116,6 @@ export function createApp() {
     addressRoutes,
     catalogRoutes,
     orderRoutes,
-    paymentActionRoutes,
     deliveryRoutes,
     reviewRoutes,
     supportRoutes,

@@ -1,0 +1,82 @@
+import { transaction, type DB } from '../../../shared/db.js';
+import { check } from '../../../shared/errors.js';
+import type { User } from '../../../shared/types.js';
+import { assertMember, priceCart } from '../../catalog/index.js';
+import { isDriverAssigned } from '../../delivery/index.js';
+import {
+  defaultAddressFor,
+  deliveryInfoForRestaurantId,
+  noAddressInfo,
+} from '../../location/index.js';
+import * as orders from '../infrastructure/order.repository.js';
+
+/** Loads an order and checks that the actor may see it. Also used by Review and Support. */
+export async function accessOrder(
+  db: DB | undefined,
+  actor: User,
+  orderId: string,
+  lock = false,
+): Promise<orders.OrderRow> {
+  const order = await orders.findById(orderId, db, lock);
+  check(order, 404, 'NOT_FOUND', 'Order not found.');
+  if (actor.role === 'CUSTOMER')
+    check(order.customer_id === actor.id, 403, 'FORBIDDEN', 'You cannot access this order.');
+  else if (actor.role === 'RESTAURANT') await assertMember(db, actor, order.restaurant_id);
+  else if (actor.role === 'DRIVER')
+    check(
+      await isDriverAssigned(orderId, actor.id, db),
+      403,
+      'FORBIDDEN',
+      'This delivery is not assigned to you.',
+    );
+  return order;
+}
+
+export async function orderDetail(orderId: string, db?: DB): Promise<any> {
+  const row = await orders.detailRow(orderId, db);
+  return {
+    ...row,
+    items: await orders.detailItems(orderId, db),
+    payment: await orders.detailPayment(orderId, db),
+    delivery: await orders.detailDelivery(orderId, db),
+    history: await orders.detailHistory(orderId, db),
+    review: await orders.detailReview(orderId, db),
+  };
+}
+
+export async function list(actor: User): Promise<any[]> {
+  const rows = await orders.listVisibleIds(actor.role, actor.id);
+  return Promise.all(rows.map((order) => orderDetail(order.id)));
+}
+
+export async function detail(actor: User, orderId: string): Promise<any> {
+  await accessOrder(undefined, actor, orderId);
+  return orderDetail(orderId);
+}
+
+export async function quote(actor: User, items: unknown): Promise<any> {
+  const base = await transaction((db) => priceCart(db, items));
+  const address = await defaultAddressFor(actor.id);
+  if (!address)
+    return {
+      ...base,
+      total: base.subtotal + base.deliveryFee,
+      deliveryInfo: noAddressInfo(),
+    };
+  const info = await deliveryInfoForRestaurantId(base.restaurantId, address, {
+    includeGeometry: true,
+  });
+  if (!info.supported)
+    return {
+      ...base,
+      deliveryFee: 0,
+      total: base.subtotal,
+      deliveryInfo: info,
+    };
+  return {
+    ...base,
+    deliveryFee: info.shippingFee,
+    total: base.subtotal + (info.shippingFee as number),
+    deliveryInfo: info,
+  };
+}

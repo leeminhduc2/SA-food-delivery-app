@@ -1,7 +1,9 @@
 import { Router } from 'express';
-import * as cart from './application/cart.js';
-import * as orders from './application/order.service.js';
 import { actor } from '../../shared/http/actor.js';
+import * as cart from './application/cart.js';
+import { checkout } from './application/checkout.js';
+import { cancel, simulatePayment, transition } from './application/order-lifecycle.js';
+import { detail, list, quote } from './application/order-queries.js';
 
 export const orderRoutes = Router();
 
@@ -19,28 +21,33 @@ orderRoutes.delete('/cart/items/:itemId', async (req, res) => {
 
 orderRoutes.post('/checkout/quote', async (req, res) => {
   const customer = actor(req, 'CUSTOMER');
-  res.json(await orders.quote(customer, req.body.items));
+  res.json(await quote(customer, req.body.items));
 });
 
 orderRoutes.post('/checkout', async (req, res) => {
   const customer = actor(req, 'CUSTOMER');
-  res.status(201).json(await orders.checkout(customer, req.body));
+  res.status(201).json(await checkout(customer, req.body));
 });
 
 orderRoutes.get('/orders', async (req, res) => {
-  res.json(await orders.list(actor(req)));
+  res.json(await list(actor(req)));
 });
 
 orderRoutes.get('/orders/:id', async (req, res) => {
-  res.json(await orders.detail(actor(req), String(req.params.id)));
+  res.json(await detail(actor(req), String(req.params.id)));
 });
 
 orderRoutes.post('/orders/:id/transition', async (req, res) => {
   const restaurant = actor(req, 'RESTAURANT');
-  res.json(await orders.transition(restaurant, String(req.params.id), req.body));
+  res.json(await transition(restaurant, String(req.params.id), req.body));
 });
 
 orderRoutes.post('/orders/:id/cancel', async (req, res) => {
   const owner = actor(req, 'CUSTOMER', 'RESTAURANT', 'ADMIN');
-  res.json(await orders.cancel(owner, String(req.params.id), req.body));
+  res.json(await cancel(owner, String(req.params.id), req.body));
+});
+
+orderRoutes.post('/orders/:id/simulate-payment', async (req, res) => {
+  const customer = actor(req, 'CUSTOMER');
+  res.json(await simulatePayment(customer, String(req.params.id), req.body));
 });

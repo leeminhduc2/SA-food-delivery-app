@@ -1,12 +1,13 @@
 import { z } from 'zod';
-import { transaction, type DB } from '../../../shared/db.js';
+import { prisma, transaction, type DB } from '../../../shared/db.js';
 import { check } from '../../../shared/errors.js';
+import { publish } from '../../../shared/events.js';
 import type { User } from '../../../shared/types.js';
 import * as audits from '../../../shared/audit.repository.js';
+import { findActiveDriver } from '../../identity/index.js';
 import * as deliveries from '../infrastructure/delivery.repository.js';
-import * as orders from '../../ordering/infrastructure/order.repository.js';
-import * as users from '../../identity/user.repository.js';
-import { changeOrder } from '../../ordering/application/order.service.js';
+import { orderGateway } from '../delivery.ports.js';
+import { canDriverTransition, hasFailureReason, isOpen } from '../domain/delivery-status.js';
 
 const transitionSchema = z.object({
   status: z.enum(['PICKED_UP', 'IN_TRANSIT', 'DELIVERED', 'FAILED']),
@@ -20,35 +21,38 @@ export async function createDelivery(db: DB, orderId: string): Promise<void> {
 
 export async function cancelDelivery(db: DB, orderId: string, actor: string): Promise<void> {
   const delivery = await deliveries.findByOrderForUpdate(orderId, db);
-  if (delivery && ['UNASSIGNED', 'ASSIGNED'].includes(delivery.status)) {
+  if (delivery && isOpen(delivery.status)) {
     await deliveries.setStatus(delivery.id, 'CANCELLED', db);
     await deliveries.deactivateAssignments(delivery.id, db);
     await audits.history(orderId, 'DELIVERY', delivery.status, 'CANCELLED', actor, '', db);
   }
 }
 
+export async function isDriverAssigned(
+  orderId: string,
+  driverId: string,
+  db: DB = prisma,
+): Promise<boolean> {
+  return Boolean(await deliveries.findActiveForOrderAndDriver(orderId, driverId, db));
+}
+
 export async function assign(actor: User, deliveryId: string, raw: unknown): Promise<void> {
   const { driverId } = z.object({ driverId: z.string().min(1) }).parse(raw);
+  const orders = orderGateway();
   await transaction(async (db) => {
     const found = await deliveries.findById(deliveryId, db);
     check(found, 404, 'NOT_FOUND', 'Delivery not found.');
-    const order = await orders.lock(found.order_id, db);
+    const order = await orders.lockOrder(db, found.order_id);
     check(order, 404, 'NOT_FOUND', 'Order not found.');
     const delivery = await deliveries.findForUpdate(deliveryId, db);
     check(delivery, 404, 'NOT_FOUND', 'Delivery not found.');
     check(
-      ['CONFIRMED', 'ACCEPTED', 'PREPARING', 'READY_FOR_PICKUP'].includes(order.status) &&
-        ['UNASSIGNED', 'ASSIGNED'].includes(delivery.status),
+      orders.acceptsDriverAssignment(order) && isOpen(delivery.status),
       409,
       'INVALID_TRANSITION',
       'This delivery cannot be assigned.',
     );
-    check(
-      await users.findActiveDriver(driverId, db),
-      400,
-      'INVALID_DRIVER',
-      'Choose an active driver.',
-    );
+    check(await findActiveDriver(driverId, db), 400, 'INVALID_DRIVER', 'Choose an active driver.');
     await deliveries.deactivateAssignments(delivery.id, db);
     await deliveries.insertAssignment(delivery.id, driverId, db);
     await deliveries.assign(delivery.id, driverId, db);
@@ -59,10 +63,11 @@ export async function assign(actor: User, deliveryId: string, raw: unknown): Pro
 
 export async function transition(actor: User, deliveryId: string, raw: unknown): Promise<void> {
   const input = transitionSchema.parse(raw);
+  const orders = orderGateway();
   await transaction(async (db) => {
     const found = await deliveries.findOrderId(deliveryId, db);
     check(found, 404, 'NOT_FOUND', 'Delivery not found.');
-    const order = await orders.lock(found.order_id, db);
+    const order = await orders.lockOrder(db, found.order_id);
     check(order, 404, 'NOT_FOUND', 'Order not found.');
     const delivery = await deliveries.findForUpdate(deliveryId, db);
     check(delivery, 404, 'NOT_FOUND', 'Delivery not found.');
@@ -73,27 +78,22 @@ export async function transition(actor: User, deliveryId: string, raw: unknown):
       'FORBIDDEN',
       'This delivery is not assigned to you.',
     );
-    const transitions: Record<string, string[]> = {
-      ASSIGNED: ['PICKED_UP'],
-      PICKED_UP: ['IN_TRANSIT', 'FAILED'],
-      IN_TRANSIT: ['DELIVERED', 'FAILED'],
-    };
     check(
-      transitions[delivery.status]?.includes(input.status),
+      canDriverTransition(delivery.status, input.status),
       409,
       'INVALID_TRANSITION',
       'Invalid delivery transition.',
     );
     if (input.status === 'PICKED_UP')
       check(
-        order.status === 'READY_FOR_PICKUP',
+        orders.isReadyForPickup(order),
         409,
         'NOT_READY',
         'The restaurant has not marked the food ready.',
       );
     if (input.status === 'FAILED')
       check(
-        input.reason.trim().length >= 3,
+        hasFailureReason(input.reason),
         400,
         'REASON_REQUIRED',
         'Please describe why delivery failed.',
@@ -108,10 +108,16 @@ export async function transition(actor: User, deliveryId: string, raw: unknown):
       input.reason,
       db,
     );
-    if (input.status === 'PICKED_UP') await changeOrder(db, order, 'OUT_FOR_DELIVERY', actor.id);
-    if (input.status === 'DELIVERED') await changeOrder(db, order, 'DELIVERED', actor.id);
+    if (input.status === 'PICKED_UP')
+      await publish(db, 'DeliveryPickedUp', { orderId: order.id, actor: actor.id });
+    if (input.status === 'DELIVERED')
+      await publish(db, 'DeliveryCompleted', { orderId: order.id, actor: actor.id });
     if (input.status === 'FAILED') {
-      await changeOrder(db, order, 'DELIVERY_FAILED', actor.id, input.reason);
+      await publish(db, 'DeliveryFailed', {
+        orderId: order.id,
+        actor: actor.id,
+        reason: input.reason,
+      });
       await audits.audit(actor.id, 'DELIVERY_FAILED', delivery.id, { reason: input.reason }, db);
     }
   });

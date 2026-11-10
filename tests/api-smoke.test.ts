@@ -448,8 +448,7 @@ test('smoke: admin overview, reports, notifications and metrics', async () => {
   assert.equal(complaints.status, 200);
   assert.ok(Array.isArray(complaints.data));
 
-  const { deliverNotifications } =
-    await import('../server/modules/notification/notification.service.js');
+  const { deliverNotifications } = await import('../server/modules/notification/index.js');
   await deliverNotifications();
   const inbox = await request('/notifications');
   assert.equal(inbox.status, 200);

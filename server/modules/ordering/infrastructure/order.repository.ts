@@ -214,23 +214,3 @@ export async function listExpiredIds(limit = 100, db: DB = prisma): Promise<{ id
     take: limit,
   });
 }
-
-export async function lock(orderId: string, db: DB = prisma): Promise<OrderRow | undefined> {
-  return findById(orderId, db, true);
-}
-
-export async function isDriverAssigned(
-  orderId: string,
-  driverId: string,
-  db: DB = prisma,
-): Promise<{ id: string } | undefined> {
-  return (
-    (await db.delivery.findFirst({
-      where: {
-        order_id: orderId,
-        assignments: { some: { driver_id: driverId, active: true } },
-      },
-      select: { id: true },
-    })) ?? undefined
-  );
-}
