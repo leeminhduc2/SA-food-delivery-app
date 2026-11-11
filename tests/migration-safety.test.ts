@@ -21,6 +21,7 @@ const url = new URL(originalUrl);
 url.searchParams.set('options', `-c search_path=${schema}`);
 url.searchParams.set('schema', schema);
 process.env.DATABASE_URL = url.toString();
+const schemaPool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 process.env.NODE_ENV = 'test';
 process.env.LOG_REQUESTS = 'false';
 
@@ -36,6 +37,7 @@ before(async () => {
 
 after(async () => {
   if (db) await db.prisma.$disconnect();
+  await schemaPool.end();
   await admin.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
   await admin.end();
 });
@@ -151,12 +153,12 @@ test('the quote cache enforces one row per address and restaurant with cascading
 
 test('rows inserted with the old column set receive the defaults', async () => {
   const restaurantId = 'legacy-restaurant-' + randomUUID();
-  await admin.query(
+  await schemaPool.query(
     `INSERT INTO restaurants (id, name, description, address, cuisine)
      VALUES ($1, 'Legacy Kitchen', 'Inserted without the new columns', '1 Old Street', 'Vietnamese')`,
     [restaurantId],
   );
-  const restaurant = await admin.query(
+  const restaurant = await schemaPool.query(
     `SELECT accepting_orders, catalog_visible FROM restaurants WHERE id = $1`,
     [restaurantId],
   );
@@ -164,23 +166,23 @@ test('rows inserted with the old column set receive the defaults', async () => {
   assert.equal(restaurant.rows[0].catalog_visible, true);
 
   const menuId = 'legacy-menu-' + randomUUID();
-  await admin.query(`INSERT INTO menus (id, restaurant_id, name) VALUES ($1, $2, 'Legacy menu')`, [
-    menuId,
-    restaurantId,
-  ]);
+  await schemaPool.query(
+    `INSERT INTO menus (id, restaurant_id, name) VALUES ($1, $2, 'Legacy menu')`,
+    [menuId, restaurantId],
+  );
   const itemId = 'legacy-item-' + randomUUID();
-  await admin.query(
+  await schemaPool.query(
     `INSERT INTO menu_items (id, restaurant_id, menu_id, name, price)
      VALUES ($1, $2, $3, 'Legacy dish', 39000)`,
     [itemId, restaurantId, menuId],
   );
-  const item = await admin.query(`SELECT visible, available FROM menu_items WHERE id = $1`, [
+  const item = await schemaPool.query(`SELECT visible, available FROM menu_items WHERE id = $1`, [
     itemId,
   ]);
   assert.equal(item.rows[0].visible, true);
   assert.equal(item.rows[0].available, true);
 
-  const counts = await admin.query(
+  const counts = await schemaPool.query(
     `SELECT (SELECT count(*) FROM restaurants) AS restaurants,
             (SELECT count(*) FROM menu_items) AS items`,
   );
@@ -207,7 +209,7 @@ test('the new migration only adds schema and never deletes data', async () => {
   assert.match(sql, /\bADD COLUMN\b/i);
   assert.match(sql, /\bCREATE TABLE\b/i);
 
-  const applied = await admin.query(
+  const applied = await schemaPool.query(
     `SELECT migration_name, finished_at, rolled_back_at
        FROM _prisma_migrations WHERE migration_name = $1`,
     [migrationName],
