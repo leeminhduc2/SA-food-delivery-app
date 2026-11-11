@@ -1,0 +1,76 @@
+import { Router } from 'express';
+import * as catalog from './application/catalog.service.js';
+import { actor } from '../../shared/http/actor.js';
+
+export const catalogRoutes = Router();
+
+catalogRoutes.get('/restaurants', async (req, res) => {
+  res.json(await catalog.listRestaurants(req.query, req.user));
+});
+
+catalogRoutes.get('/restaurants/nearby', async (req, res) => {
+  res.json(await catalog.listRestaurants({ ...req.query, sort: 'recommended' }, req.user));
+});
+
+catalogRoutes.get('/restaurants/:id/shipping-quote', async (req, res) => {
+  res.json(await catalog.shippingQuoteForRestaurant(actor(req), String(req.params.id)));
+});
+
+catalogRoutes.get('/restaurants/:id', async (req, res) => {
+  res.json(await catalog.getRestaurant(req.user, String(req.params.id)));
+});
+
+catalogRoutes.post('/restaurants', async (req, res) => {
+  const owner = actor(req, 'RESTAURANT', 'ADMIN');
+  res.status(201).json(await catalog.createRestaurant(owner, req.body));
+});
+
+catalogRoutes.patch('/restaurants/:id', async (req, res) => {
+  const owner = actor(req, 'RESTAURANT', 'ADMIN');
+  res.json(await catalog.updateRestaurant(owner, String(req.params.id), req.body));
+});
+
+catalogRoutes.delete('/restaurants/:id', async (req, res) => {
+  const owner = actor(req, 'RESTAURANT', 'ADMIN');
+  await catalog.archiveRestaurant(owner, String(req.params.id));
+  res.json({ ok: true });
+});
+
+catalogRoutes.get('/restaurants/:id/items', async (req, res) => {
+  res.json(await catalog.listPublicItems(req.user, String(req.params.id)));
+});
+
+catalogRoutes.get('/manage/restaurants', async (req, res) => {
+  res.json(await catalog.listManaged(actor(req, 'RESTAURANT', 'ADMIN')));
+});
+
+catalogRoutes.post('/restaurants/:id/items', async (req, res) => {
+  const owner = actor(req, 'RESTAURANT', 'ADMIN');
+  res.status(201).json(await catalog.createItem(owner, String(req.params.id), req.body));
+});
+
+catalogRoutes.get('/items/:id', async (req, res) => {
+  res.json(await catalog.getItem(req.user, String(req.params.id)));
+});
+
+catalogRoutes.put('/items/:id', async (req, res) => {
+  const owner = actor(req, 'RESTAURANT', 'ADMIN');
+  res.json(await catalog.updateItem(owner, String(req.params.id), req.body));
+});
+
+catalogRoutes.patch('/items/:id', async (req, res) => {
+  const owner = actor(req, 'RESTAURANT', 'ADMIN');
+  res.json(await catalog.updateItem(owner, String(req.params.id), req.body));
+});
+
+catalogRoutes.delete('/items/:id', async (req, res) => {
+  const owner = actor(req, 'RESTAURANT', 'ADMIN');
+  await catalog.archiveItem(owner, String(req.params.id));
+  res.json({ ok: true });
+});
+
+catalogRoutes.post('/admin/restaurants/:id/approval', async (req, res) => {
+  const administrator = actor(req, 'ADMIN');
+  await catalog.setApproval(administrator, String(req.params.id), req.body);
+  res.json({ ok: true });
+});

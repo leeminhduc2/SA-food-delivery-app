@@ -72,12 +72,12 @@ test('catalog shows the seeded dataset, grouped menu, cuisine filter and safe im
   await expect(page.locator('.menu-section')).toHaveCount(2);
   await expect(page.locator('.dish')).toHaveCount(6);
   await expect(page.locator('.menu-category')).toHaveText(['Món chính', 'Món khai vị']);
-  // No raster files ship with the workspace yet, so the honest placeholder must
-  // appear instead of an SVG or a fake photo.
-  await expect(
-    page.locator('.restaurant-hero img, .restaurant-hero .image-placeholder'),
-  ).toHaveCount(1);
-  await expect(page.locator('.dish .image-placeholder')).toHaveCount(6);
+  await expect(page.locator('.restaurant-hero img')).toHaveCount(1);
+  await expect(page.locator('.restaurant-hero .image-placeholder')).toHaveCount(0);
+  // 59 of the 60 raster assets exist; mock-item-001.webp is intentionally
+  // missing, so its dish card must show the honest placeholder.
+  await expect(page.locator('.dish img')).toHaveCount(5);
+  await expect(page.locator('.dish .image-placeholder')).toHaveCount(1);
   await page.getByRole('button', { name: 'All restaurants' }).click();
   await page.getByRole('button', { name: 'Japanese', exact: true }).click();
   await expect(page.locator('.restaurant-card')).toHaveCount(1);
@@ -98,13 +98,23 @@ test('customer checkout through restaurant preparation, assignment, driver deliv
   const customer = await browser.newContext();
   const page = await customer.newPage();
   await login(page, 'customer');
+  // Checkout requires a saved, geocoded address; save one before ordering.
+  await page.getByRole('button', { name: 'Account settings' }).click();
+  const account = page.getByRole('dialog');
+  await account.getByLabel('Street address').fill('18 Phố Hàng Bạc, Hoàn Kiếm, Hà Nội');
+  await account.getByRole('button', { name: 'Find address' }).click();
+  await expect(account.locator('.resolved-address')).toContainText('Hà Nội');
+  await account.getByRole('button', { name: 'Save delivery address' }).click();
+  await expect(account.locator('.current-address')).toContainText('18 Phố Hàng Bạc');
+  await account.getByRole('button', { name: 'Close dialog' }).click();
   await page.locator('.restaurant-card').filter({ hasText: 'Bếp Phố Hà Thành' }).click();
   await expect(page.getByRole('heading', { name: 'The menu' })).toBeVisible();
   await page.getByRole('button', { name: 'Add Phở bò đặc biệt', exact: true }).click();
   await page.getByRole('button', { name: /Basket/ }).click();
-  await expect(page.getByRole('dialog')).toContainText('90.000');
+  await expect(page.getByRole('dialog')).toContainText('85.000');
   await page.getByRole('button', { name: 'Continue to checkout' }).click();
-  await page.getByLabel('Delivery address').fill('12 Nguyễn Huệ, District 1');
+  await expect(page.getByRole('dialog')).toContainText('Deliver to your saved address');
+  await expect(page.getByLabel('Delivery address')).toHaveCount(0);
   await page.getByRole('button', { name: 'Place order', exact: true }).click();
   await expect(page.locator('.order-card')).toHaveCount(1);
   await page.getByRole('button', { name: 'Simulate successful payment' }).click();

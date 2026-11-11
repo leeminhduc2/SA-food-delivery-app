@@ -11,8 +11,9 @@
     "build": "prisma generate && tsc --noEmit && vite build",
     "start": "tsx server/index.ts",
     "db:migrate": "prisma migrate deploy",
-    "db:seed": "tsx server/seed.ts",
-    "db:seed:mock": "tsx server/seed-mock.ts",
+    "db:seed": "tsx server/seed/seed.ts",
+    "db:seed:mock": "tsx server/seed/seed-mock.ts",
+    "db:seed:notifications": "tsx server/seed/seed-notifications.ts",
     "assets:prompts": "tsx scripts/export-mock-image-prompts.ts",
     "db:generate": "prisma generate",
     "db:validate": "prisma validate",
@@ -27,7 +28,8 @@
     "test:load": "tsx scripts/load.ts",
     "check:openapi": "tsx scripts/check-openapi.ts",
     "format": "prettier --write src server tests scripts docs README.md design-system *.json *.ts compose.yaml",
-    "format:check": "prettier --check src server tests scripts docs README.md design-system *.json *.ts compose.yaml"
+    "format:check": "prettier --check src server tests scripts docs README.md design-system *.json *.ts compose.yaml",
+    "ci:local": "bash scripts/ci-local.sh"
   },
   "dependencies": {
     "@fontsource-variable/dm-sans": "^5.3.0",
@@ -37,6 +39,7 @@
     "express": "^5.2.1",
     "express-rate-limit": "^8.2.1",
     "helmet": "^8.1.0",
+    "ioredis": "^6.0.0",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.468.0",
     "react": "^19.2.0",

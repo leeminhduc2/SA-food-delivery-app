@@ -101,15 +101,15 @@ async function osmRow(osmId: string, osmType = 'node') {
 
 before(async () => {
   await adminPool.query(`CREATE SCHEMA ${schema}`);
-  db = await import('../server/db.js');
+  db = await import('../server/shared/db.js');
   const { migrate } = await import('../server/migrate.js');
   await migrate();
-  const { seed } = await import('../server/seed.js');
+  const { seed } = await import('../server/seed/seed.js');
   await seed();
-  overpass = await import('../server/services/overpass.service.js');
-  osm = await import('../server/domain/osm.js');
-  importService = await import('../server/services/restaurant-import.service.js');
-  repository = await import('../server/repositories/restaurant-import.repository.js');
+  overpass = await import('../server/modules/catalog/import/overpass.client.js');
+  osm = await import('../server/modules/catalog/import/osm.js');
+  importService = await import('../server/modules/catalog/import/restaurant-import.service.js');
+  repository = await import('../server/modules/catalog/import/restaurant-import.repository.js');
   const { createApp } = await import('../server/app.js');
   server = createApp().listen(0, '127.0.0.1');
   await new Promise<void>((resolve) => server.once('listening', resolve));

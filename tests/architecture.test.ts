@@ -4,6 +4,57 @@ import { randomUUID } from 'node:crypto';
 import type { Server } from 'node:http';
 import { after, before, test } from 'node:test';
 import pg from 'pg';
+import {
+  setGeocodingProvider,
+  type GeocodingProvider,
+} from '../server/modules/location/infrastructure/geocoding.client.js';
+import {
+  setRoutingProvider,
+  type RoutingProvider,
+} from '../server/modules/location/infrastructure/routing.client.js';
+
+// Checkout now requires a saved, routed address. Keep these integration tests
+// hermetic by replacing the external providers with instant fakes.
+const fakeGeocoding: GeocodingProvider = {
+  name: 'architecture-fake-geocoder',
+  async search(query) {
+    return {
+      address: query,
+      formattedAddress: query + ', Hà Nội, Việt Nam',
+      latitude: 21.0301,
+      longitude: 105.8527,
+      provider: 'architecture-fake-geocoder',
+    };
+  },
+  async reverse(latitude, longitude) {
+    return {
+      address: `${latitude}, ${longitude}`,
+      formattedAddress: `Saved address (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`,
+      latitude,
+      longitude,
+      provider: 'architecture-fake-geocoder',
+    };
+  },
+};
+const fakeRouting: RoutingProvider = {
+  name: 'architecture-fake-router',
+  async walkingRoute(from, to) {
+    return {
+      distanceMeters: 1_200,
+      durationSeconds: 1_000,
+      routeGeometry: {
+        type: 'LineString',
+        coordinates: [
+          [from.longitude, from.latitude],
+          [to.longitude, to.latitude],
+        ],
+      },
+      provider: 'architecture-fake-router',
+    };
+  },
+};
+setGeocodingProvider(fakeGeocoding);
+setRoutingProvider(fakeRouting);
 const schema = 'test_' + randomUUID().replaceAll('-', '');
 const originalUrl =
   process.env.TEST_DATABASE_URL ||
@@ -22,7 +73,7 @@ process.env.DEMO_MODE = 'true';
 process.env.DEMO_PASSWORD = 'ArchitectureTest123!';
 process.env.PAYMENT_MODE = 'simulated';
 process.env.PAYMENT_WEBHOOK_SECRET = 'test-secret-for-signed-callback-validation';
-let server: Server, base: string, db: any, payment: any, ops: any;
+let server: Server, base: string, db: any, payment: any, ops: any, jobs: any;
 const cookies: Record<string, string> = {};
 async function request(
   path: string,
@@ -77,13 +128,14 @@ async function pay(o: any, status = 'SUCCEEDED', eventId = randomUUID(), changes
 }
 before(async () => {
   await admin.query(`CREATE SCHEMA ${schema}`);
-  db = await import('../server/db.js');
+  db = await import('../server/shared/db.js');
   const { migrate } = await import('../server/migrate.js');
   await migrate();
-  const { seed } = await import('../server/seed.js');
+  const { seed } = await import('../server/seed/seed.js');
   await seed();
-  payment = await import('../server/services/payment.service.js');
-  ops = await import('../server/services/notification.service.js');
+  payment = await import('../server/modules/payment/index.js');
+  jobs = await import('../server/jobs.js');
+  ops = await import('../server/modules/notification/index.js');
   const { createApp } = await import('../server/app.js');
   server = createApp().listen(0, '127.0.0.1');
   await new Promise<void>((r) => server.once('listening', r));
@@ -98,6 +150,13 @@ before(async () => {
     assert.equal(r.status, 200);
     cookies[actor] = r.headers.get('set-cookie')!.split(';')[0];
   }
+  const saved = await request(
+    '/users/me/delivery-address',
+    'PUT',
+    { address: '12 Test Street, District 1', latitude: 21.03, longitude: 105.85 },
+    'customer',
+  );
+  assert.equal(saved.status, 200, JSON.stringify(saved.data));
 });
 after(async () => {
   if (server)
@@ -141,6 +200,17 @@ test('authentication, CSRF, registration, profile, role and account suspension',
   });
   assert.equal(registration.status, 201);
   cookies.buyer2 = registration.headers.get('set-cookie')!.split(';')[0];
+  assert.equal(
+    (
+      await request(
+        '/users/me/delivery-address',
+        'PUT',
+        { address: '12 Test Street, District 1', latitude: 21.03, longitude: 105.85 },
+        'buyer2',
+      )
+    ).status,
+    200,
+  );
   assert.equal(
     (await request('/auth/me', 'PATCH', { name: 'New name' }, 'buyer2')).data.name,
     'New name',
@@ -187,7 +257,7 @@ test('checkout retry is atomic and payload conflicts are rejected', async () => 
   const body = {
     items: lines,
     address: '12 Test Street, District 1',
-    expectedTotal: 80000,
+    expectedTotal: 75_000,
     idempotencyKey: key,
     total: 1,
   };
@@ -199,9 +269,11 @@ test('checkout retry is atomic and payload conflicts are rejected', async () => 
     JSON.stringify(responses),
   );
   assert.equal(new Set(responses.map((r) => r.data.id)).size, 1);
-  assert.equal(responses[0].data.total, 80000);
+  assert.equal(responses[0].data.total, 75_000);
+  // A client-supplied address is ignored, so the conflict must come from a
+  // field that is actually part of the canonical order payload.
   assert.equal(
-    (await request('/checkout', 'POST', { ...body, address: '99 Different Street' })).data.code,
+    (await request('/checkout', 'POST', { ...body, note: 'different' })).data.code,
     'IDEMPOTENCY_CONFLICT',
   );
   assert.equal(
@@ -214,7 +286,7 @@ test('last serving concurrency permits exactly one checkout and never negative s
   const body = {
     items: [{ itemId: 'banhmi', quantity: 1, optionIds: [] }],
     address: '12 Test Street, District 1',
-    expectedTotal: 50000,
+    expectedTotal: 45_000,
   };
   const responses = await Promise.all([
     request('/checkout', 'POST', { ...body, idempotencyKey: randomUUID() }),
@@ -254,7 +326,7 @@ test('all-or-nothing checkout, price revalidation, unavailable items, and option
   const quote = await request('/checkout/quote', 'POST', {
     items: [{ itemId: 'pho', quantity: 2, optionIds: ['extra'] }],
   });
-  assert.equal(quote.data.total, 175000);
+  assert.equal(quote.data.total, 170_000);
   await schemaPool.query("UPDATE menu_items SET available=false WHERE id='rolls'");
   assert.equal(
     (
@@ -428,7 +500,7 @@ test('expiration, crash recovery, query reconciliation and simulated refunds', a
   await schemaPool.query("UPDATE orders SET expires_at=now()-interval '1 minute' WHERE id=$1", [
     o.id,
   ]);
-  await payment.reconcilePayments();
+  await jobs.runPaymentMaintenance();
   assert.equal((await request('/orders/' + o.id)).data.status, 'PAYMENT_FAILED');
   const pending = (await checkout()).data;
   await schemaPool.query('DELETE FROM simulated_transactions WHERE reference=$1', [
@@ -437,7 +509,7 @@ test('expiration, crash recovery, query reconciliation and simulated refunds', a
   await schemaPool.query('UPDATE payments SET provider_created=false WHERE id=$1', [
     pending.payment.id,
   ]);
-  await payment.reconcilePayments();
+  await jobs.runPaymentMaintenance();
   assert(
     (
       await schemaPool.query('SELECT * FROM simulated_transactions WHERE reference=$1', [
@@ -452,13 +524,13 @@ test('expiration, crash recovery, query reconciliation and simulated refunds', a
   await schemaPool.query('UPDATE payments SET next_reconcile_at=now() WHERE order_id=$1', [
     pending.id,
   ]);
-  await payment.reconcilePayments();
+  await jobs.runPaymentMaintenance();
   assert.equal((await request('/orders/' + pending.id)).data.status, 'CONFIRMED');
   await request(`/orders/${pending.id}/cancel`, 'POST', { reason: 'Please cancel' });
   await schemaPool.query('UPDATE payments SET next_reconcile_at=now() WHERE order_id=$1', [
     pending.id,
   ]);
-  await payment.reconcilePayments();
+  await jobs.runPaymentMaintenance();
   assert.equal((await request('/orders/' + pending.id)).data.payment.status, 'REFUNDED');
 });
 test('provider timeout keeps a recoverable pending order; outages do not hold stock forever', async () => {
@@ -473,7 +545,7 @@ test('provider timeout keeps a recoverable pending order; outages do not hold st
     await schemaPool.query("UPDATE orders SET expires_at=now()-interval '1 second' WHERE id=$1", [
       o.id,
     ]);
-    await payment.reconcilePayments();
+    await jobs.runPaymentMaintenance();
     assert.equal((await request('/orders/' + o.id)).data.status, 'PAYMENT_FAILED');
   } finally {
     payment.paymentAdapter.create = original;
@@ -484,7 +556,7 @@ test('provider timeout keeps a recoverable pending order; outages do not hold st
     'UPDATE payments SET provider_created=false,next_reconcile_at=now() WHERE id=$1',
     [next.payment.id],
   );
-  await payment.reconcilePayments();
+  await jobs.runPaymentMaintenance();
   assert.equal(
     (
       await schemaPool.query(

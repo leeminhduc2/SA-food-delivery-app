@@ -937,6 +937,24 @@ paths:
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+    delete:
+      tags: [Catalog]
+      operationId: archiveRestaurant
+      summary: Soft-archive a restaurant without deleting its history
+      description: >-
+        Sets catalog_visible and accepting_orders to false, removes cached
+        delivery quotes for the restaurant, and keeps the row, its menus and its
+        order history intact.
+      security: [{ sessionCookie: [], requestedWithHeader: [] }]
+      responses:
+        '200':
+          description: Restaurant archived
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ok' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /api/restaurants/{id}/shipping-quote:
     parameters:
@@ -963,6 +981,20 @@ paths:
   /api/restaurants/{id}/items:
     parameters:
       - $ref: '#/components/parameters/RestaurantId'
+    get:
+      tags: [Catalog]
+      operationId: listRestaurantItems
+      summary: Visible dishes on a restaurant menu
+      security: []
+      responses:
+        '200':
+          description: Public menu
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/MenuItem' }
+        '404': { $ref: '#/components/responses/NotFound' }
     post:
       tags: [Catalog]
       operationId: createItem
@@ -1003,10 +1035,42 @@ paths:
   /api/items/{id}:
     parameters:
       - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Catalog]
+      operationId: getItem
+      summary: One dish; archived dishes stay visible only to their manager
+      security: []
+      responses:
+        '200':
+          description: Dish
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MenuItem' }
+        '404': { $ref: '#/components/responses/NotFound' }
     put:
       tags: [Catalog]
       operationId: updateItem
       summary: Replace editable dish fields
+      security: [{ sessionCookie: [], requestedWithHeader: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MenuItemInput' }
+      responses:
+        '200':
+          description: Updated dish
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MenuItem' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Catalog]
+      operationId: patchItem
+      summary: Update any subset of dish fields
       security: [{ sessionCookie: [], requestedWithHeader: [] }]
       requestBody:
         required: true
@@ -1396,6 +1460,35 @@ paths:
                 type: array
                 items: { $ref: '#/components/schemas/Notification' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/notifications/stream:
+    get:
+      tags: [Support]
+      operationId: streamNotifications
+      summary: Live notifications over Server-Sent Events
+      description: >-
+        Each new inbox notification arrives as a `notification` event whose `id` is the notification id.
+        On reconnect send `Last-Event-ID` to replay rows missed since then. Other events: `resync`
+        (the cursor is unknown, so reload the snapshot), `revoked` (the session ended), and `shutdown`
+        (the server is restarting). A comment heartbeat is sent every 25 seconds. Delivery is
+        at-most-once through Redis Pub/Sub, so the inbox remains the source of truth.
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - name: Last-Event-ID
+          in: header
+          required: false
+          schema: { type: string }
+      responses:
+        '200':
+          description: Event stream
+          content:
+            text/event-stream:
+              schema: { type: string }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429':
+          description: The user already holds the maximum of five open streams
+        '503':
+          description: Live notifications are not configured (REDIS_URL is unset)
 
   /api/notifications/read:
     post:

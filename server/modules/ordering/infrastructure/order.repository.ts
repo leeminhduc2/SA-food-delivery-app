@@ -1,0 +1,152 @@
+import { lockRow, prisma, type DB } from '../../../shared/db.js';
+import type { Prisma } from '@prisma/client';
+
+export type OrderRow = {
+  id: string;
+  customer_id: string;
+  restaurant_id: string;
+  status: string;
+  subtotal: number;
+  delivery_fee: number;
+  total: number;
+  currency: string;
+  address: string;
+  delivery_latitude: number | null;
+  delivery_longitude: number | null;
+  walking_distance_meters: number | null;
+  walking_duration_seconds: number | null;
+  note: string;
+  idempotency_key: string;
+  fingerprint: string;
+  stock_released: boolean;
+  expires_at: Date | string;
+  created_at: Date | string;
+};
+
+export type OrderInsert = {
+  id: string;
+  customerId: string;
+  restaurantId: string;
+  subtotal: number;
+  deliveryFee: number;
+  total: number;
+  address: string;
+  note: string;
+  idempotencyKey: string;
+  fingerprint: string;
+  expiresAt: Date;
+  deliveryLatitude?: number;
+  deliveryLongitude?: number;
+  walkingDistanceMeters?: number;
+  walkingDurationSeconds?: number;
+};
+
+/** Serialize concurrent checkouts that share the same customer/key. */
+export async function advisoryCheckoutLock(key: string, db: DB = prisma): Promise<void> {
+  await db.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))`;
+}
+
+export async function insert(order: OrderInsert, db: DB = prisma): Promise<void> {
+  await db.order.create({
+    data: {
+      id: order.id,
+      customer_id: order.customerId,
+      restaurant_id: order.restaurantId,
+      status: 'PENDING_PAYMENT',
+      subtotal: order.subtotal,
+      delivery_fee: order.deliveryFee,
+      total: order.total,
+      address: order.address,
+      delivery_latitude: order.deliveryLatitude,
+      delivery_longitude: order.deliveryLongitude,
+      walking_distance_meters: order.walkingDistanceMeters,
+      walking_duration_seconds: order.walkingDurationSeconds,
+      note: order.note,
+      idempotency_key: order.idempotencyKey,
+      fingerprint: order.fingerprint,
+      expires_at: order.expiresAt,
+    },
+  });
+}
+
+export async function insertItem(
+  item: {
+    orderId: string;
+    itemId: string;
+    name: string;
+    price: number;
+    quantity: number;
+    options: unknown;
+  },
+  id: string,
+  db: DB = prisma,
+): Promise<void> {
+  await db.orderItem.create({
+    data: {
+      id,
+      order_id: item.orderId,
+      menu_item_id: item.itemId,
+      name: item.name,
+      price: item.price,
+      quantity: item.quantity,
+      options: item.options as Prisma.InputJsonValue,
+    },
+  });
+}
+
+export async function findById(
+  orderId: string,
+  db: DB = prisma,
+  lock = false,
+): Promise<OrderRow | undefined> {
+  if (lock) await lockRow(db, 'orders', 'id', orderId);
+  return ((await db.order.findUnique({ where: { id: orderId } })) as OrderRow | null) ?? undefined;
+}
+
+export async function findByCustomerAndKey(
+  customerId: string,
+  idempotencyKey: string,
+  db: DB = prisma,
+): Promise<OrderRow | undefined> {
+  return (
+    ((await db.order.findUnique({
+      where: {
+        customer_id_idempotency_key: {
+          customer_id: customerId,
+          idempotency_key: idempotencyKey,
+        },
+      },
+    })) as OrderRow | null) ?? undefined
+  );
+}
+
+export async function setStatus(orderId: string, status: string, db: DB = prisma): Promise<void> {
+  await db.order.updateMany({ where: { id: orderId }, data: { status } });
+}
+
+export async function markStockReleased(orderId: string, db: DB = prisma): Promise<boolean> {
+  const updated = await db.order.updateMany({
+    where: { id: orderId, stock_released: false },
+    data: { stock_released: true },
+  });
+  return updated.count > 0;
+}
+
+export async function itemsForStockRelease(
+  orderId: string,
+  db: DB = prisma,
+): Promise<{ menu_item_id: string; quantity: number }[]> {
+  return db.orderItem.findMany({
+    where: { order_id: orderId },
+    select: { menu_item_id: true, quantity: true },
+    orderBy: { menu_item_id: 'asc' },
+  });
+}
+
+export async function listExpiredIds(limit = 100, db: DB = prisma): Promise<{ id: string }[]> {
+  return db.order.findMany({
+    where: { status: 'PENDING_PAYMENT', expires_at: { lte: new Date() } },
+    select: { id: true },
+    take: limit,
+  });
+}

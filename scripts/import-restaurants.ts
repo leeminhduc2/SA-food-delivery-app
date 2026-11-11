@@ -1,12 +1,12 @@
 import 'dotenv/config';
-import { prisma } from '../server/db.js';
-import { parseBBox, type BBox } from '../server/domain/osm.js';
+import { prisma } from '../server/shared/db.js';
+import { parseBBox, type BBox } from '../server/modules/catalog/import/osm.js';
 import {
   overpassBBox,
   overpassEndpoint,
   overpassMaxElements,
-} from '../server/services/overpass.service.js';
-import { runRestaurantImport } from '../server/services/restaurant-import.service.js';
+} from '../server/modules/catalog/import/overpass.client.js';
+import { runRestaurantImport } from '../server/modules/catalog/import/restaurant-import.service.js';
 
 type CliOptions = {
   dryRun: boolean;

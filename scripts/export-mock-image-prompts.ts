@@ -1,5 +1,5 @@
 import { mkdir, writeFile } from 'node:fs/promises';
-import { MOCK_RESTAURANTS, itemImage, restaurantImage } from '../server/domain/mock-catalog.js';
+import { MOCK_RESTAURANTS, itemImage, restaurantImage } from '../server/seed/data/mock-catalog.js';
 
 /**
  * Produce the per-asset image prompts for the fictional catalog.

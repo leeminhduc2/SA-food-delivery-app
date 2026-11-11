@@ -4,6 +4,14 @@ import { randomUUID } from 'node:crypto';
 import type { Server } from 'node:http';
 import { after, before, test } from 'node:test';
 import pg from 'pg';
+import {
+  setGeocodingProvider,
+  type GeocodingProvider,
+} from '../server/modules/location/infrastructure/geocoding.client.js';
+import {
+  setRoutingProvider,
+  type RoutingProvider,
+} from '../server/modules/location/infrastructure/routing.client.js';
 
 /**
  * Runtime API smoke tests.
@@ -32,6 +40,48 @@ process.env.DEMO_MODE = 'true';
 process.env.DEMO_PASSWORD = 'SmokeTest123!';
 process.env.PAYMENT_MODE = 'simulated';
 process.env.PAYMENT_WEBHOOK_SECRET = 'smoke-test-webhook-secret-at-least-32-chars';
+process.env.GEOCODING_MIN_INTERVAL_MS = '0';
+
+const fakeGeocoding: GeocodingProvider = {
+  name: 'smoke-fake-geocoder',
+  async search(query) {
+    return {
+      address: query,
+      formattedAddress: query + ', Hà Nội, Việt Nam',
+      latitude: 21.03,
+      longitude: 105.85,
+      provider: 'smoke-fake-geocoder',
+    };
+  },
+  async reverse(latitude, longitude) {
+    return {
+      address: `${latitude}, ${longitude}`,
+      formattedAddress: `12 Smoke Test Street (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`,
+      latitude,
+      longitude,
+      provider: 'smoke-fake-geocoder',
+    };
+  },
+};
+const fakeRouting: RoutingProvider = {
+  name: 'smoke-fake-router',
+  async walkingRoute(from, to) {
+    return {
+      distanceMeters: 1_200,
+      durationSeconds: 1_000,
+      routeGeometry: {
+        type: 'LineString',
+        coordinates: [
+          [from.longitude, from.latitude],
+          [to.longitude, to.latitude],
+        ],
+      },
+      provider: 'smoke-fake-router',
+    };
+  },
+};
+setGeocodingProvider(fakeGeocoding);
+setRoutingProvider(fakeRouting);
 
 let server: Server;
 let base = '';
@@ -67,10 +117,10 @@ const lines = [{ itemId: 'pho', quantity: 1, optionIds: [] }];
 
 before(async () => {
   await adminPool.query(`CREATE SCHEMA ${schema}`);
-  db = await import('../server/db.js');
+  db = await import('../server/shared/db.js');
   const { migrate } = await import('../server/migrate.js');
   await migrate();
-  const { seed } = await import('../server/seed.js');
+  const { seed } = await import('../server/seed/seed.js');
   await seed();
   const { createApp } = await import('../server/app.js');
   server = createApp().listen(0, '127.0.0.1');
@@ -86,6 +136,12 @@ before(async () => {
     assert.equal(login.status, 200, JSON.stringify(login.data));
     cookies[actor] = login.headers.get('set-cookie')!.split(';')[0];
   }
+  const saved = await request('/users/me/delivery-address', 'PUT', {
+    address: '12 Smoke Test Street, District 1',
+    latitude: 21.03,
+    longitude: 105.85,
+  });
+  assert.equal(saved.status, 200, JSON.stringify(saved.data));
 });
 
 after(async () => {
@@ -286,7 +342,6 @@ test('smoke: checkout, payment, delivery and review lifecycle', async () => {
   const idempotencyKey = 'smoke-order-' + randomUUID();
   const checkoutBody = {
     items: lines,
-    address: '12 Smoke Test Street, District 1',
     note: 'Smoke test order',
     expectedTotal: quote.data.total,
     idempotencyKey,
@@ -448,7 +503,7 @@ test('smoke: admin overview, reports, notifications and metrics', async () => {
   assert.equal(complaints.status, 200);
   assert.ok(Array.isArray(complaints.data));
 
-  const { deliverNotifications } = await import('../server/services/notification.service.js');
+  const { deliverNotifications } = await import('../server/modules/notification/index.js');
   await deliverNotifications();
   const inbox = await request('/notifications');
   assert.equal(inbox.status, 200);

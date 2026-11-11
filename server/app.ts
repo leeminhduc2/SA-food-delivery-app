@@ -4,20 +4,23 @@ import helmet from 'helmet';
 import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
 import { ZodError } from 'zod';
-import { addressRoutes } from './api/address.routes.js';
-import { catalogRoutes } from './api/catalog.routes.js';
-import { deliveryRoutes } from './api/delivery.routes.js';
-import { docsRoutes } from './api/docs.routes.js';
-import { identityRoutes } from './api/identity.routes.js';
-import { importRoutes } from './api/import.routes.js';
-import { authenticate } from './api/middleware/authenticate.js';
-import { operationsRoutes } from './api/operations.routes.js';
-import { orderRoutes } from './api/orders.routes.js';
-import { paymentActionRoutes, paymentRoutes } from './api/payments.routes.js';
-import { AppError } from './domain/errors.js';
-import { isPrismaError, prisma } from './db.js';
+import { docsRoutes } from './docs.routes.js';
+import { backofficeRoutes } from './modules/backoffice/index.js';
+import { catalogRoutes, importRoutes } from './modules/catalog/index.js';
+import { deliveryRoutes } from './modules/delivery/index.js';
+import { authenticate, identityRoutes } from './modules/identity/index.js';
+import { registerModules } from './modules/index.js';
+import { addressRoutes } from './modules/location/index.js';
+import { notificationRoutes } from './modules/notification/index.js';
+import { orderRoutes } from './modules/ordering/index.js';
+import { paymentRoutes } from './modules/payment/index.js';
+import { reviewRoutes } from './modules/review/index.js';
+import { supportRoutes } from './modules/support/index.js';
+import { AppError } from './shared/errors.js';
+import { isPrismaError, prisma } from './shared/db.js';
 
 export function createApp() {
+  registerModules();
   const app = express();
   app.disable('x-powered-by');
   app.use(
@@ -40,8 +43,11 @@ export function createApp() {
       const elapsed = performance.now() - start;
       metrics.requests++;
       metrics.errors += Number(res.statusCode >= 500);
-      metrics.durations.push(elapsed);
-      if (metrics.durations.length > 10000) metrics.durations.shift();
+      // A stream stays open for minutes; timing it would distort p95/p99.
+      if (req.path !== '/api/notifications/stream') {
+        metrics.durations.push(elapsed);
+        if (metrics.durations.length > 10000) metrics.durations.shift();
+      }
       if (process.env.LOG_REQUESTS !== 'false')
         console.log(
           JSON.stringify({
@@ -113,9 +119,11 @@ export function createApp() {
     addressRoutes,
     catalogRoutes,
     orderRoutes,
-    paymentActionRoutes,
     deliveryRoutes,
-    operationsRoutes,
+    reviewRoutes,
+    supportRoutes,
+    notificationRoutes,
+    backofficeRoutes,
     importRoutes,
   );
   app.use('/api', (_req, _res, next) =>

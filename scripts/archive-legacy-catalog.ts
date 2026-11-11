@@ -1,11 +1,11 @@
 import 'dotenv/config';
-import { prisma } from '../server/db.js';
+import { prisma } from '../server/shared/db.js';
 import {
   auditLegacyChange,
   hideLegacy,
   legacyImpact,
   restoreLegacy,
-} from '../server/repositories/catalog-archive.repository.js';
+} from '../server/modules/catalog/infrastructure/catalog-archive.repository.js';
 
 type CliOptions = {
   apply: boolean;

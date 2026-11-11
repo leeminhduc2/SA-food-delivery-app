@@ -33,7 +33,7 @@ import { Auth, Profile } from './components/Account';
 import { Dish } from './components/Catalog';
 import { AddressMap, AddressSettings, type SavedAddress } from './components/DeliveryAddress';
 import { OrderCard } from './components/Orders';
-import { Empty, Field, Modal } from './components/Primitives';
+import { Empty, Modal } from './components/Primitives';
 import { SmartImage } from './components/SmartImage';
 import { AdminPanels, ItemForm, RestaurantForm } from './components/Workspace';
 import type { Actor, Basket, Line } from './types';
@@ -104,7 +104,12 @@ export function App() {
     [cuisine, setCuisine] = useState(''),
     [cuisineOptions, setCuisineOptions] = useState<string[]>([]),
     [sort, setSort] = useState('recommended'),
-    [loading, setLoading] = useState(false);
+    [loading, setLoading] = useState(false),
+    [listError, setListError] = useState(''),
+    [catalogVersion, setCatalogVersion] = useState(0),
+    [detailId, setDetailId] = useState(''),
+    [detailLoading, setDetailLoading] = useState(false),
+    [detailError, setDetailError] = useState('');
   const [basket, setBasket] = useState<Basket>({ items: [], version: 0 }),
     [quote, setQuote] = useState<any>(null),
     [orderList, setOrderList] = useState<any[]>([]),
@@ -119,8 +124,7 @@ export function App() {
     [busy, setBusy] = useState(false),
     [menuItem, setMenuItem] = useState<any>(null),
     [managedRestaurant, setManagedRestaurant] = useState<any>(null);
-  const [address, setAddress] = useState(''),
-    [note, setNote] = useState(''),
+  const [note, setNote] = useState(''),
     [defaultAddress, setDefaultAddress] = useState<SavedAddress | null>(null);
   const checkoutKey = useRef(crypto.randomUUID());
   const checkoutPayload = useRef<any>(null);
@@ -179,18 +183,19 @@ export function App() {
     };
   }, [actor]);
   useEffect(() => {
-    if (defaultAddress) setAddress(defaultAddress.address);
-  }, [defaultAddress]);
-  useEffect(() => {
     let active = true;
     setLoading(true);
+    setListError('');
     const timer = setTimeout(() => {
       api('/restaurants?' + new URLSearchParams({ q: query, cuisine, sort }))
         .then((r) => {
-          if (active) setRestaurants(r);
+          if (active) {
+            setRestaurants(r);
+            setListError('');
+          }
         })
         .catch((e) => {
-          if (active) setError(errorText(e));
+          if (active) setListError(errorText(e));
         })
         .finally(() => {
           if (active) setLoading(false);
@@ -200,7 +205,7 @@ export function App() {
       active = false;
       clearTimeout(timer);
     };
-  }, [query, cuisine, sort, defaultAddress?.updatedAt]);
+  }, [query, cuisine, sort, defaultAddress?.updatedAt, catalogVersion]);
   useEffect(() => {
     let active = true;
     api('/restaurants?sort=name')
@@ -216,11 +221,17 @@ export function App() {
       active = false;
     };
   }, []);
-  const refresh = useCallback(async () => {
+  const refreshOrders = useCallback(async () => {
     if (!actor) return;
-    const [o, n] = await Promise.all([api('/orders'), api('/notifications')]);
-    setOrderList(o);
-    setNotifications(n);
+    setOrderList(await api('/orders'));
+  }, [actor]);
+  const refreshNotifications = useCallback(async () => {
+    if (!actor) return;
+    setNotifications(await api('/notifications'));
+  }, [actor]);
+  /** Role-specific dashboards and complaints. Polled slowly; not pushed. */
+  const refreshStaff = useCallback(async () => {
+    if (!actor) return;
     if (['ADMIN', 'RESTAURANT'].includes(actor.role)) {
       setReports(await api('/reports'));
       setManaged(await api('/manage/restaurants'));
@@ -228,6 +239,9 @@ export function App() {
     if (actor.role === 'ADMIN') setOverview(await api('/admin/overview'));
     if (['CUSTOMER', 'ADMIN'].includes(actor.role)) setComplaints(await api('/complaints'));
   }, [actor]);
+  const refresh = useCallback(async () => {
+    await Promise.all([refreshOrders(), refreshNotifications(), refreshStaff()]);
+  }, [refreshOrders, refreshNotifications, refreshStaff]);
   useEffect(() => {
     if (!actor) {
       setBasket({ items: [], version: 0 });
@@ -241,10 +255,67 @@ export function App() {
         .then(setBasket)
         .catch((e) => setError(errorText(e)));
     const interval = setInterval(() => {
-      refresh().catch((e) => setError(errorText(e)));
-    }, 7000);
+      refreshStaff().catch((e) => setError(errorText(e)));
+    }, 30000);
     return () => clearInterval(interval);
-  }, [actor, refresh]);
+  }, [actor, refresh, refreshStaff]);
+  // Live updates over Server-Sent Events. Pushes carry the notification;
+  // order and staff data are refetched only when a push says it changed.
+  useEffect(() => {
+    if (!actor) return;
+    let fallback: ReturnType<typeof setInterval> | undefined;
+    const startFallback = () => {
+      fallback ??= setInterval(() => {
+        refreshOrders().catch((e) => setError(errorText(e)));
+        refreshNotifications().catch((e) => setError(errorText(e)));
+      }, 30000);
+    };
+    const stopFallback = () => {
+      if (fallback) clearInterval(fallback);
+      fallback = undefined;
+    };
+    if (typeof EventSource === 'undefined') {
+      startFallback();
+      return stopFallback;
+    }
+    const source = new EventSource('/api/notifications/stream');
+    source.onopen = () => {
+      stopFallback();
+      // Replay covers missed notifications; the order snapshot is refreshed here.
+      refreshOrders().catch((e) => setError(errorText(e)));
+    };
+    source.addEventListener('notification', (event) => {
+      let row: any;
+      try {
+        row = JSON.parse((event as MessageEvent<string>).data);
+      } catch {
+        return;
+      }
+      setNotifications((rows) =>
+        rows.some((n) => n.id === row.id) ? rows : [{ ...row, read: false }, ...rows].slice(0, 50),
+      );
+      if (String(row.type).startsWith('ORDER_'))
+        refreshOrders().catch((e) => setError(errorText(e)));
+      if (row.type === 'COMPLAINT_RESOLVED') refreshStaff().catch((e) => setError(errorText(e)));
+    });
+    source.addEventListener('resync', () => {
+      refreshOrders().catch((e) => setError(errorText(e)));
+      refreshNotifications().catch((e) => setError(errorText(e)));
+    });
+    source.addEventListener('revoked', () => {
+      source.close();
+      setActor(null);
+    });
+    // The browser retries transient failures itself. A CLOSED source means the
+    // server refused the stream (stream disabled, limit hit, or not signed in).
+    source.onerror = () => {
+      if (source.readyState === EventSource.CLOSED) startFallback();
+    };
+    return () => {
+      source.close();
+      stopFallback();
+    };
+  }, [actor, refreshOrders, refreshNotifications, refreshStaff]);
   useEffect(() => {
     let active = true;
     if (!basket.items.length) {
@@ -268,11 +339,21 @@ export function App() {
   useEffect(() => {
     if (!selected) return;
     let active = true;
+    setDetailLoading(true);
+    setDetailError('');
     api('/restaurants/' + selected.id)
       .then((row) => {
-        if (active) setSelected(row);
+        if (active) {
+          setSelected(row);
+          setDetailError('');
+        }
       })
-      .catch(() => undefined);
+      .catch((e) => {
+        if (active) setDetailError(errorText(e));
+      })
+      .finally(() => {
+        if (active) setDetailLoading(false);
+      });
     return () => {
       active = false;
     };
@@ -285,10 +366,19 @@ export function App() {
     return () => clearTimeout(timer);
   }, [notice]);
   async function openRestaurant(id: string) {
-    await run(async () => {
-      setSelected(await api('/restaurants/' + id));
+    setDetailId(id);
+    setDetailLoading(true);
+    setDetailError('');
+    try {
+      const row = await api('/restaurants/' + id);
+      setSelected(row);
+      setDetailError('');
       navigateToTop();
-    });
+    } catch (e) {
+      setDetailError(errorText(e));
+    } finally {
+      setDetailLoading(false);
+    }
   }
   const navigateToTop = () => window.scrollTo({ top: 0, behavior: 'instant' });
   async function saveBasket(items: Line[]) {
@@ -330,7 +420,6 @@ export function App() {
       if (!checkoutPayload.current)
         checkoutPayload.current = {
           items: basket.items,
-          address,
           note,
           expectedTotal: quote.total,
           idempotencyKey: checkoutKey.current,
@@ -530,6 +619,12 @@ export function App() {
                           {websiteLabel(selected.website)}
                         </a>
                       )}
+                      {selected.accepting_orders === false && (
+                        <span className="status paused">
+                          <Clock size={16} />
+                          Orders paused
+                        </span>
+                      )}
                     </div>
                     <p className="subtle">
                       <MapPin size={15} />
@@ -615,7 +710,13 @@ export function App() {
                     <h3 className="menu-category">{category}</h3>
                     <div className="menu-grid">
                       {items.map((i: any) => (
-                        <Dish key={i.id} item={i} busy={busy} add={add} />
+                        <Dish
+                          key={i.id}
+                          item={i}
+                          busy={busy}
+                          add={add}
+                          disabled={selected.accepting_orders === false}
+                        />
                       ))}
                     </div>
                   </section>
@@ -643,6 +744,20 @@ export function App() {
               </>
             ) : (
               <>
+                {detailId && detailLoading && (
+                  <div className="empty" role="status">
+                    Opening kitchen…
+                  </div>
+                )}
+                {detailId && detailError && (
+                  <div role="alert" className="panel">
+                    <h2>We couldn’t open this kitchen</h2>
+                    <p>{detailError}</p>
+                    <button className="button" onClick={() => openRestaurant(detailId)}>
+                      Try again
+                    </button>
+                  </div>
+                )}
                 <section className="hero">
                   <div className="hero-copy">
                     <span className="eyebrow">
@@ -743,9 +858,11 @@ export function App() {
                   </div>
                   <div className="result-line">
                     <span>
-                      {loading
-                        ? 'Finding your favorites…'
-                        : `${restaurants.length} kitchens to fall in love with`}
+                      {listError
+                        ? 'Kitchens could not be loaded'
+                        : loading
+                          ? 'Finding your favorites…'
+                          : `${restaurants.length} kitchens to fall in love with`}
                     </span>
                     <label>
                       <SlidersHorizontal size={15} />
@@ -757,7 +874,25 @@ export function App() {
                       </select>
                     </label>
                   </div>
-                  <div className="restaurant-grid" aria-busy={loading}>
+                  {listError && (
+                    <div role="alert" className="panel">
+                      <h2>We couldn’t load kitchens</h2>
+                      <p>{listError}</p>
+                      <button
+                        className="button"
+                        disabled={loading}
+                        onClick={() => setCatalogVersion((version) => version + 1)}
+                      >
+                        Try again
+                      </button>
+                    </div>
+                  )}
+                  {!listError && loading && !restaurants.length && (
+                    <div className="empty" role="status">
+                      Loading kitchens…
+                    </div>
+                  )}
+                  <div className="restaurant-grid" aria-busy={loading} hidden={Boolean(listError)}>
                     {restaurants.map((r, i) => {
                       return (
                         <button
@@ -804,6 +939,9 @@ export function App() {
                               <span> · </span>
                               {r.description ? r.description.split('.')[0] : 'Món ăn đặc sắc'}
                             </p>
+                            {r.accepting_orders === false && (
+                              <span className="status paused">Orders paused</span>
+                            )}
                             <div className="card-bottom">
                               {r.deliveryInfo?.supported ? (
                                 <>
@@ -830,7 +968,7 @@ export function App() {
                       );
                     })}
                   </div>
-                  {!loading && !restaurants.length && (
+                  {!listError && !loading && !restaurants.length && (
                     <Empty title="No kitchens found">
                       Try another dish or clear your filters.
                       <button
@@ -948,6 +1086,8 @@ export function App() {
                       {r.cuisine} · {r.address}
                     </p>
                     <span className={'status ' + r.status}>{label(r.status)}</span>
+                    {r.catalog_visible === false && <span className="status">Hidden</span>}
+                    {r.accepting_orders === false && <span className="status paused">Paused</span>}
                   </div>
                   <div className="row-actions">
                     {actor.role === 'ADMIN' && (
@@ -995,6 +1135,13 @@ export function App() {
                   </div>
                 </article>
               ))}
+              {!(actor.role === 'ADMIN' ? overview?.restaurants || [] : managed).length && (
+                <Empty title="No kitchens yet">
+                  {actor.role === 'ADMIN'
+                    ? 'Registered kitchens will appear here for approval.'
+                    : 'Register your kitchen to start building the menu.'}
+                </Empty>
+              )}
             </div>
             {actor.role === 'ADMIN' && overview && (
               <AdminPanels
@@ -1147,9 +1294,18 @@ export function App() {
                   </span>
                 </div>
               )}
+              {quote?.deliveryInfo?.status === 'NO_ADDRESS' && (
+                <p className="info">
+                  <MapPin size={16} />
+                  Save a delivery address in Account to see the walking fee and place an order.
+                  <button type="button" className="text-button" onClick={() => setModal('profile')}>
+                    Set address
+                  </button>
+                </p>
+              )}
               <button
                 className="button full"
-                disabled={busy || !quote}
+                disabled={busy || !quote || !defaultAddress}
                 onClick={() => setModal('checkout')}
               >
                 Continue to checkout
@@ -1195,19 +1351,19 @@ export function App() {
                 </button>
               </div>
             ) : (
-              <Field
-                label="Delivery address"
-                required
-                minLength={8}
-                maxLength={300}
-                placeholder="Street, building, apartment, district"
-                value={address}
-                onChange={(e) => {
-                  setAddress(e.target.value);
-                  checkoutPayload.current = null;
-                  checkoutKey.current = crypto.randomUUID();
-                }}
-              />
+              <div className="checkout-address missing">
+                <MapPin size={19} />
+                <div>
+                  <strong>A saved delivery address is required</strong>
+                  <p>
+                    We route walking delivery from your saved, geocoded address. Add one in Account
+                    before placing this order.
+                  </p>
+                </div>
+                <button type="button" className="text-button" onClick={() => setModal('profile')}>
+                  Open Account
+                </button>
+              </div>
             )}
             {quote?.deliveryInfo?.supported && (
               <p className="info delivery-quote-line">
@@ -1252,11 +1408,8 @@ export function App() {
               disabled={
                 busy ||
                 !quote ||
-                Boolean(
-                  quote.deliveryInfo &&
-                  !quote.deliveryInfo.supported &&
-                  quote.deliveryInfo.status !== 'NO_ADDRESS',
-                )
+                !defaultAddress ||
+                Boolean(quote.deliveryInfo && !quote.deliveryInfo.supported)
               }
             >
               {busy ? 'Placing your order…' : 'Place order'}
@@ -1333,7 +1486,6 @@ export function App() {
               saved={defaultAddress}
               onSaved={(row) => {
                 setDefaultAddress(row);
-                setAddress(row.address);
                 setNotice('Delivery address updated');
               }}
             />
@@ -1408,7 +1560,8 @@ export function App() {
               <div>
                 <strong>{i.name}</strong>
                 <p>
-                  {money(i.price)} · {i.stock} available · {i.available ? 'On menu' : 'Archived'}
+                  {money(i.price)} · {i.stock} in stock ·{' '}
+                  {i.visible === false ? 'Hidden' : i.available ? 'On menu' : 'Unavailable'}
                 </p>
               </div>
               <button

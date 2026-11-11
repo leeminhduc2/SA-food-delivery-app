@@ -2,6 +2,8 @@ import 'dotenv/config';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
+import { readFile, readdir } from 'node:fs/promises';
+import path from 'node:path';
 import { after, before, test } from 'node:test';
 import pg from 'pg';
 import {
@@ -9,7 +11,7 @@ import {
   MOCK_IMAGE_PATHS,
   MOCK_RESTAURANT_IDS,
   MOCK_RESTAURANTS,
-} from '../server/domain/mock-catalog.js';
+} from '../server/seed/data/mock-catalog.js';
 
 /**
  * Integration coverage for the fictional demo catalog against a real
@@ -36,16 +38,17 @@ let seedMockCatalog: () => Promise<{
   restaurants: number;
   itemsCreated: number;
   legacyHidden: number;
+  initialized: boolean;
 }>;
 
 before(async () => {
   await admin.query(`CREATE SCHEMA ${schema}`);
-  db = await import('../server/db.js');
+  db = await import('../server/shared/db.js');
   const { migrate } = await import('../server/migrate.js');
   await migrate();
-  const { seed } = await import('../server/seed.js');
+  const { seed } = await import('../server/seed/seed.js');
   await seed();
-  ({ seedMockCatalog } = await import('../server/seed-mock.js'));
+  ({ seedMockCatalog } = await import('../server/seed/seed-mock.js'));
   await seedMockCatalog();
 });
 
@@ -128,7 +131,7 @@ test('legacy OSM/demo rows are hidden, never deleted', async () => {
 });
 
 test('the public catalog only exposes the fictional dataset', async () => {
-  const catalog = await import('../server/services/catalog.service.js');
+  const catalog = await import('../server/modules/catalog/application/catalog.service.js');
   const listed = await catalog.listRestaurants({ q: '', cuisine: '', sort: 'recommended' });
   assert.equal(listed.length, 10);
   for (const row of listed) {
@@ -151,10 +154,10 @@ test('the public catalog only exposes the fictional dataset', async () => {
 
 test('the public catalog makes no external provider request', async () => {
   const files = [
-    'server/api/catalog.routes.ts',
-    'server/services/catalog.service.ts',
-    'server/domain/mock-catalog.ts',
-    'server/seed-mock.ts',
+    'server/modules/catalog/catalog.routes.ts',
+    'server/modules/catalog/application/catalog.service.ts',
+    'server/seed/data/mock-catalog.ts',
+    'server/seed/seed-mock.ts',
     'src/App.tsx',
     'src/components/Catalog.tsx',
   ];
@@ -171,16 +174,24 @@ test('the public catalog makes no external provider request', async () => {
   assert.ok(MOCK_IMAGE_PATHS.every((path: string) => /\.(webp|jpe?g|png)$/.test(path)));
 });
 
-test('re-running the seed creates no duplicates and preserves edits', async () => {
+test('re-running the seed creates no duplicates and preserves edits and flags', async () => {
+  const marker = await db.prisma.seedRun.findUnique({ where: { name: 'mock-catalog' } });
+  assert.ok(marker, 'the first seed must record its one-time initialization marker');
+  assert.equal(marker.version, 1);
   await db.prisma.menuItem.update({
     where: { id: 'mock-item-001' },
     data: { price: 61000 },
   });
   await db.prisma.restaurant.update({
     where: { id: 'mock-restaurant-01' },
-    data: { name: 'Bếp Phố Hà Thành (đã sửa)' },
+    data: {
+      name: 'Bếp Phố Hà Thành (đã sửa)',
+      catalog_visible: false,
+      accepting_orders: false,
+    },
   });
   const second = await seedMockCatalog();
+  assert.equal(second.initialized, false);
   assert.equal(second.itemsCreated, 0);
   assert.equal(await db.prisma.restaurant.count({ where: { mock: true } }), 10);
   assert.equal(await db.prisma.menuItem.count({ where: { mock: true } }), 60);
@@ -190,6 +201,17 @@ test('re-running the seed creates no duplicates and preserves edits', async () =
     where: { id: 'mock-restaurant-01' },
   });
   assert.equal(restaurant.name, 'Bếp Phố Hà Thành (đã sửa)', 'seed overwrote an edited name');
+  assert.equal(restaurant.catalog_visible, false, 'seed overwrote the public visibility flag');
+  assert.equal(restaurant.accepting_orders, false, 'seed overwrote the accepting-orders flag');
+  // Restore the demo restaurant for the remaining tests.
+  await db.prisma.restaurant.update({
+    where: { id: 'mock-restaurant-01' },
+    data: {
+      name: 'Bếp Phố Hà Thành',
+      catalog_visible: true,
+      accepting_orders: true,
+    },
+  });
 });
 
 test('hiding the legacy catalog does not remove order history', async () => {
@@ -232,6 +254,25 @@ test('hiding the legacy catalog does not remove order history', async () => {
   assert.equal(order.items[0].name, 'Phở bò đặc biệt');
 });
 
+test('a legacy row restored after initialization is not hidden again', async () => {
+  await db.prisma.restaurant.updateMany({
+    where: { id: { in: ['saigon', 'pizza', 'green'] } },
+    data: { catalog_visible: true },
+  });
+  const run = await seedMockCatalog();
+  assert.equal(run.initialized, false);
+  assert.equal(run.legacyHidden, 0);
+  const visible = await db.prisma.restaurant.count({
+    where: { id: { in: ['saigon', 'pizza', 'green'] }, catalog_visible: true },
+  });
+  assert.equal(visible, 3, 'a later seed must not re-hide an operator-restored row');
+  // Leave the demo database in its standard hidden state for other tests.
+  await db.prisma.restaurant.updateMany({
+    where: { id: { in: ['saigon', 'pizza', 'green'] } },
+    data: { catalog_visible: false },
+  });
+});
+
 test('no menu item points at a missing restaurant', async () => {
   const rows = await db.prisma.$queryRawUnsafe(
     `SELECT count(*)::int AS n FROM menu_items
@@ -239,6 +280,37 @@ test('no menu item points at a missing restaurant', async () => {
       WHERE restaurants.id IS NULL`,
   );
   assert.equal(Number(rows[0].n), 0);
+});
+
+test('runtime modules never import the mock catalog or fall back when the catalog is empty', async () => {
+  for (const directory of ['server/modules', 'server/shared']) {
+    for (const file of await readdir(directory, { recursive: true })) {
+      if (!file.endsWith('.ts')) continue;
+      const source = await readFile(path.join(directory, file), 'utf8');
+      assert.doesNotMatch(
+        source,
+        /(?:from\s+|import\()\s*['"][^'"]*mock-catalog/,
+        `${directory}/${file} imports the mock catalog at runtime`,
+      );
+    }
+  }
+
+  const catalog = await import('../server/modules/catalog/application/catalog.service.js');
+  const before = await db.prisma.restaurant.findMany({
+    where: { catalog_visible: true },
+    select: { id: true },
+  });
+  assert.ok(before.length > 0);
+  await db.prisma.restaurant.updateMany({ data: { catalog_visible: false } });
+  try {
+    const listed = await catalog.listRestaurants({ q: '', cuisine: '', sort: 'recommended' });
+    assert.deepEqual(listed, [], 'an empty catalog must not be replaced by mock data');
+  } finally {
+    await db.prisma.restaurant.updateMany({
+      where: { id: { in: before.map((row: any) => row.id) } },
+      data: { catalog_visible: true },
+    });
+  }
 });
 
 test('the raster food assets exist', (t) => {

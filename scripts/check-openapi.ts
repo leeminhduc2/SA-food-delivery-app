@@ -10,15 +10,37 @@ import { readFile } from 'node:fs/promises';
 import { parse } from 'yaml';
 
 const routeFiles: Array<{ file: string; router: string; prefix: string }> = [
-  { file: 'server/api/identity.routes.ts', router: 'identityRoutes', prefix: '/api/auth' },
-  { file: 'server/api/address.routes.ts', router: 'addressRoutes', prefix: '/api' },
-  { file: 'server/api/catalog.routes.ts', router: 'catalogRoutes', prefix: '/api' },
-  { file: 'server/api/orders.routes.ts', router: 'orderRoutes', prefix: '/api' },
-  { file: 'server/api/payments.routes.ts', router: 'paymentRoutes', prefix: '/api/payments' },
-  { file: 'server/api/payments.routes.ts', router: 'paymentActionRoutes', prefix: '/api' },
-  { file: 'server/api/delivery.routes.ts', router: 'deliveryRoutes', prefix: '/api' },
-  { file: 'server/api/operations.routes.ts', router: 'operationsRoutes', prefix: '/api' },
-  { file: 'server/api/import.routes.ts', router: 'importRoutes', prefix: '/api' },
+  {
+    file: 'server/modules/identity/identity.routes.ts',
+    router: 'identityRoutes',
+    prefix: '/api/auth',
+  },
+  { file: 'server/modules/location/address.routes.ts', router: 'addressRoutes', prefix: '/api' },
+  { file: 'server/modules/catalog/catalog.routes.ts', router: 'catalogRoutes', prefix: '/api' },
+  { file: 'server/modules/ordering/ordering.routes.ts', router: 'orderRoutes', prefix: '/api' },
+  {
+    file: 'server/modules/payment/payment.routes.ts',
+    router: 'paymentRoutes',
+    prefix: '/api/payments',
+  },
+  { file: 'server/modules/delivery/delivery.routes.ts', router: 'deliveryRoutes', prefix: '/api' },
+  { file: 'server/modules/review/review.routes.ts', router: 'reviewRoutes', prefix: '/api' },
+  { file: 'server/modules/support/support.routes.ts', router: 'supportRoutes', prefix: '/api' },
+  {
+    file: 'server/modules/notification/notification.routes.ts',
+    router: 'notificationRoutes',
+    prefix: '/api',
+  },
+  {
+    file: 'server/modules/backoffice/backoffice.routes.ts',
+    router: 'backofficeRoutes',
+    prefix: '/api',
+  },
+  {
+    file: 'server/modules/catalog/import/import.routes.ts',
+    router: 'importRoutes',
+    prefix: '/api',
+  },
 ];
 
 const methods = ['get', 'post', 'put', 'patch', 'delete'] as const;

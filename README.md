@@ -9,13 +9,13 @@ The specification is preliminary. This implementation makes explicit, reversible
 Requires Node.js 22 or newer and Docker Desktop running Linux containers, or PostgreSQL 17. The browser tests use installed Google Chrome.
 
 ```powershell
-npm.cmd ci
+npm ci
 Copy-Item .env.example .env
-docker compose up -d db
-npm.cmd run db:migrate
-npm.cmd run db:seed
-npm.cmd run db:seed:mock
-npm.cmd run dev
+docker compose up -d db redis
+npm run db:migrate
+npm run db:seed
+npm run db:seed:mock
+npm run dev
 ```
 
 Open **http://127.0.0.1:5173**. The API listens on port 3001 and the database on localhost:5433. On macOS/Linux use `npm` and `cp .env.example .env` instead. If `.env` already exists, keep your settings rather than copying over it.
@@ -43,12 +43,12 @@ Compose builds the multi-stage `Dockerfile`, waits for the database healthcheck,
 
 All seeded accounts use `DEMO_PASSWORD`; the example value is `LocalDemo123!`. New customers and restaurant owners can register. Driver registration requires admin activation. Public registration cannot create administrators.
 
-To serve the built UI from the API, run `npm.cmd run build` then `npm.cmd start`, and open **http://127.0.0.1:3001**. Stop the development API first to free port 3001. Local assets and fonts require no third-party browser requests.
+To serve the built UI from the API, run `npm run build` then `npm start`, and open **http://127.0.0.1:3001**. Stop the development API first to free port 3001. Local assets and fonts require no third-party browser requests.
 
 ### Fictional demo catalog (Hanoi)
 
 The public catalog is a fixed dataset of **10 Hanoi restaurants and 60 dishes**,
-seeded by `npm.cmd run db:seed:mock`. It requires no API key and makes no
+seeded by `npm run db:seed:mock`. It requires no API key and makes no
 external request. The rows live in PostgreSQL and are served by the normal
 catalog API like any other restaurant; names, addresses, phone numbers, opening
 hours, prices, ratings and review counts are invented for development.
@@ -66,11 +66,11 @@ files ship with this workspace yet** because no image-generation tooling is
 available here. The UI shows a neutral "Ảnh đang cập nhật" placeholder instead
 of an SVG or a stock photo. The complete per-dish prompt list, file names and
 suggested sizes are in [docs/MOCK_IMAGE_PROMPTS.md](docs/MOCK_IMAGE_PROMPTS.md);
-regenerate it with `npm.cmd run assets:prompts`.
+regenerate it with `npm run assets:prompts`.
 
 ```powershell
-npm.cmd run db:seed:mock   # add/refresh the fictional catalog, hide legacy rows
-npm.cmd run assets:prompts # write docs/MOCK_IMAGE_PROMPTS.md from the same data
+npm run db:seed:mock   # add/refresh the fictional catalog, hide legacy rows
+npm run assets:prompts # write docs/MOCK_IMAGE_PROMPTS.md from the same data
 ```
 
 ### Delivery address, walking routes and shipping fees
@@ -114,14 +114,14 @@ OpenStreetMap and keep the required attribution; configure
 `VITE_MAP_TILE_URL`/`VITE_MAP_TILE_ATTRIBUTION` if you use another tile service.
 
 ```powershell
-npm.cmd run db:migrate   # applies the additive address/order-snapshot migration
+npm run db:migrate   # applies the additive address/order-snapshot migration
 ```
 
 ### Legacy OpenStreetMap/demo data
 
 The earlier OSM importer and curated Hanoi demo remain in the database for
 development and are hidden from the public catalog by the mock seed. They are
-never deleted, so historical orders keep working. `npm.cmd run catalog:archive`
+never deleted, so historical orders keep working. `npm run catalog:archive`
 reports or re-applies the reversible visibility change; see
 [the import guide](docs/IMPORT.md) and [the Hanoi data guide](docs/DATA_IMPORT.md).
 Data is © OpenStreetMap contributors (ODbL). The public catalog does not use it.
@@ -133,11 +133,11 @@ committed at `prisma/schema.prisma`; it was introspected from the live database
 and keeps the existing `snake_case` names, text IDs, constraints and indexes.
 
 ```powershell
-npm.cmd run db:generate   # regenerate the client after a schema change
-npm.cmd run db:validate   # validate prisma/schema.prisma
-npm.cmd run db:studio     # browse data in Prisma Studio (port 5555)
-npm.cmd run db:migrate    # apply pending migrations (prisma migrate deploy)
-npm.cmd run db:seed       # demo data; requires DEMO_MODE=true
+npm run db:generate   # regenerate the client after a schema change
+npm run db:validate   # validate prisma/schema.prisma
+npm run db:studio     # browse data in Prisma Studio (port 5555)
+npm run db:migrate    # apply pending migrations (prisma migrate deploy)
+npm run db:seed       # demo data; requires DEMO_MODE=true
 ```
 
 Prisma cannot express PostgreSQL CHECK constraints or partial indexes; those
@@ -165,17 +165,17 @@ The UI refreshes status every seven seconds. Using separate browser profiles or 
 ## Verification
 
 ```powershell
-npm.cmd run build
-npm.cmd test
-npm.cmd run test:e2e
-npm.cmd run test:load
-npm.cmd run check:openapi
-npm.cmd run format:check
+npm run build
+npm test
+npm run test:e2e
+npm run test:load
+npm run check:openapi
+npm run format:check
 ```
 
 - `build`: regenerates the Prisma client, runs strict TypeScript checking and the optimized Vite build.
 - `check:openapi`: fails when a registered route is missing from `openapi.yaml` or the spec documents a route that no router serves.
-- `test`: 68 scenarios against real PostgreSQL: 14 lifecycle/concurrency scenarios (concurrent last-serving checkout, same-key retry, payload conflicts, atomic rollback, authoritative pricing, invalid transitions, ownership, signed callbacks, late payments, timeout recovery, expiry, refunds, complaints, review eligibility, outbox idempotency), 12 delivery scenarios (fee boundaries 1.2/2/2.1/3/5/8/10/15/>15 km, no-address behavior, address validation and geocoding not-found/timeout, nearest-first pedestrian catalog, per-restaurant routing failure isolation, shipping quote, checkout recompute/ignore client fee/snapshot/address change, historical orders unchanged, missing restaurant coordinates never overwritten, restaurant address change re-geocoding), 13 restaurant-import scenarios (Overpass retries, normalization, protected upserts, dry runs, savepoint isolation, admin job history), 6 pure Hanoi-menu scenarios, 7 Hanoi import/API scenarios, 9 fictional-catalog scenarios (exactly 10 visible restaurants, 60 dishes, 5–8 per restaurant, valid VND prices, hidden-but-retained legacy rows, no provider fields or provider calls in the public catalog path, idempotent seed that preserves edits, preserved order history, no orphan items, raster assets or an explicit skip), and 7 runtime API smoke scenarios (health/docs, auth/session/CSRF, discovery/menu/sorting, cart, checkout→payment→delivery→review, admin/operations, error contract).
+- `test`: 73 scenarios: 5 static module-boundary checks (public-API-only imports, pure `domain/` code, an acyclic module graph, table ownership; no database needed) and 68 against real PostgreSQL: 14 lifecycle/concurrency scenarios (concurrent last-serving checkout, same-key retry, payload conflicts, atomic rollback, authoritative pricing, invalid transitions, ownership, signed callbacks, late payments, timeout recovery, expiry, refunds, complaints, review eligibility, outbox idempotency), 12 delivery scenarios (fee boundaries 1.2/2/2.1/3/5/8/10/15/>15 km, no-address behavior, address validation and geocoding not-found/timeout, nearest-first pedestrian catalog, per-restaurant routing failure isolation, shipping quote, checkout recompute/ignore client fee/snapshot/address change, historical orders unchanged, missing restaurant coordinates never overwritten, restaurant address change re-geocoding), 13 restaurant-import scenarios (Overpass retries, normalization, protected upserts, dry runs, savepoint isolation, admin job history), 6 pure Hanoi-menu scenarios, 7 Hanoi import/API scenarios, 9 fictional-catalog scenarios (exactly 10 visible restaurants, 60 dishes, 5–8 per restaurant, valid VND prices, hidden-but-retained legacy rows, no provider fields or provider calls in the public catalog path, idempotent seed that preserves edits, preserved order history, no orphan items, raster assets or an explicit skip), and 7 runtime API smoke scenarios (health/docs, auth/session/CSRF, discovery/menu/sorting, cart, checkout→payment→delivery→review, admin/operations, error contract).
 - `test:e2e`: five Chrome browser scenarios covering responsive discovery, keyboard dialogs and accessibility checks, the full four-role delivery journey with review and complaint, persistent menu editing, and a saved delivery address driving card/detail walking distance, fee and an address change. Screenshots/traces are written under `test-results/`. The suite seeds the fictional catalog and injects deterministic geocoding/pedestrian-routing adapters, so no public provider is exercised.
 - `test:load`: a read-only browse smoke test; the API must already be running. Default: 200 requests, 20 concurrent. Override `LOAD_BASE_URL`, `LOAD_REQUESTS`, or `LOAD_CONCURRENCY`.
 - `format:check`: Prettier check over source, tests, scripts and docs. `.prettierrc.json` uses `endOfLine: "auto"` so the check is stable with both LF and CRLF checkouts.
@@ -193,26 +193,31 @@ src/
   api.ts                  HTTP client and money/status formatting
   styles.css              Responsive design tokens and layout
 server/
-  app.ts                  HTTP middleware, security, mounts, error handling, metrics
-  index.ts                Server entry point and durable-work polling loop
-  db.ts                   Prisma Client singleton, transaction boundary and row locks
+  app.ts                  HTTP middleware, security, module router mounts, error handling, metrics
+  index.ts                Server entry point; runs the background worker every 3 seconds
+  jobs.ts                 Worker steps: payment reconciliation, unpaid-order expiry,
+                          notification delivery, expired-session cleanup
+  docs.routes.ts          Swagger UI at /api/docs
   migrate.ts              Runs `prisma migrate deploy` for tests and the E2E server
-  api/                    HTTP layer: routes, cookies, status codes, validation gates
-    identity.routes.ts    /auth
-    address.routes.ts     Delivery address and geocoding previews
-    catalog.routes.ts     Restaurants, nearby order, menus and shipping quote
-    orders.routes.ts      Basket, quote, checkout and order lifecycle
-    payments.routes.ts    Raw-body webhook and simulated payment
-    delivery.routes.ts    Driver assignment and delivery transitions
-    operations.routes.ts  Reviews, complaints, notifications, reports, admin
-    docs.routes.ts        Swagger UI at /api/docs
-    middleware/           Session resolution and actor helpers
-  integrations/           Geocoding (Photon/Nominatim) and routing (Valhalla) adapters
-  services/               Business rules and transactions; no Express, no raw pool
-    identity, address, geocoding, routing, shipping, catalog, cart, order,
-    payment, delivery, review, support, notification, report, admin
-  repositories/           Prisma Client queries per aggregate; accept a transaction client
-  domain/                 Pure types, errors, authorization, Zod schemas and fee formula
+  seed/                   Demo seed, fictional catalog seed and its data, sample notifications
+  shared/                 Shared kernel; never imports a module
+    db.ts                 Prisma Client singleton, transaction boundary and row locks
+    events.ts             In-process domain events, run inside the publisher's transaction
+    errors.ts, types.ts, authz.ts, audit.repository.ts, http/actor.ts
+  modules/
+    index.ts              Composition root: wires ports and event handlers (registerModules)
+    identity/             Accounts, sessions, /auth routes, authentication middleware
+    catalog/              Restaurants, menus, stock, approval, restaurant coordinates
+      import/             OpenStreetMap/Overpass import and the curated Hanoi dataset
+    location/             Saved addresses, geocoding (Photon/Nominatim), walking routes
+                          (Valhalla) and the shipping-fee formula
+    ordering/             Basket, quote, checkout, order lifecycle, simulated-payment action
+    payment/              Payments, signed webhook, provider adapter, reconciliation
+    delivery/             Driver assignment and delivery transitions
+    notification/         Outbox, inbox and notification delivery
+    review/               Reviews and moderation
+    support/              Complaints and their resolution
+    backoffice/           Admin overview, account status, reports
 prisma/
   schema.prisma           Introspected schema preserving existing names and IDs
   migrations/             Baseline SQL, including CHECKs and partial indexes
@@ -222,6 +227,8 @@ docker-entrypoint.sh      Applies pending migrations, then starts the API
 tests/                    PostgreSQL integration and browser tests
 docs/                     API contract, decisions, requirement coverage and operations
 ```
+
+The server is a modular monolith. Each module exposes its public API in `index.ts`; larger modules split into `application/` (use cases and transactions), `domain/` (pure rules) and `infrastructure/` (Prisma queries and provider clients), while small modules stay flat. Modules import each other only through `index.ts`, the module graph has no cycles, and each module touches only its own tables. Payment and Delivery never import Ordering: they read orders through ports they declare, and report outcomes as domain events that Ordering handles inside the same transaction. Read-only cross-module queries live in `*.projection.ts` files. `tests/module-boundaries.test.ts` enforces these rules; [the decision log](docs/DECISIONS.md#module-boundaries) explains them.
 
 ## Integration boundaries
 
