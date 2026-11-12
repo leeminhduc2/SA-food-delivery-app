@@ -456,3 +456,53 @@ model DriverLocation {
   version Int @default(1)
   @@map("driver_locations")
 }
+
+
+model AssignmentSearch {
+  id String @id
+  delivery_id String
+  generation Int @default(1)
+  status String @default("WAITING")
+  strategy String @default("NEAREST")
+  round Int @default(1)
+  offers_created Int @default(0)
+  deadline_at DateTime @db.Timestamptz(6)
+  next_run_at DateTime @default(now()) @db.Timestamptz(6)
+  lease_owner String?
+  lease_until DateTime? @db.Timestamptz(6)
+  version Int @default(0)
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @default(now()) @db.Timestamptz(6)
+  @@unique([delivery_id, generation])
+  @@index([status, next_run_at], map: "assignment_search_due")
+  @@map("assignment_searches")
+}
+
+model DriverOffer {
+  id String @id
+  search_id String
+  driver_id String
+  status String @default("OFFERED")
+  expires_at DateTime @db.Timestamptz(6)
+  responded_at DateTime? @db.Timestamptz(6)
+  assignment_id String?
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  @@index([search_id, created_at], map: "driver_offers_search")
+  @@map("driver_offers")
+}
+
+model AssignmentAttempt {
+  id String @id
+  search_id String
+  driver_id String
+  round Int
+  rank Int?
+  criterion Json?
+  offer_id String?
+  outcome String
+  reason String?
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @default(now()) @db.Timestamptz(6)
+  @@unique([search_id, driver_id])
+  @@map("assignment_attempts")
+}

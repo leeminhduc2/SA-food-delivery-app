@@ -26,7 +26,7 @@ const files: SourceFile[] = walk(SERVER).map((path) => ({
   source: readFileSync(path, 'utf8'),
 }));
 
-/** `catalog` for modules/catalog/**, otherwise null (shared, seed, app.ts, modules/index.ts…). */
+/** `catalog` for modules/catalog/**, otherwise null (shared, seed, app.ts, modules/index.tsâ€¦). */
 function moduleOf(path: string): string | null {
   const parts = path.split('/');
   return parts[0] === 'modules' && parts.length > 2 ? parts[1] : null;
@@ -119,8 +119,20 @@ const owners: Record<string, { tables: string[]; models: string[] }> = {
   },
   location: { models: ['address', 'driverLocation'], tables: ['addresses', 'driver_locations'] },
   assignment: {
-    models: ['driverAvailability', 'driverOperationalChange'],
-    tables: ['driver_availability', 'driver_operational_changes'],
+    models: [
+      'driverAvailability',
+      'driverOperationalChange',
+      'assignmentSearch',
+      'driverOffer',
+      'assignmentAttempt',
+    ],
+    tables: [
+      'driver_availability',
+      'driver_operational_changes',
+      'assignment_searches',
+      'driver_offers',
+      'assignment_attempts',
+    ],
   },
   ordering: { models: ['order', 'orderItem', 'cart'], tables: ['orders', 'order_items', 'carts'] },
   payment: {
