@@ -17,4 +17,5 @@ export {
   busyDriverIds,
   deliveryForOrderLocked,
   deliveryForAssignmentLocked,
+  confirmOfferAssignment,
 } from './application/delivery.service.js';

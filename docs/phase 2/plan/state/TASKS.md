@@ -19,7 +19,7 @@ Trạng thái này là triển khai **ứng dụng**, không phải soạn tài 
 | [P04-T01](../phases/P04-assignment-search-and-offers.md#p04-t01)      | Search, offer, attempt và durable work           | DONE        | [run](runs/20261112-2331-P04-T01.md) | —        |
 | [P04-T02](../phases/P04-assignment-search-and-offers.md#p04-t02)      | Strategy contract và Nearest Driver              | DONE        | [run](runs/20261112-2335-P04-T02.md) | —        |
 | [P04-T03](../phases/P04-assignment-search-and-offers.md#p04-t03)      | OrderAccepted và worker tạo offer                | DONE        | [run](runs/20261112-2345-P04-T03.md) | —        |
-| [P05-T01](../phases/P05-offer-response-and-core-workflow.md#p05-t01)  | Accept/reject nguyên tử và idempotent            | NOT_STARTED | —                                    | —        |
+| [P05-T01](../phases/P05-offer-response-and-core-workflow.md#p05-t01)  | Accept/reject nguyên tử và idempotent            | DONE        | [run](runs/20261112-2352-P05-T01.md) | —        |
 | [P05-T02](../phases/P05-offer-response-and-core-workflow.md#p05-t02)  | Timeout, retry và exhaustion                     | NOT_STARTED | —                                    | —        |
 | [P05-T03](../phases/P05-offer-response-and-core-workflow.md#p05-t03)  | Notification theo role và offer UI               | NOT_STARTED | —                                    | —        |
 | [P05-T04](../phases/P05-offer-response-and-core-workflow.md#p05-t04)  | Invalidation, race tests và core gate            | NOT_STARTED | —                                    | —        |

@@ -114,10 +114,11 @@ export async function insertAssignment(
   deliveryId: string,
   driverId: string,
   db: DB = prisma,
-): Promise<void> {
-  await db.driverAssignment.create({
+): Promise<string> {
+  const row = await db.driverAssignment.create({
     data: { id: id(), delivery_id: deliveryId, driver_id: driverId },
   });
+  return row.id;
 }
 
 export async function findActiveAssignment(

@@ -22,7 +22,7 @@ async function snapshot(driverId: string, db: DB = prisma) {
     db.driverAvailability.findUnique({ where: { driver_id: driverId } }),
     hasActiveTrip(driverId, db),
     latestDriverLocation(driverId, db),
-    dbNow(db),
+    db.$queryRaw<Array<{ now: Date }>>`SELECT clock_timestamp() AS now`.then((rows) => rows[0].now),
   ]);
   const fresh = locationFresh(
     location,
@@ -42,6 +42,9 @@ async function snapshot(driverId: string, db: DB = prisma) {
 }
 export async function getAvailability(driverId: string) {
   return snapshot(driverId);
+}
+export async function availabilityInTransaction(driverId: string, db: DB) {
+  return snapshot(driverId, db);
 }
 export async function updateAvailability(driverId: string, raw: unknown) {
   const input = patchSchema.parse(raw);

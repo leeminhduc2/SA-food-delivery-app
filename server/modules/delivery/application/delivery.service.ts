@@ -52,6 +52,38 @@ export async function busyDriverIds(ids: readonly string[], db: DB = prisma): Pr
   return deliveries.busyDriverIds(ids, db);
 }
 
+/** Caller has locked the order, delivery and driver in that order. */
+export async function confirmOfferAssignment(
+  db: DB,
+  delivery: { id: string; order_id: string; status: string; driver_id: string | null },
+  driverId: string,
+): Promise<string> {
+  check(
+    delivery.status === 'UNASSIGNED' && !delivery.driver_id,
+    409,
+    'ORDER_NOT_ASSIGNABLE',
+    'This delivery is no longer available.',
+  );
+  check(
+    !(await deliveries.findActiveForDriver(driverId, db)),
+    409,
+    'DRIVER_BUSY',
+    'This driver already has an active trip.',
+  );
+  const assignmentId = await deliveries.insertAssignment(delivery.id, driverId, db);
+  await deliveries.assign(delivery.id, driverId, db);
+  await audits.history(
+    delivery.order_id,
+    'DELIVERY',
+    delivery.status,
+    'ASSIGNED',
+    driverId,
+    '',
+    db,
+  );
+  return assignmentId;
+}
+
 export async function assign(actor: User, deliveryId: string, raw: unknown): Promise<void> {
   const { driverId } = z.object({ driverId: z.string().min(1) }).parse(raw);
   const orders = orderGateway();

@@ -1,13 +1,15 @@
 import { id, prisma, type DB } from './db.js';
 import type { Prisma } from '@prisma/client';
 
-export async function findCommandReceipt(
+export async function findCommandReceipt<
+  T extends { fingerprint: string } = { fingerprint: string },
+>(
   actor: string,
   action: string,
   resourceId: string,
   keyHash: string,
   db: DB,
-): Promise<{ fingerprint: string } | undefined> {
+): Promise<T | undefined> {
   const row = await db.auditLog.findFirst({
     where: {
       actor,
@@ -17,7 +19,7 @@ export async function findCommandReceipt(
     },
     select: { detail: true },
   });
-  return row?.detail as { fingerprint: string } | undefined;
+  return row?.detail as T | undefined;
 }
 
 export async function audit(
