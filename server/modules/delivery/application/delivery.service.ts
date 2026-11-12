@@ -40,6 +40,10 @@ export async function hasActiveTrip(driverId: string, db: DB = prisma): Promise<
   return Boolean(await deliveries.findActiveForDriver(driverId, db));
 }
 
+export async function busyDriverIds(ids: readonly string[], db: DB = prisma): Promise<string[]> {
+  return deliveries.busyDriverIds(ids, db);
+}
+
 export async function assign(actor: User, deliveryId: string, raw: unknown): Promise<void> {
   const { driverId } = z.object({ driverId: z.string().min(1) }).parse(raw);
   const orders = orderGateway();

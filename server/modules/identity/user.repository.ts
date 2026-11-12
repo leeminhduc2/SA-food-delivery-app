@@ -89,3 +89,11 @@ export async function listAll(db: DB = prisma): Promise<User[]> {
     orderBy: { name: 'asc' },
   })) as User[];
 }
+
+export async function activeDriverIds(ids: readonly string[], db: DB = prisma): Promise<string[]> {
+  const rows = await db.user.findMany({
+    where: { id: { in: [...ids] }, role: 'DRIVER', active: true },
+    select: { id: true },
+  });
+  return rows.map((row) => row.id);
+}

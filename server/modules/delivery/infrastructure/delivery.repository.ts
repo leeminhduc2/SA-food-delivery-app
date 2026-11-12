@@ -102,6 +102,14 @@ export async function findActiveForDriver(
   );
 }
 
+export async function busyDriverIds(ids: readonly string[], db: DB = prisma): Promise<string[]> {
+  const rows = await db.driverAssignment.findMany({
+    where: { driver_id: { in: [...ids] }, active: true },
+    select: { driver_id: true },
+  });
+  return rows.map((row) => row.driver_id);
+}
+
 export async function insertAssignment(
   deliveryId: string,
   driverId: string,

@@ -123,3 +123,33 @@ export async function resolveAttempt(
   });
   return result.count === 1;
 }
+
+export async function candidateAvailability(ids: readonly string[], db: DB = prisma) {
+  const rows = await db.driverAvailability.findMany({
+    where: { driver_id: { in: [...ids] } },
+    select: { driver_id: true, online: true, ready: true, heartbeat_at: true },
+  });
+  return rows.map((row) => ({
+    driverId: row.driver_id,
+    online: row.online,
+    ready: row.ready,
+    heartbeatAt: row.heartbeat_at,
+  }));
+}
+export async function excludedCandidateIds(
+  searchId: string,
+  ids: readonly string[],
+  db: DB = prisma,
+): Promise<string[]> {
+  const [attempts, offers] = await Promise.all([
+    db.assignmentAttempt.findMany({
+      where: { search_id: searchId, driver_id: { in: [...ids] } },
+      select: { driver_id: true },
+    }),
+    db.driverOffer.findMany({
+      where: { status: 'OFFERED', driver_id: { in: [...ids] } },
+      select: { driver_id: true },
+    }),
+  ]);
+  return [...new Set([...attempts, ...offers].map((row) => row.driver_id))];
+}

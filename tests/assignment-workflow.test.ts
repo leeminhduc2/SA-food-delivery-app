@@ -171,3 +171,84 @@ test('durable search constraints, lease fencing and immutable attempts', async (
   assert.equal(canTransitionSearch('EXHAUSTED', 'WAITING'), false);
   assert.equal(canTransitionOffer('EXPIRED', 'ACCEPTED'), false);
 });
+
+test('candidate query uses module capabilities and excludes unavailable drivers', async () => {
+  const search = await db.prisma.assignmentSearch.findUniqueOrThrow({
+    where: { delivery_id_generation: { delivery_id: 'test-delivery-2', generation: 1 } },
+  });
+  const otherSearch = await db.prisma.assignmentSearch.findUniqueOrThrow({
+    where: { delivery_id_generation: { delivery_id: 'test-delivery-1', generation: 1 } },
+  });
+  const names = [
+    'ok',
+    'inactive',
+    'offline',
+    'unready',
+    'oldgps',
+    'oldheartbeat',
+    'busy',
+    'far',
+    'attempted',
+    'offered',
+  ];
+  const userId = (name: string) => `candidate-${name}`;
+  await db.prisma.user.createMany({
+    data: names.map((name) => ({
+      id: userId(name),
+      email: `${name}@candidate.test`,
+      name,
+      password_hash: 'test',
+      role: 'DRIVER',
+      active: name !== 'inactive',
+    })),
+  });
+  const time = (await db.prisma.$queryRaw<Array<{ now: Date }>>`SELECT now() AS now`)[0].now;
+  const old = new Date(time.getTime() - 120000);
+  await db.prisma.driverLocation.createMany({
+    data: names.map((name) => ({
+      driver_id: userId(name),
+      latitude: name === 'far' ? 22 : 21,
+      longitude: 105,
+      captured_at: name === 'oldgps' ? old : time,
+      received_at: name === 'oldgps' ? old : time,
+    })),
+  });
+  await db.prisma.driverAvailability.createMany({
+    data: names.map((name) => ({
+      driver_id: userId(name),
+      online: name !== 'offline',
+      ready: name !== 'unready',
+      heartbeat_at: name === 'oldheartbeat' ? old : time,
+    })),
+  });
+  await db.prisma.driverAssignment.create({
+    data: {
+      id: 'candidate-busy-assignment',
+      delivery_id: 'test-delivery-2',
+      driver_id: userId('busy'),
+    },
+  });
+  await repository.recordAttempt({
+    searchId: search.id,
+    driverId: userId('attempted'),
+    round: 1,
+    outcome: 'INELIGIBLE',
+    reason: 'test',
+  });
+  await db.prisma.driverOffer.create({
+    data: {
+      id: 'candidate-offered',
+      search_id: otherSearch.id,
+      driver_id: userId('offered'),
+      expires_at: new Date('2099-01-01T00:00:00Z'),
+    },
+  });
+  (await import('../server/modules/index.js')).registerModules();
+  const selected = await (
+    await import('../server/modules/assignment/index.js')
+  ).findEligibleCandidates(search.id, { latitude: 21, longitude: 105 }, db.prisma);
+  assert.deepEqual(
+    selected.map((item) => item.driverId),
+    [userId('ok')],
+  );
+});

@@ -5,6 +5,7 @@ export {
   findActiveDriver,
   lockActiveDriver,
   lockDriver,
+  activeDriverIds,
   hashPassword,
   listUsers,
   purgeExpiredSessions,

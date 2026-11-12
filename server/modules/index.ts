@@ -4,10 +4,15 @@
  * Delivery declare, and subscribes Ordering to their events.
  * Safe to call more than once.
  */
-import { setDeliveryOrderGateway } from './delivery/index.js';
+import { setDeliveryOrderGateway, busyDriverIds } from './delivery/index.js';
 import { prefetchDeliveryQuotes } from './catalog/index.js';
-import { setAddressSavedListener, configureDriverLocation } from './location/index.js';
-import { assignmentConfig, retainDriverLocation } from './assignment/index.js';
+import {
+  setAddressSavedListener,
+  configureDriverLocation,
+  listCandidateLocations,
+} from './location/index.js';
+import { activeDriverIds } from './identity/index.js';
+import { assignmentConfig, retainDriverLocation, setCandidateSources } from './assignment/index.js';
 import {
   deliveryOrderGateway,
   paymentOrderGateway,
@@ -26,6 +31,11 @@ export function registerModules(): void {
   // Saving a delivery address prefetches one persisted quote per visible
   // restaurant; the catalog owns restaurant knowledge, location owns the event.
   setAddressSavedListener(prefetchDeliveryQuotes);
+  setCandidateSources({
+    locations: listCandidateLocations,
+    activeDrivers: activeDriverIds,
+    busyDrivers: busyDriverIds,
+  });
   configureDriverLocation(
     {
       maxAgeSeconds: assignmentConfig.DRIVER_LOCATION_MAX_AGE_SECONDS,

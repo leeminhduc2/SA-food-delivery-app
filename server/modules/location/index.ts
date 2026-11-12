@@ -4,7 +4,11 @@
  * destination's coordinates (see catalog/application/restaurant-location.ts).
  */
 export { addressRoutes } from './address.routes.js';
-export { latestDriverLocation, locationFresh } from './application/driver-location.service.js';
+export {
+  latestDriverLocation,
+  locationFresh,
+  listCandidateLocations,
+} from './application/driver-location.service.js';
 export {
   recordDriverLocation,
   purgeStaleDriverLocations,

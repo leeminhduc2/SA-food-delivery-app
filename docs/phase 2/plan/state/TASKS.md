@@ -17,7 +17,7 @@ Trạng thái này là triển khai **ứng dụng**, không phải soạn tài 
 | [P03-T02](../phases/P03-availability-and-location.md#p03-t02)         | GPS ingestion và latest location                 | DONE        | [run](runs/20261112-P03-T02.md)      | —        |
 | [P03-T03](../phases/P03-availability-and-location.md#p03-t03)         | Driver workspace và GPS lifecycle                | DONE        | [run](runs/20261112-P03-T03.md)      | —        |
 | [P04-T01](../phases/P04-assignment-search-and-offers.md#p04-t01)      | Search, offer, attempt và durable work           | DONE        | [run](runs/20261112-2331-P04-T01.md) | —        |
-| [P04-T02](../phases/P04-assignment-search-and-offers.md#p04-t02)      | Strategy contract và Nearest Driver              | NOT_STARTED | —                                    | —        |
+| [P04-T02](../phases/P04-assignment-search-and-offers.md#p04-t02)      | Strategy contract và Nearest Driver              | DONE        | [run](runs/20261112-2335-P04-T02.md) | —        |
 | [P04-T03](../phases/P04-assignment-search-and-offers.md#p04-t03)      | OrderAccepted và worker tạo offer                | NOT_STARTED | —                                    | —        |
 | [P05-T01](../phases/P05-offer-response-and-core-workflow.md#p05-t01)  | Accept/reject nguyên tử và idempotent            | NOT_STARTED | —                                    | —        |
 | [P05-T02](../phases/P05-offer-response-and-core-workflow.md#p05-t02)  | Timeout, retry và exhaustion                     | NOT_STARTED | —                                    | —        |
