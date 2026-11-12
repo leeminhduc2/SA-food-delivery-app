@@ -4,6 +4,7 @@ export { importRoutes } from './import/import.routes.js';
 export {
   assertMember,
   listAllRestaurants,
+  restaurantMemberIds,
   priceCart,
   releaseStock,
 } from './application/catalog.service.js';

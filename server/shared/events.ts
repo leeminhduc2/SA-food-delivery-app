@@ -14,6 +14,7 @@ export type DomainEvents = {
   /** Payment failed, expired or arrived after the payment window closed. */
   PaymentFailed: { orderId: string; actor: string; reason?: string };
   OrderAccepted: { orderId: string; deliveryId: string; actor: string };
+  DriverArrived: { orderId: string; deliveryId: string; assignmentId: string; actor: string };
   DeliveryPickedUp: { orderId: string; actor: string };
   DeliveryCompleted: { orderId: string; actor: string };
   DeliveryFailed: { orderId: string; actor: string; reason: string };

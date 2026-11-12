@@ -5,6 +5,7 @@ export type DeliveryRow = {
   order_id: string;
   driver_id: string | null;
   status: string;
+  arrived_at: Date | null;
   updated_at: Date | string;
 };
 
@@ -72,10 +73,22 @@ export async function setStatus(
   });
 }
 
+export async function markArrived(
+  deliveryId: string,
+  driverId: string,
+  db: DB,
+): Promise<Date | null> {
+  const rows = await db.$queryRaw<Array<{ arrived_at: Date }>>`
+    UPDATE deliveries SET arrived_at = clock_timestamp(), updated_at = clock_timestamp()
+    WHERE id = ${deliveryId} AND driver_id = ${driverId} AND status = 'ASSIGNED' AND arrived_at IS NULL
+    RETURNING arrived_at`;
+  return rows[0]?.arrived_at ?? null;
+}
+
 export async function assign(deliveryId: string, driverId: string, db: DB = prisma): Promise<void> {
   await db.delivery.updateMany({
     where: { id: deliveryId },
-    data: { driver_id: driverId, status: 'ASSIGNED', updated_at: new Date() },
+    data: { driver_id: driverId, status: 'ASSIGNED', arrived_at: null, updated_at: new Date() },
   });
 }
 

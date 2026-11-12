@@ -250,6 +250,14 @@ export async function isMember(
   );
 }
 
+export async function memberUserIds(restaurantId: string, db: DB = prisma): Promise<string[]> {
+  const rows = await db.restaurantMember.findMany({
+    where: { restaurant_id: restaurantId },
+    select: { user_id: true },
+  });
+  return rows.map((row) => row.user_id);
+}
+
 export async function addMember(
   userId: string,
   restaurantId: string,

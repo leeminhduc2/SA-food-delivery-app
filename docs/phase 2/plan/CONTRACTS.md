@@ -32,7 +32,7 @@
 | Review              | ReviewReply/ReviewModerationRequest  | Một reply hiện hành/review/Restaurant với revision history; moderation request/decision có reason/history.                                                                                                                                             |
 | Payment             | RefundRequest                        | order/payment, source incident/complaint/cancel, full amount, decision/status/reference/attempts/nextRun/error; một operation approved/pending hiệu lực/payment.                                                                                       |
 | Delivery            | DriverEarningEstimate                | Unique delivery, finalDriverId, deliveryFee snapshot, VND, deliveredAt, basis SIMULATED_ESTIMATE.                                                                                                                                                      |
-| Shared/Notification | AuditLog/Outbox                      | Audit resourceType/outcome/correlationId nullable, legacy UNKNOWN; Outbox dedupeKey nullable unique cho notification mới.                                                                                                                              |
+| Shared/Notification | AuditLog/Outbox                      | Audit resourceType/outcome/correlationId nullable, legacy UNKNOWN. New deduplicated outbox events use a stable recipient/type/business-key hash as their primary ID; existing random IDs stay valid.                                                   |
 
 Partial indexes/CHECK nằm trong migration SQL và được test. Không backfill dữ liệu lịch sử thiếu bằng giá trị giả. Migration mới có preflight/cutover theo từng phase.
 

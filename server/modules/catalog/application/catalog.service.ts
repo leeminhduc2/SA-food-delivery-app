@@ -533,3 +533,7 @@ export async function releaseStock(
 export async function listAllRestaurants(): Promise<restaurants.RestaurantRow[]> {
   return restaurants.listAll();
 }
+
+export async function restaurantMemberIds(restaurantId: string, db: DB): Promise<string[]> {
+  return restaurants.memberUserIds(restaurantId, db);
+}

@@ -1,8 +1,7 @@
 import { defineConfig } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
-process.env.E2E_SCHEMA = 'e2e_' + randomUUID().replaceAll('-', '');
-process.env.E2E_OWNER = randomUUID();
-process.env.E2E_OWNER = randomUUID();
+process.env.E2E_SCHEMA ??= 'e2e_' + randomUUID().replaceAll('-', '');
+process.env.E2E_OWNER ??= randomUUID();
 export default defineConfig({
   globalTeardown: './scripts/e2e-cleanup.ts',
   testDir: './tests/browser',

@@ -700,6 +700,13 @@ test('complete lifecycle: preparation, reassignment, authorized delivery and buy
       .status,
     200,
   );
+  const firstArrival = await request(
+    `/deliveries/${o.delivery.id}/arrive`,
+    'POST',
+    { idempotencyKey: 'arrival-driver-0001' },
+    'driver',
+  );
+  assert.equal(firstArrival.status, 200);
   assert.equal(
     (
       await request(
@@ -712,6 +719,70 @@ test('complete lifecycle: preparation, reassignment, authorized delivery and buy
     'NOT_READY',
   );
   await request(`/deliveries/${o.delivery.id}/assign`, 'POST', { driverId: 'driver2' }, 'admin');
+  assert.equal(
+    (await db.prisma.delivery.findUniqueOrThrow({ where: { id: o.delivery.id } })).arrived_at,
+    null,
+  );
+  assert.equal(
+    (
+      await request(
+        `/deliveries/${o.delivery.id}/arrive`,
+        'POST',
+        { idempotencyKey: 'arrival-driver2-001' },
+        'driver2',
+      )
+    ).status,
+    200,
+  );
+  assert.equal(
+    await db.prisma.outbox.count({
+      where: {
+        type: 'ORDER_DRIVER_ARRIVED',
+        user_id: 'customer',
+        payload: { path: ['orderId'], equals: o.id },
+      },
+    }),
+    2,
+  );
+  await request(`/deliveries/${o.delivery.id}/assign`, 'POST', { driverId: 'driver' }, 'admin');
+  assert.deepEqual(
+    (
+      await request(
+        `/deliveries/${o.delivery.id}/arrive`,
+        'POST',
+        { idempotencyKey: 'arrival-driver-0001' },
+        'driver',
+      )
+    ).data,
+    firstArrival.data,
+  );
+  assert.equal(
+    (await db.prisma.delivery.findUniqueOrThrow({ where: { id: o.delivery.id } })).arrived_at,
+    null,
+  );
+  assert.equal(
+    (
+      await request(
+        `/deliveries/${o.delivery.id}/arrive`,
+        'POST',
+        { idempotencyKey: 'arrival-driver-0002' },
+        'driver',
+      )
+    ).status,
+    200,
+  );
+  await request(`/deliveries/${o.delivery.id}/assign`, 'POST', { driverId: 'driver2' }, 'admin');
+  assert.equal(
+    (
+      await request(
+        `/deliveries/${o.delivery.id}/arrive`,
+        'POST',
+        { idempotencyKey: 'arrival-driver2-002' },
+        'driver2',
+      )
+    ).status,
+    200,
+  );
   assert.equal(
     (
       await request(
@@ -769,7 +840,7 @@ test('complete lifecycle: preparation, reassignment, authorized delivery and buy
       200,
     );
   const deliveredAssignment = await schemaPool.query(
-    'SELECT active, end_reason FROM driver_assignments WHERE delivery_id=$1 AND driver_id=$2',
+    "SELECT active, end_reason FROM driver_assignments WHERE delivery_id=$1 AND driver_id=$2 AND end_reason='DELIVERED'",
     [o.delivery.id, 'driver2'],
   );
   assert.deepEqual(deliveredAssignment.rows[0], { active: false, end_reason: 'DELIVERED' });
@@ -995,6 +1066,16 @@ test('delivery failure requires a reason and stays distinct from successful deli
     200,
   );
   assert.equal((await request('/orders/' + o.id)).data.status, 'DELIVERY_FAILED');
+  assert.equal(
+    await db.prisma.outbox.count({
+      where: {
+        user_id: 'admin',
+        type: 'DELIVERY_FAILED',
+        payload: { path: ['orderId'], equals: o.id },
+      },
+    }),
+    1,
+  );
   assert.equal(
     (
       await schemaPool.query(

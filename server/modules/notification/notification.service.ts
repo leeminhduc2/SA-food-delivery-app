@@ -13,6 +13,16 @@ export async function notify(
   await notifications.enqueue(userId, type, payload, db);
 }
 
+export async function notifyOnce(
+  db: DB,
+  userId: string,
+  type: string,
+  payload: unknown,
+  businessKey: string,
+): Promise<void> {
+  await notifications.enqueueOnce(userId, type, payload, businessKey, db);
+}
+
 export async function inbox(actor: User): Promise<any[]> {
   return notifications.listInbox(actor.id);
 }

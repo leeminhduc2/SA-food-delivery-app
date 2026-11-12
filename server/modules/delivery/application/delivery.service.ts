@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { createHash } from 'node:crypto';
 import { prisma, transaction, uniqueViolation, type DB } from '../../../shared/db.js';
 import { check } from '../../../shared/errors.js';
 import { publish } from '../../../shared/events.js';
@@ -129,6 +130,75 @@ export async function assign(actor: User, deliveryId: string, raw: unknown): Pro
       check(false, 409, 'DRIVER_BUSY', 'This driver already has an active trip.');
     throw error;
   }
+}
+
+export async function arrive(
+  actor: User,
+  deliveryId: string,
+  raw: unknown,
+): Promise<{ deliveryId: string; arrivedAt: Date }> {
+  const input = z.object({ idempotencyKey: z.string().min(8).max(120) }).parse(raw);
+  const keyHash = createHash('sha256').update(input.idempotencyKey).digest('hex');
+  const orders = orderGateway();
+  return transaction(async (db) => {
+    const found = await deliveries.findOrderId(deliveryId, db);
+    check(found, 404, 'NOT_FOUND', 'Delivery not found.');
+    const order = await orders.lockOrder(db, found.order_id);
+    check(order, 404, 'NOT_FOUND', 'Order not found.');
+    const delivery = await deliveries.findForUpdate(deliveryId, db);
+    check(delivery, 404, 'NOT_FOUND', 'Delivery not found.');
+    const assignment = await deliveries.findActiveAssignment(delivery.id, actor.id, db);
+    check(
+      delivery.driver_id === actor.id && assignment,
+      403,
+      'FORBIDDEN',
+      'This delivery is not assigned to you.',
+    );
+    const old = await audits.findCommandReceipt<{ fingerprint: string; arrivedAt: string }>(
+      actor.id,
+      'ARRIVAL_RECEIPT',
+      deliveryId,
+      keyHash,
+      db,
+    );
+    if (old) return { deliveryId, arrivedAt: new Date(old.arrivedAt) };
+    let arrivedAt = delivery.arrived_at;
+    if (!arrivedAt) {
+      check(
+        delivery.status === 'ASSIGNED',
+        409,
+        'INVALID_TRANSITION',
+        'Arrival is only available before pickup.',
+      );
+      arrivedAt = await deliveries.markArrived(deliveryId, actor.id, db);
+      check(arrivedAt, 409, 'INVALID_TRANSITION', 'Arrival could not be recorded.');
+      await audits.history(order.id, 'DRIVER_ARRIVAL', null, 'ARRIVED', actor.id, '', db);
+      await audits.audit(actor.id, 'DRIVER_ARRIVED', deliveryId, {}, db, {
+        resourceType: 'DELIVERY',
+        outcome: 'SUCCESS',
+      });
+      await publish(db, 'DriverArrived', {
+        orderId: order.id,
+        deliveryId,
+        assignmentId: assignment.id,
+        actor: actor.id,
+      });
+    }
+    await audits.audit(
+      actor.id,
+      'ARRIVAL_RECEIPT',
+      deliveryId,
+      {
+        keyHash,
+        fingerprint: 'ARRIVE',
+        arrivedAt: arrivedAt.toISOString(),
+        assignmentId: assignment.id,
+      },
+      db,
+      { resourceType: 'DELIVERY', outcome: 'SUCCESS' },
+    );
+    return { deliveryId, arrivedAt };
+  });
 }
 
 export async function transition(actor: User, deliveryId: string, raw: unknown): Promise<void> {

@@ -105,3 +105,14 @@ export async function activeAdministratorIds(db: DB = prisma): Promise<string[]>
   });
   return rows.map((row) => row.id);
 }
+
+export async function activeRestaurantIds(
+  ids: readonly string[],
+  db: DB = prisma,
+): Promise<string[]> {
+  const rows = await db.user.findMany({
+    where: { id: { in: [...ids] }, role: 'RESTAURANT', active: true },
+    select: { id: true },
+  });
+  return rows.map((row) => row.id);
+}

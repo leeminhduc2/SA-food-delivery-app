@@ -1,5 +1,5 @@
 import { Bike, ChevronRight, MapPin, Star } from 'lucide-react';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { label, money } from '../api';
 import type { Actor } from '../types';
 import { Field } from './Primitives';
@@ -24,6 +24,7 @@ export function OrderCard({
     [content, setContent] = useState(''),
     [driver, setDriver] = useState(''),
     [support, setSupport] = useState(false);
+  const arrivalKey = useRef(crypto.randomUUID());
   const stages = [
     'PENDING_PAYMENT',
     'CONFIRMED',
@@ -95,6 +96,22 @@ export function OrderCard({
         <p className="muted">
           <Bike size={16} /> Your driver: {o.delivery.driver_name}
         </p>
+      )}
+      {o.delivery.arrived_at && (
+        <p className="info">
+          Driver arrived at pickup: {new Date(o.delivery.arrived_at).toLocaleTimeString()}
+        </p>
+      )}
+      {actor.role === 'DRIVER' && o.delivery.status === 'ASSIGNED' && !o.delivery.arrived_at && (
+        <button
+          className="button secondary full"
+          disabled={busy}
+          onClick={() =>
+            action(`/deliveries/${o.delivery.id}/arrive`, { idempotencyKey: arrivalKey.current })
+          }
+        >
+          Mark arrived at pickup
+        </button>
       )}
       {actor.role === 'CUSTOMER' && o.status === 'PENDING_PAYMENT' && (
         <div className="payment-box">

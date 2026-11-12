@@ -3,7 +3,7 @@ import { id, prisma, transaction, type DB } from '../../../shared/db.js';
 import { subscribe } from '../../../shared/events.js';
 import { deliveryForAssignmentLocked } from '../../delivery/index.js';
 import { activeAdministratorIds, lockDriver } from '../../identity/index.js';
-import { notify } from '../../notification/index.js';
+import { notifyOnce } from '../../notification/index.js';
 import { assignmentOrderGateway } from '../assignment.ports.js';
 import { assignmentConfig as config } from '../config.js';
 import {
@@ -29,11 +29,17 @@ const orderEligible = (status: string) =>
   ['ACCEPTED', 'PREPARING', 'READY_FOR_PICKUP'].includes(status);
 async function notifyExhausted(claim: searches.SearchClaim, reason: string, db: DB): Promise<void> {
   for (const adminId of await activeAdministratorIds(db))
-    await notify(db, adminId, 'ASSIGNMENT_EXHAUSTED', {
-      searchId: claim.id,
-      deliveryId: claim.delivery_id,
-      reason,
-    });
+    await notifyOnce(
+      db,
+      adminId,
+      'ASSIGNMENT_EXHAUSTED',
+      {
+        searchId: claim.id,
+        deliveryId: claim.delivery_id,
+        reason,
+      },
+      claim.id,
+    );
 }
 async function lockAvailability(driverId: string, db: DB): Promise<void> {
   await db.$queryRaw`SELECT driver_id FROM driver_availability WHERE driver_id = ${driverId} FOR UPDATE`;
@@ -141,12 +147,18 @@ async function applyClaim(
       },
       db,
     );
-    await notify(db, ranked.driverId, 'DRIVER_OFFER', {
+    await notifyOnce(
+      db,
+      ranked.driverId,
+      'DRIVER_OFFER',
+      {
+        offerId,
+        pickup: context.pickup,
+        deliveryFee: context.deliveryFee,
+        expiresAt: expiresAt.toISOString(),
+      },
       offerId,
-      pickup: context.pickup,
-      deliveryFee: context.deliveryFee,
-      expiresAt: expiresAt.toISOString(),
-    });
+    );
   });
 }
 
@@ -211,11 +223,12 @@ async function processOfferedClaim(claim: searches.SearchClaim): Promise<void> {
       ))
     )
       throw new Error('Offer attempt is missing or already finalized');
-    await notify(
+    await notifyOnce(
       db,
       offer.driver_id,
       outcome === 'EXPIRED' ? 'DRIVER_OFFER_EXPIRED' : 'DRIVER_OFFER_REVOKED',
       { offerId: offer.id },
+      offer.id,
     );
     if (exhausted)
       await notifyExhausted(claim, offer.deadline_at <= now ? 'DEADLINE' : 'OFFER_LIMIT', db);

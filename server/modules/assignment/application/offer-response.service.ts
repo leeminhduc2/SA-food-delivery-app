@@ -6,7 +6,7 @@ import type { User } from '../../../shared/types.js';
 import * as audits from '../../../shared/audit.repository.js';
 import { confirmOfferAssignment, deliveryForAssignmentLocked } from '../../delivery/index.js';
 import { activeDriverIds, lockDriver } from '../../identity/index.js';
-import { notify } from '../../notification/index.js';
+import { notifyOnce } from '../../notification/index.js';
 import { latestDriverLocation } from '../../location/index.js';
 import { assignmentOrderGateway } from '../assignment.ports.js';
 import { assignmentConfig } from '../config.js';
@@ -212,12 +212,20 @@ export async function respondToOffer(
         db,
         { resourceType: 'DRIVER_OFFER', outcome: 'SUCCESS', correlationId },
       );
-      if (assignmentId)
-        await notify(db, actor.id, 'DRIVER_ASSIGNMENT_CONFIRMED', {
-          offerId,
-          deliveryId: searchMeta.delivery_id,
+      if (assignmentId) {
+        await notifyOnce(
+          db,
+          actor.id,
+          'DRIVER_ASSIGNMENT_CONFIRMED',
+          {
+            offerId,
+            deliveryId: searchMeta.delivery_id,
+            assignmentId,
+          },
           assignmentId,
-        });
+        );
+        await gateway.notifyAssigned(context.orderId, assignmentId, db);
+      }
       return {
         offerId,
         deliveryId: searchMeta.delivery_id,

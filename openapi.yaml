@@ -1618,6 +1618,76 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
+  /api/driver/offers:
+    get:
+      tags: [Delivery]
+      operationId: listDriverOffers
+      summary: List current offers for the signed-in driver
+      security: [{ sessionCookie: [] }]
+      responses:
+        '200':
+          {
+            description: Offers with pickup details,
+            deadline and server time; no customer address or note,
+          }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/deliveries/{id}/arrive:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Delivery]
+      operationId: arriveAtPickup
+      summary: Record the assigned driver's arrival at pickup once
+      security: [{ sessionCookie: [], requestedWithHeader: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [idempotencyKey]
+              properties:
+                idempotencyKey: { type: string, minLength: 8, maxLength: 120 }
+      responses:
+        '200': { description: Arrival timestamp }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/admin/assignments:
+    get:
+      tags: [Admin]
+      operationId: listAssignmentSearches
+      summary: List assignment searches
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - {
+            in: query,
+            name: limit,
+            schema: { type: integer, minimum: 1, maximum: 100, default: 25 },
+          }
+        - { in: query, name: cursor, schema: { type: string } }
+      responses:
+        '200': { description: Assignment search page }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/admin/assignments/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Admin]
+      operationId: getAssignmentSearch
+      summary: Read a search and its attempt history
+      security: [{ sessionCookie: [] }]
+      responses:
+        '200': { description: Search and attempt metadata }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   /api/driver/offers/{id}/accept:
     parameters:
       - $ref: '#/components/parameters/Id'

@@ -1,6 +1,7 @@
-# Handoff ? P05-T02 complete
+# Handoff ? P05-T03 complete
 
-- 2026-11-12 23:58 +07:00. User requested remaining P04?P14 and one commit per completed task. P05-T01 commit `48c86e8`; P05-T02 complete and ready to commit.
-- Worker expires/revokes offer and finalizes attempt transactionally; reject/expiry rotates candidates; exhausted searches generate one admin outbox alert. No-candidate waits 30/60 seconds across maximum 3 rounds, with deadline and offer cap; test advances DB timestamps without sleeps. Background stages isolate failures.
-- [Run](runs/20261112-2358-P05-T02.md) records real PostgreSQL and deterministic clock tests. Temporary PostgreSQL/Redis containers running; no application DB migration or `.env` edits. Existing user dev process holds Prisma DLL; clean generate/build remains unverified without stopping it.
-- Next: P05-T03 recipient-specific notifications, offer UI, arrival and minimal admin visibility. Do not enable automation by default before P05-T04 core gate.
+- P05-T03 adds role-specific deduplicated notifications, offer UI and server-authoritative expiry, idempotent arrival, minimal Admin visibility and staff refresh. See [run](runs/20261113-0227-P05-T03.md).
+- Next: P05-T04 operational invalidation, race tests, guarded Admin override and the core gate. Keep automation disabled until all activation criteria pass.
+- Completed commits: P04-T01 `47b472a`, P04-T02 `f1a9e84`, P04-T03 `0a22e2a`, P05-T01 `48c86e8`, P05-T02 `d836be4`; P05-T03 is committed separately.
+- Test PostgreSQL and Redis containers use ports 15433 and 16379; isolated schemas only. No application DB migration has been run. New arrival receipt index migration must be deployed using the normal migration process.
+- The user's existing dev process holds the Prisma Windows DLL: clean `prisma generate` and therefore the full build remain unverified until it is released. Do not terminate the user's process. Existing generated client, TypeScript, isolated DB integration and browser tests passed.

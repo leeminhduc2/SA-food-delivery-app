@@ -5,7 +5,7 @@ import * as audits from '../../../shared/audit.repository.js';
 import { releaseStock } from '../../catalog/index.js';
 import { cancelDelivery, deliveryForOrderLocked } from '../../delivery/index.js';
 import { publish } from '../../../shared/events.js';
-import { notify } from '../../notification/index.js';
+import { notifyOnce } from '../../notification/index.js';
 import { cancelPayment, simulate, simulated } from '../../payment/index.js';
 import {
   canCustomerCancel,
@@ -15,17 +15,29 @@ import {
 import * as orders from '../infrastructure/order.repository.js';
 import { cancelSchema, transitionSchema } from '../ordering.schemas.js';
 import { accessOrder, orderDetail } from './order-queries.js';
+import { restaurantRecipients } from './notification-recipients.js';
 
 export async function changeOrder(
   db: DB,
-  order: { id: string; status: string; customer_id: string },
+  order: { id: string; status: string; customer_id: string; restaurant_id: string },
   to: string,
   actor: string,
   reason = '',
 ): Promise<void> {
   await orders.setStatus(order.id, to, db);
   await audits.history(order.id, 'ORDER', order.status, to, actor, reason, db);
-  await notify(db, order.customer_id, 'ORDER_STATUS', { orderId: order.id, status: to });
+  await notifyOnce(
+    db,
+    order.customer_id,
+    'ORDER_STATUS',
+    { orderId: order.id, status: to },
+    `${order.id}:status:${to}`,
+  );
+  if (to === 'CONFIRMED' || to === 'OUT_FOR_DELIVERY') {
+    const type = to === 'CONFIRMED' ? 'RESTAURANT_NEW_ORDER' : 'RESTAURANT_DRIVER_PICKED_UP';
+    for (const memberId of await restaurantRecipients(order.restaurant_id, db))
+      await notifyOnce(db, memberId, type, { orderId: order.id }, `${order.id}:${type}`);
+  }
 }
 
 export async function releaseOrderStock(db: DB, orderId: string): Promise<void> {

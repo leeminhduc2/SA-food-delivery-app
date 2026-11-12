@@ -5,6 +5,10 @@ import { history } from './application/driver-history.service.js';
 
 export const deliveryRoutes = Router();
 
+deliveryRoutes.post('/deliveries/:id/arrive', async (req, res) => {
+  res.json(await delivery.arrive(actor(req, 'DRIVER'), String(req.params.id), req.body));
+});
+
 deliveryRoutes.get('/driver/deliveries/history', async (req, res) => {
   res.json(await history(actor(req, 'DRIVER').id, req.query));
 });

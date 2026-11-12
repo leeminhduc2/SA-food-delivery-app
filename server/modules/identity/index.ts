@@ -7,6 +7,7 @@ export {
   lockDriver,
   activeDriverIds,
   activeAdministratorIds,
+  activeRestaurantIds,
   hashPassword,
   listUsers,
   purgeExpiredSessions,

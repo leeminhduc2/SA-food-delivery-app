@@ -1,5 +1,6 @@
 import { id, prisma, type DB } from '../../shared/db.js';
 import type { Prisma } from '@prisma/client';
+import { createHash } from 'node:crypto';
 
 export async function enqueue(
   userId: string,
@@ -14,6 +15,25 @@ export async function enqueue(
       type,
       payload: payload as Prisma.InputJsonValue,
     },
+  });
+}
+
+/** Stable recipient-scoped IDs make enqueue retry-safe without changing legacy rows. */
+export async function enqueueOnce(
+  userId: string,
+  type: string,
+  payload: unknown,
+  businessKey: string,
+  db: DB = prisma,
+): Promise<void> {
+  const eventId =
+    'dedupe_' +
+    createHash('sha256')
+      .update(JSON.stringify([userId, type, businessKey]))
+      .digest('hex');
+  await db.outbox.createMany({
+    data: [{ id: eventId, user_id: userId, type, payload: payload as Prisma.InputJsonValue }],
+    skipDuplicates: true,
   });
 }
 

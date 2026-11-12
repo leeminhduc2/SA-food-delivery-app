@@ -277,6 +277,10 @@ test('driver denied GPS remains offline and offers an accessible retry', async (
 });
 
 test('driver GPS enables online and is cleaned up on logout', async ({ page }) => {
+  const keyWarnings: string[] = [];
+  page.on('console', (message) => {
+    if (message.text().includes('same key')) keyWarnings.push(message.text());
+  });
   await page.addInitScript(() => {
     const mock = window as any;
     mock.geoCleared = 0;
@@ -319,6 +323,8 @@ test('driver GPS enables online and is cleaned up on logout', async ({ page }) =
   await page.getByRole('button', { name: 'Account settings' }).click();
   await page.getByRole('dialog').getByRole('button', { name: 'Sign out' }).click();
   await expect.poll(() => page.evaluate(() => (window as any).geoCleared)).toBeGreaterThan(0);
+  await expect(page.getByRole('heading', { name: 'Driver availability' })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Delivery offers' })).toHaveCount(0);
   const before = locations;
   await page.evaluate(() =>
     (window as any).geoCallback({
@@ -328,4 +334,5 @@ test('driver GPS enables online and is cleaned up on logout', async ({ page }) =
   );
   await page.waitForTimeout(250);
   expect(locations).toBe(before);
+  expect(keyWarnings).toEqual([]);
 });

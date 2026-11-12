@@ -35,6 +35,8 @@ import { AddressMap, AddressSettings, type SavedAddress } from './components/Del
 import { OrderCard } from './components/Orders';
 import { DriverHistory } from './components/DriverHistory';
 import { DriverAvailability } from './components/DriverAvailability';
+import { DriverOffers } from './components/DriverOffers';
+import { AdminAssignments } from './components/AdminAssignments';
 import { Empty, Modal } from './components/Primitives';
 import { SmartImage } from './components/SmartImage';
 import { AdminPanels, ItemForm, RestaurantForm } from './components/Workspace';
@@ -272,7 +274,8 @@ export function App() {
       fallback ??= setInterval(() => {
         refreshOrders().catch((e) => setError(errorText(e)));
         refreshNotifications().catch((e) => setError(errorText(e)));
-      }, 30000);
+        refreshStaff().catch((e) => setError(errorText(e)));
+      }, 10000);
     };
     const stopFallback = () => {
       if (fallback) clearInterval(fallback);
@@ -283,6 +286,7 @@ export function App() {
       return stopFallback;
     }
     const source = new EventSource('/api/notifications/stream');
+    startFallback();
     source.onopen = () => {
       stopFallback();
       // Replay covers missed notifications; the order snapshot is refreshed here.
@@ -298,9 +302,17 @@ export function App() {
       setNotifications((rows) =>
         rows.some((n) => n.id === row.id) ? rows : [{ ...row, read: false }, ...rows].slice(0, 50),
       );
-      if (String(row.type).startsWith('ORDER_'))
+      if (/^(ORDER_|RESTAURANT_|DRIVER_ASSIGNMENT_|DRIVER_OFFER)/.test(String(row.type)))
         refreshOrders().catch((e) => setError(errorText(e)));
-      if (row.type === 'COMPLAINT_RESOLVED') refreshStaff().catch((e) => setError(errorText(e)));
+      if (
+        /^(RESTAURANT_|ASSIGNMENT_|DELIVERY_)/.test(String(row.type)) ||
+        row.type === 'COMPLAINT_RESOLVED'
+      )
+        refreshStaff().catch((e) => setError(errorText(e)));
+      if (String(row.type).startsWith('DRIVER_'))
+        window.dispatchEvent(new Event('bep:offer-changed'));
+      if (String(row.type).startsWith('ASSIGNMENT_'))
+        window.dispatchEvent(new Event('bep:assignment-changed'));
     });
     source.addEventListener('resync', () => {
       refreshOrders().catch((e) => setError(errorText(e)));
@@ -313,7 +325,7 @@ export function App() {
     // The browser retries transient failures itself. A CLOSED source means the
     // server refused the stream (stream disabled, limit hit, or not signed in).
     source.onerror = () => {
-      if (source.readyState === EventSource.CLOSED) startFallback();
+      startFallback();
     };
     return () => {
       source.close();
@@ -554,7 +566,15 @@ export function App() {
         </div>
       )}
       <main id="main" tabIndex={-1}>
-        {actor?.role === 'DRIVER' && page === 'orders' && <DriverAvailability key={actor.id} />}
+        {actor?.role === 'DRIVER' && page === 'orders' && (
+          <DriverAvailability key={'availability:' + actor.id} />
+        )}
+        {actor?.role === 'DRIVER' && page === 'orders' && (
+          <DriverOffers key={'offers:' + actor.id} onChanged={refreshOrders} />
+        )}
+        {actor?.role === 'ADMIN' && page === 'workspace' && (
+          <AdminAssignments key={'admin-assignments:' + actor.id} />
+        )}
         {error && (
           <div role="alert" className="alert">
             <span>{error}</span>

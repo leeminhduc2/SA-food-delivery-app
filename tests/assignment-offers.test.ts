@@ -38,6 +38,10 @@ async function request(path: string, body: unknown, who: string) {
   });
   return { status: res.status, data: await res.json() };
 }
+async function get(path: string, who: string) {
+  const res = await fetch(`${base}/api${path}`, { headers: { cookie: cookies[who] } });
+  return { status: res.status, data: await res.json() };
+}
 async function offerFixture(
   suffix: string,
   driverId: string,
@@ -183,7 +187,7 @@ before(async () => {
   const address = server.address();
   assert.ok(address && typeof address !== 'string');
   base = `http://127.0.0.1:${address.port}`;
-  for (const name of ['driver', 'driver2']) {
+  for (const name of ['driver', 'driver2', 'customer', 'restaurant', 'admin']) {
     const res = await fetch(base + '/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'Bep' },
@@ -207,7 +211,26 @@ after(async () => {
 
 test('accept and reject are authorized, atomic and idempotent', async () => {
   await offerFixture('accept', 'driver');
+  await db.prisma.restaurantMember.create({
+    data: { user_id: 'driver2', restaurant_id: 'saigon' },
+  });
   const key = { idempotencyKey: 'accept-key-0001' };
+  const listed = await get('/driver/offers', 'driver');
+  assert.equal(listed.status, 200);
+  assert.equal(listed.data.items.length, 1);
+  assert.doesNotMatch(
+    JSON.stringify(listed.data),
+    /Private customer address|customer_id|fingerprint/,
+  );
+  assert.equal((await get('/driver/offers', 'driver2')).data.items.length, 0);
+  assert.equal((await get('/admin/assignments', 'driver')).status, 403);
+  const adminList = await get('/admin/assignments', 'admin');
+  assert.equal(adminList.status, 200);
+  assert.ok(adminList.data.items.some((row: any) => row.searchId === 'search-accept'));
+  assert.equal(
+    (await get('/admin/assignments/search-accept', 'admin')).data.attempts[0].outcome,
+    'OFFERED',
+  );
   assert.equal((await request('/driver/offers/offer-accept/accept', key, 'driver2')).status, 403);
   const results = await Promise.all([
     request('/driver/offers/offer-accept/accept', key, 'driver'),
@@ -248,6 +271,106 @@ test('accept and reject are authorized, atomic and idempotent', async () => {
     (await db.prisma.assignmentAttempt.findUniqueOrThrow({ where: { id: 'attempt-accept' } }))
       .outcome,
     'ACCEPTED',
+  );
+  assert.equal(
+    await db.prisma.outbox.count({ where: { type: 'ORDER_DRIVER_ASSIGNED', user_id: 'customer' } }),
+    1,
+  );
+  assert.equal(
+    await db.prisma.outbox.count({
+      where: { type: 'RESTAURANT_DRIVER_ASSIGNED', user_id: 'restaurant' },
+    }),
+    1,
+  );
+  assert.equal(
+    await db.prisma.outbox.count({
+      where: { type: 'RESTAURANT_DRIVER_ASSIGNED', user_id: 'restaurant2' },
+    }),
+    0,
+  );
+  assert.equal(
+    await db.prisma.outbox.count({
+      where: { type: 'RESTAURANT_DRIVER_ASSIGNED', user_id: 'driver2' },
+    }),
+    0,
+  );
+  const arrivalKey = { idempotencyKey: 'arrival-key-0001' };
+  assert.equal(
+    (await request('/deliveries/delivery-accept/arrive', arrivalKey, 'driver2')).status,
+    403,
+  );
+  const arrival = await request('/deliveries/delivery-accept/arrive', arrivalKey, 'driver');
+  assert.equal(arrival.status, 200);
+  assert.deepEqual(
+    (await request('/deliveries/delivery-accept/arrive', arrivalKey, 'driver')).data,
+    arrival.data,
+  );
+  assert.equal(
+    (await db.prisma.delivery.findUniqueOrThrow({ where: { id: 'delivery-accept' } })).status,
+    'ASSIGNED',
+  );
+  assert.equal(
+    (await request('/deliveries/delivery-accept/transition', { status: 'PICKED_UP' }, 'driver'))
+      .data.code,
+    'NOT_READY',
+  );
+  assert.equal(
+    await db.prisma.outbox.count({ where: { type: 'ORDER_DRIVER_ARRIVED', user_id: 'customer' } }),
+    1,
+  );
+  assert.equal(
+    await db.prisma.outbox.count({
+      where: { type: 'RESTAURANT_DRIVER_ARRIVED', user_id: 'restaurant' },
+    }),
+    1,
+  );
+  await db.prisma.$transaction((tx) =>
+    import('../server/shared/events.js').then(({ publish }) =>
+      publish(tx, 'DriverArrived', {
+        orderId: 'order-accept',
+        deliveryId: 'delivery-accept',
+        assignmentId: results[0].data.assignmentId,
+        actor: 'driver',
+      }),
+    ),
+  );
+  assert.equal(
+    await db.prisma.outbox.count({ where: { type: 'ORDER_DRIVER_ARRIVED', user_id: 'customer' } }),
+    1,
+  );
+  await db.prisma.order.update({
+    where: { id: 'order-accept' },
+    data: { status: 'READY_FOR_PICKUP' },
+  });
+  assert.equal(
+    (await request('/deliveries/delivery-accept/transition', { status: 'PICKED_UP' }, 'driver'))
+      .status,
+    200,
+  );
+  assert.deepEqual(
+    (await request('/deliveries/delivery-accept/arrive', arrivalKey, 'driver')).data,
+    arrival.data,
+  );
+  assert.equal(
+    await db.prisma.outbox.count({
+      where: { type: 'RESTAURANT_DRIVER_PICKED_UP', user_id: 'restaurant' },
+    }),
+    1,
+  );
+  const notifications = await import('../server/modules/notification/index.js');
+  assert.ok((await notifications.deliverNotifications()) > 0);
+  assert.equal(await notifications.deliverNotifications(), 0);
+  assert.equal(
+    await db.prisma.notification.count({
+      where: { user_id: 'restaurant', type: 'RESTAURANT_DRIVER_PICKED_UP' },
+    }),
+    1,
+  );
+  assert.equal(
+    await db.prisma.notification.count({
+      where: { user_id: 'driver2', type: 'RESTAURANT_DRIVER_PICKED_UP' },
+    }),
+    0,
   );
   await offerFixture('reject', 'driver2');
   const reject = { idempotencyKey: 'reject-key-0001', reason: 'Too far away' };
@@ -350,4 +473,48 @@ test('failure to persist audit rolls back assignment and offer changes', async (
       .outcome,
     'OFFERED',
   );
+});
+
+test('payment confirmation notifies only customer and restaurant members once', async () => {
+  await db.prisma.order.create({
+    data: {
+      id: 'order-notify',
+      customer_id: 'customer',
+      restaurant_id: 'saigon',
+      status: 'PENDING_PAYMENT',
+      subtotal: 1000,
+      delivery_fee: 0,
+      total: 1000,
+      address: 'Private customer address',
+      idempotency_key: 'notify-key',
+      fingerprint: 'test',
+      expires_at: new Date('2099-01-01T00:00:00Z'),
+    },
+  });
+  const { publish } = await import('../server/shared/events.js');
+  for (let i = 0; i < 2; i++)
+    await db.prisma.$transaction((tx) =>
+      publish(tx, 'PaymentSucceeded', { orderId: 'order-notify', actor: 'system' }),
+    );
+  const records = await db.prisma.outbox.findMany({
+    where: {
+      type: { in: ['RESTAURANT_NEW_ORDER', 'ORDER_STATUS'] },
+      payload: { path: ['orderId'], equals: 'order-notify' },
+    },
+  });
+  assert.equal(
+    records.filter((row) => row.user_id === 'restaurant' && row.type === 'RESTAURANT_NEW_ORDER')
+      .length,
+    1,
+  );
+  assert.equal(
+    records.filter((row) => row.user_id === 'customer' && row.type === 'ORDER_STATUS').length,
+    1,
+  );
+  assert.equal(
+    records.some((row) => row.user_id === 'restaurant2' || row.user_id === 'driver2'),
+    false,
+  );
+  for (const row of records)
+    assert.doesNotMatch(JSON.stringify(row.payload), /Private customer address/);
 });
