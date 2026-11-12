@@ -75,6 +75,7 @@ process.env.LOG_REQUESTS = 'false';
 process.env.DEMO_MODE = 'true';
 process.env.DEMO_PASSWORD = 'ArchitectureTest123!';
 process.env.PAYMENT_MODE = 'simulated';
+process.env.ASSIGNMENT_AUTOMATION_ENABLED = 'false';
 process.env.PAYMENT_WEBHOOK_SECRET = 'test-secret-for-signed-callback-validation';
 let server: Server, base: string, db: any, payment: any, ops: any, jobs: any;
 const cookies: Record<string, string> = {};
@@ -316,6 +317,19 @@ test('discovery searches dishes; cart enforces single restaurant and optimistic 
       })
     ).data.code,
     'SINGLE_RESTAURANT',
+  );
+});
+test('manual mode leaves an accepted unassigned delivery without an automatic search', async () => {
+  const order = (await checkout()).data;
+  await pay(order);
+  assert.equal(
+    (await request(`/orders/${order.id}/transition`, 'POST', { status: 'ACCEPTED' }, 'restaurant'))
+      .status,
+    200,
+  );
+  assert.equal(
+    await db.prisma.assignmentSearch.count({ where: { delivery_id: order.delivery.id } }),
+    0,
   );
 });
 test('checkout retry is atomic and payload conflicts are rejected', async () => {
@@ -743,6 +757,11 @@ test('complete lifecycle: preparation, reassignment, authorized delivery and buy
       (await request(`/orders/${o.id}/transition`, 'POST', { status }, 'restaurant')).status,
       200,
     );
+  assert.equal(
+    await db.prisma.assignmentSearch.count({ where: { delivery_id: o.delivery.id } }),
+    0,
+    'manual mode must not start a search',
+  );
   for (const status of ['PICKED_UP', 'IN_TRANSIT', 'DELIVERED'])
     assert.equal(
       (await request(`/deliveries/${o.delivery.id}/transition`, 'POST', { status }, 'driver2'))

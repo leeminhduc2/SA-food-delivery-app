@@ -12,3 +12,5 @@ export {
   type RankedDriver,
   type Point,
 } from './domain/assignment-strategy.js';
+export { setAssignmentOrderGateway, type AssignmentOrderGateway } from './assignment.ports.js';
+export { registerAssignmentHandlers, runAssignmentWorker } from './application/search.service.js';

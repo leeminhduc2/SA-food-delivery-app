@@ -7,6 +7,16 @@ import {
 } from '../domain/assignment-status.js';
 import type { Prisma } from '@prisma/client';
 
+export type SearchClaim = {
+  id: string;
+  delivery_id: string;
+  generation: number;
+  version: number;
+  status: SearchStatus;
+  lease_owner: string;
+  lease_until: Date;
+};
+
 /** Idempotent initial generation; caller transaction owns the accepted transition. */
 export async function createInitialSearch(deliveryId: string, deadlineSeconds: number, db: DB) {
   const rows = await db.$queryRaw<Array<{ id: string }>>`
@@ -26,26 +36,61 @@ export async function createInitialSearch(deliveryId: string, deadlineSeconds: n
 export async function claimDue(worker: string, leaseSeconds: number, db: DB = prisma) {
   return (
     (
-      await db.$queryRaw<
-        Array<{
-          id: string;
-          generation: number;
-          version: number;
-          status: SearchStatus;
-          lease_owner: string;
-          lease_until: Date;
-        }>
-      >`
+      await db.$queryRaw<SearchClaim[]>`
     UPDATE assignment_searches AS search SET lease_owner = ${worker},
       lease_until = now() + ${leaseSeconds} * interval '1 second',
       version = search.version + 1, updated_at = now()
     WHERE search.id = (
-      SELECT id FROM assignment_searches WHERE status IN ('WAITING', 'SEARCHING', 'OFFERED')
+      SELECT id FROM assignment_searches WHERE status IN ('WAITING', 'SEARCHING')
         AND next_run_at <= now() AND (lease_until IS NULL OR lease_until <= now())
       ORDER BY next_run_at, id FOR UPDATE SKIP LOCKED LIMIT 1
-    ) RETURNING search.id, search.generation, search.version, search.status, search.lease_owner, search.lease_until`
+    ) RETURNING search.id, search.delivery_id, search.generation, search.version, search.status, search.lease_owner, search.lease_until`
     )[0] ?? null
   );
+}
+
+export async function beginClaim(claim: SearchClaim, db: DB = prisma): Promise<SearchClaim | null> {
+  if (claim.status === 'SEARCHING') return claim;
+  if (claim.status !== 'WAITING') return null;
+  return (
+    (
+      await db.$queryRaw<SearchClaim[]>`
+    UPDATE assignment_searches SET status = 'SEARCHING', version = version + 1, updated_at = now()
+    WHERE id = ${claim.id} AND generation = ${claim.generation} AND version = ${claim.version}
+      AND status = 'WAITING' AND lease_owner = ${claim.lease_owner} AND lease_until > clock_timestamp()
+    RETURNING id, delivery_id, generation, version, status, lease_owner, lease_until`
+    )[0] ?? null
+  );
+}
+
+export async function lockCurrentClaim(claim: SearchClaim, db: DB) {
+  return (
+    (
+      await db.$queryRaw<
+        Array<{ id: string; round: number; deadline_at: Date; offers_created: number }>
+      >`
+    SELECT id, round, deadline_at, offers_created FROM assignment_searches
+    WHERE id = ${claim.id} AND generation = ${claim.generation} AND version = ${claim.version}
+      AND status = 'SEARCHING' AND lease_owner = ${claim.lease_owner} AND lease_until > clock_timestamp()
+    FOR UPDATE`
+    )[0] ?? null
+  );
+}
+
+export async function finishClaim(
+  claim: SearchClaim,
+  status: 'WAITING' | 'SEARCHING' | 'OFFERED' | 'CANCELLED' | 'EXHAUSTED',
+  delaySeconds: number,
+  db: DB,
+): Promise<Date | null> {
+  const rows = await db.$queryRaw<Array<{ next_run_at: Date }>>`
+    UPDATE assignment_searches SET status = ${status}, next_run_at = clock_timestamp() + ${delaySeconds} * interval '1 second',
+      offers_created = offers_created + ${status === 'OFFERED' ? 1 : 0}, lease_owner = NULL,
+      lease_until = NULL, version = version + 1, updated_at = clock_timestamp()
+    WHERE id = ${claim.id} AND generation = ${claim.generation} AND version = ${claim.version}
+      AND status = 'SEARCHING' AND lease_owner = ${claim.lease_owner} AND lease_until > clock_timestamp()
+    RETURNING next_run_at`;
+  return rows[0]?.next_run_at ?? null;
 }
 
 /** Version, generation, owner and DB lease expiry fence every worker result. */
@@ -65,7 +110,7 @@ export async function transitionClaimedSearch(
     UPDATE assignment_searches SET status = ${input.to}, lease_owner = NULL, lease_until = NULL,
       version = version + 1, updated_at = now()
     WHERE id = ${input.id} AND generation = ${input.generation} AND version = ${input.version}
-      AND status = ${input.from} AND lease_owner = ${input.owner} AND lease_until > now()
+      AND status = ${input.from} AND lease_owner = ${input.owner} AND lease_until > clock_timestamp()
     RETURNING id`;
   return rows.length === 1;
 }

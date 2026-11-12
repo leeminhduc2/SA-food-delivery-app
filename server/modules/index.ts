@@ -12,11 +12,18 @@ import {
   listCandidateLocations,
 } from './location/index.js';
 import { activeDriverIds } from './identity/index.js';
-import { assignmentConfig, retainDriverLocation, setCandidateSources } from './assignment/index.js';
+import {
+  assignmentConfig,
+  retainDriverLocation,
+  setCandidateSources,
+  setAssignmentOrderGateway,
+  registerAssignmentHandlers,
+} from './assignment/index.js';
 import {
   deliveryOrderGateway,
   paymentOrderGateway,
   registerOrderingHandlers,
+  assignmentOrderGateway,
 } from './ordering/index.js';
 import { setPaymentOrderGateway } from './payment/index.js';
 
@@ -27,7 +34,9 @@ export function registerModules(): void {
   registered = true;
   setPaymentOrderGateway(paymentOrderGateway);
   setDeliveryOrderGateway(deliveryOrderGateway);
+  setAssignmentOrderGateway(assignmentOrderGateway);
   registerOrderingHandlers();
+  registerAssignmentHandlers();
   // Saving a delivery address prefetches one persisted quote per visible
   // restaurant; the catalog owns restaurant knowledge, location owns the event.
   setAddressSavedListener(prefetchDeliveryQuotes);

@@ -15,4 +15,6 @@ export {
   isDriverAssigned,
   hasActiveTrip,
   busyDriverIds,
+  deliveryForOrderLocked,
+  deliveryForAssignmentLocked,
 } from './application/delivery.service.js';

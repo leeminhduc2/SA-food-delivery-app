@@ -40,6 +40,14 @@ export async function hasActiveTrip(driverId: string, db: DB = prisma): Promise<
   return Boolean(await deliveries.findActiveForDriver(driverId, db));
 }
 
+export async function deliveryForOrderLocked(orderId: string, db: DB) {
+  return deliveries.findByOrderForUpdate(orderId, db);
+}
+
+export async function deliveryForAssignmentLocked(deliveryId: string, db: DB) {
+  return deliveries.findForUpdate(deliveryId, db);
+}
+
 export async function busyDriverIds(ids: readonly string[], db: DB = prisma): Promise<string[]> {
   return deliveries.busyDriverIds(ids, db);
 }

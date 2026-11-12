@@ -3,7 +3,8 @@ import { check } from '../../../shared/errors.js';
 import type { User } from '../../../shared/types.js';
 import * as audits from '../../../shared/audit.repository.js';
 import { releaseStock } from '../../catalog/index.js';
-import { cancelDelivery } from '../../delivery/index.js';
+import { cancelDelivery, deliveryForOrderLocked } from '../../delivery/index.js';
+import { publish } from '../../../shared/events.js';
 import { notify } from '../../notification/index.js';
 import { cancelPayment, simulate, simulated } from '../../payment/index.js';
 import {
@@ -66,6 +67,15 @@ export async function transition(actor: User, orderId: string, raw: unknown): Pr
       { from: order.status, to: status },
       db,
     );
+    if (status === 'ACCEPTED') {
+      const delivery = await deliveryForOrderLocked(order.id, db);
+      if (delivery && delivery.status === 'UNASSIGNED' && !delivery.driver_id)
+        await publish(db, 'OrderAccepted', {
+          orderId: order.id,
+          deliveryId: delivery.id,
+          actor: actor.id,
+        });
+    }
   });
   return orderDetail(orderId);
 }
