@@ -2,7 +2,7 @@
 import { id, prisma, transaction, type DB } from '../../../shared/db.js';
 import { subscribe } from '../../../shared/events.js';
 import { deliveryForAssignmentLocked } from '../../delivery/index.js';
-import { lockDriver } from '../../identity/index.js';
+import { activeAdministratorIds, lockDriver } from '../../identity/index.js';
 import { notify } from '../../notification/index.js';
 import { assignmentOrderGateway } from '../assignment.ports.js';
 import { assignmentConfig as config } from '../config.js';
@@ -11,6 +11,7 @@ import {
   haversineMeters,
   type RankedDriver,
 } from '../domain/assignment-strategy.js';
+import { decideNoCandidate } from '../domain/search-policy.js';
 import * as searches from '../infrastructure/assignment.repository.js';
 import { findEligibleCandidates } from './candidates.service.js';
 
@@ -26,6 +27,14 @@ export function registerAssignmentHandlers(): void {
 }
 const orderEligible = (status: string) =>
   ['ACCEPTED', 'PREPARING', 'READY_FOR_PICKUP'].includes(status);
+async function notifyExhausted(claim: searches.SearchClaim, reason: string, db: DB): Promise<void> {
+  for (const adminId of await activeAdministratorIds(db))
+    await notify(db, adminId, 'ASSIGNMENT_EXHAUSTED', {
+      searchId: claim.id,
+      deliveryId: claim.delivery_id,
+      reason,
+    });
+}
 async function lockAvailability(driverId: string, db: DB): Promise<void> {
   await db.$queryRaw`SELECT driver_id FROM driver_availability WHERE driver_id = ${driverId} FOR UPDATE`;
 }
@@ -64,12 +73,27 @@ async function applyClaim(
     }
     const now = (await db.$queryRaw<Array<{ now: Date }>>`SELECT clock_timestamp() AS now`)[0].now;
     if (search.deadline_at <= now || search.offers_created >= config.ASSIGNMENT_MAX_OFFERS) {
-      await searches.finishClaim(claim, 'EXHAUSTED', 0, db);
+      const finished = await searches.finishClaim(claim, 'EXHAUSTED', 0, db);
+      if (finished)
+        await notifyExhausted(claim, search.deadline_at <= now ? 'DEADLINE' : 'OFFER_LIMIT', db);
       return;
     }
     const context = await gateway.context(claim.delivery_id, db);
     if (!ranked || !context?.pickup) {
-      await searches.finishClaim(claim, 'WAITING', 30, db);
+      const decision = decideNoCandidate(
+        {
+          round: search.round,
+          offersCreated: search.offers_created,
+          deadlineAt: search.deadline_at,
+        },
+        now,
+        { maxRounds: config.ASSIGNMENT_MAX_ROUNDS, maxOffers: config.ASSIGNMENT_MAX_OFFERS },
+      );
+      if (decision.kind === 'EXHAUSTED') {
+        const finished = await searches.finishClaim(claim, 'EXHAUSTED', 0, db);
+        if (finished) await notifyExhausted(claim, decision.reason, db);
+      } else
+        await searches.finishClaim(claim, 'WAITING', decision.delaySeconds, db, decision.nextRound);
       return;
     }
     const eligible = await findEligibleCandidates(claim.id, context.pickup, db);
@@ -125,6 +149,78 @@ async function applyClaim(
     });
   });
 }
+
+async function processOfferedClaim(claim: searches.SearchClaim): Promise<void> {
+  const gateway = assignmentOrderGateway();
+  const [context, offerMeta] = await Promise.all([
+    gateway.context(claim.delivery_id, prisma),
+    prisma.driverOffer.findFirst({
+      where: { search_id: claim.id, status: 'OFFERED' },
+      select: { id: true, driver_id: true },
+    }),
+  ]);
+  await transaction(async (db) => {
+    const order = context ? await gateway.lockOrder(context.orderId, db) : undefined;
+    const delivery = await deliveryForAssignmentLocked(claim.delivery_id, db);
+    if (!offerMeta) {
+      if (!(await searches.lockOfferedSearch(claim, db))) return;
+      const now = (await db.$queryRaw<Array<{ now: Date }>>`SELECT clock_timestamp() AS now`)[0]
+        .now;
+      await searches.finishOfferedClaim(claim, 'SEARCHING', now, db);
+      return;
+    }
+    await lockDriver(offerMeta.driver_id, db);
+    await lockAvailability(offerMeta.driver_id, db);
+    const offer = await searches.lockClaimedOffer(claim, offerMeta.id, db);
+    if (!offer || offer.offer_status !== 'OFFERED') return;
+    const now = (await db.$queryRaw<Array<{ now: Date }>>`SELECT clock_timestamp() AS now`)[0].now;
+    const invalidOrder =
+      !order ||
+      !delivery ||
+      !context ||
+      delivery.order_id !== context.orderId ||
+      !orderEligible(order.status) ||
+      delivery.status !== 'UNASSIGNED' ||
+      Boolean(delivery.driver_id);
+    if (!invalidOrder && offer.expires_at > now && offer.deadline_at > now) {
+      await searches.finishOfferedClaim(
+        claim,
+        'OFFERED',
+        new Date(Math.min(offer.expires_at.getTime(), offer.deadline_at.getTime())),
+        db,
+      );
+      return;
+    }
+    const outcome = invalidOrder ? 'REVOKED' : 'EXPIRED';
+    const exhausted =
+      !invalidOrder &&
+      (offer.deadline_at <= now || offer.offers_created >= config.ASSIGNMENT_MAX_OFFERS);
+    const next = invalidOrder ? 'CANCELLED' : exhausted ? 'EXHAUSTED' : 'SEARCHING';
+    if (!(await searches.finishOfferedClaim(claim, next, now, db))) return;
+    await db.driverOffer.update({
+      where: { id: offer.id },
+      data: { status: outcome, responded_at: now },
+    });
+    if (
+      !(await searches.resolveAttempt(
+        claim.id,
+        offer.driver_id,
+        outcome,
+        invalidOrder ? 'ORDER_NOT_ASSIGNABLE' : 'EXPIRED',
+        db,
+      ))
+    )
+      throw new Error('Offer attempt is missing or already finalized');
+    await notify(
+      db,
+      offer.driver_id,
+      outcome === 'EXPIRED' ? 'DRIVER_OFFER_EXPIRED' : 'DRIVER_OFFER_REVOKED',
+      { offerId: offer.id },
+    );
+    if (exhausted)
+      await notifyExhausted(claim, offer.deadline_at <= now ? 'DEADLINE' : 'OFFER_LIMIT', db);
+  });
+}
 /** One batch, with candidate discovery/ranking entirely outside any held transaction. */
 export async function runAssignmentWorker(
   enabled = config.ASSIGNMENT_AUTOMATION_ENABLED,
@@ -136,6 +232,11 @@ export async function runAssignmentWorker(
   while (processed < maxItems) {
     const claimed = await searches.claimDue(worker, 30);
     if (!claimed) break;
+    if (claimed.status === 'OFFERED') {
+      await processOfferedClaim(claimed);
+      processed++;
+      continue;
+    }
     const current = await searches.beginClaim(claimed);
     if (!current) continue;
     const context = await assignmentOrderGateway().context(current.delivery_id, prisma);

@@ -125,6 +125,10 @@ export async function activeDriverIds(ids: readonly string[], db?: DB): Promise<
   return users.activeDriverIds(ids, db);
 }
 
+export async function activeAdministratorIds(db?: DB): Promise<string[]> {
+  return users.activeAdministratorIds(db);
+}
+
 /** Worker step: drops sessions past their expiry. */
 export async function purgeExpiredSessions(): Promise<number> {
   return sessions.deleteExpired();

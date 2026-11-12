@@ -16,14 +16,28 @@ export async function runPaymentMaintenance(): Promise<void> {
 
 /** One worker tick. */
 export async function runBackgroundCycle(): Promise<void> {
-  await runPaymentMaintenance();
-  try {
-    await runAssignmentWorker();
-  } catch {
-    // A failed assignment batch must not starve notification delivery.
-    console.error('Assignment worker batch failed');
+  registerModules();
+  await runIsolatedStages([
+    { name: 'payment reconciliation', run: reconcilePayments },
+    { name: 'payment expiry', run: expireUnpaidOrders },
+    { name: 'assignment', run: runAssignmentWorker },
+    { name: 'notification', run: deliverNotifications },
+    { name: 'session cleanup', run: purgeExpiredSessions },
+    { name: 'location cleanup', run: purgeStaleDriverLocations },
+  ]);
+}
+
+export async function runIsolatedStages(
+  stages: readonly { name: string; run: () => Promise<unknown> }[],
+): Promise<string[]> {
+  const failed: string[] = [];
+  for (const stage of stages) {
+    try {
+      await stage.run();
+    } catch {
+      failed.push(stage.name);
+      console.error(`Background stage failed: ${stage.name}`);
+    }
   }
-  await deliverNotifications();
-  await purgeExpiredSessions();
-  await purgeStaleDriverLocations();
+  return failed;
 }

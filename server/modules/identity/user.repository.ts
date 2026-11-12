@@ -97,3 +97,11 @@ export async function activeDriverIds(ids: readonly string[], db: DB = prisma): 
   });
   return rows.map((row) => row.id);
 }
+
+export async function activeAdministratorIds(db: DB = prisma): Promise<string[]> {
+  const rows = await db.user.findMany({
+    where: { role: 'ADMIN', active: true },
+    select: { id: true },
+  });
+  return rows.map((row) => row.id);
+}

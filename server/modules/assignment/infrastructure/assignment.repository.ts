@@ -41,7 +41,7 @@ export async function claimDue(worker: string, leaseSeconds: number, db: DB = pr
       lease_until = now() + ${leaseSeconds} * interval '1 second',
       version = search.version + 1, updated_at = now()
     WHERE search.id = (
-      SELECT id FROM assignment_searches WHERE status IN ('WAITING', 'SEARCHING')
+      SELECT id FROM assignment_searches WHERE status IN ('WAITING', 'SEARCHING', 'OFFERED')
         AND next_run_at <= now() AND (lease_until IS NULL OR lease_until <= now())
       ORDER BY next_run_at, id FOR UPDATE SKIP LOCKED LIMIT 1
     ) RETURNING search.id, search.delivery_id, search.generation, search.version, search.status, search.lease_owner, search.lease_until`
@@ -82,15 +82,63 @@ export async function finishClaim(
   status: 'WAITING' | 'SEARCHING' | 'OFFERED' | 'CANCELLED' | 'EXHAUSTED',
   delaySeconds: number,
   db: DB,
+  nextRound?: number,
 ): Promise<Date | null> {
   const rows = await db.$queryRaw<Array<{ next_run_at: Date }>>`
-    UPDATE assignment_searches SET status = ${status}, next_run_at = clock_timestamp() + ${delaySeconds} * interval '1 second',
+    UPDATE assignment_searches SET status = ${status}, next_run_at = LEAST(deadline_at, clock_timestamp() + ${delaySeconds} * interval '1 second'),
+      round = COALESCE(${nextRound ?? null}, round),
       offers_created = offers_created + ${status === 'OFFERED' ? 1 : 0}, lease_owner = NULL,
       lease_until = NULL, version = version + 1, updated_at = clock_timestamp()
     WHERE id = ${claim.id} AND generation = ${claim.generation} AND version = ${claim.version}
       AND status = 'SEARCHING' AND lease_owner = ${claim.lease_owner} AND lease_until > clock_timestamp()
     RETURNING next_run_at`;
   return rows[0]?.next_run_at ?? null;
+}
+
+export async function lockClaimedOffer(claim: SearchClaim, offerId: string, db: DB) {
+  return (
+    (
+      await db.$queryRaw<
+        Array<{
+          id: string;
+          driver_id: string;
+          offer_status: string;
+          expires_at: Date;
+          deadline_at: Date;
+          offers_created: number;
+        }>
+      >`
+    SELECT o.id, o.driver_id, o.status AS offer_status, o.expires_at, s.deadline_at, s.offers_created
+    FROM assignment_searches s JOIN driver_offers o ON o.search_id = s.id
+    WHERE s.id = ${claim.id} AND o.id = ${offerId} AND s.generation = ${claim.generation}
+      AND s.version = ${claim.version} AND s.status = 'OFFERED' AND s.lease_owner = ${claim.lease_owner}
+      AND s.lease_until > clock_timestamp()
+    FOR UPDATE OF s, o`
+    )[0] ?? null
+  );
+}
+
+export async function lockOfferedSearch(claim: SearchClaim, db: DB): Promise<boolean> {
+  const rows = await db.$queryRaw<Array<{ id: string }>>`
+    SELECT id FROM assignment_searches WHERE id = ${claim.id} AND generation = ${claim.generation}
+      AND version = ${claim.version} AND status = 'OFFERED' AND lease_owner = ${claim.lease_owner}
+      AND lease_until > clock_timestamp() FOR UPDATE`;
+  return rows.length === 1;
+}
+
+export async function finishOfferedClaim(
+  claim: SearchClaim,
+  status: 'OFFERED' | 'SEARCHING' | 'EXHAUSTED' | 'CANCELLED',
+  nextRun: Date,
+  db: DB,
+): Promise<boolean> {
+  const rows = await db.$queryRaw<Array<{ id: string }>>`
+    UPDATE assignment_searches SET status = ${status}, next_run_at = ${nextRun},
+      lease_owner = NULL, lease_until = NULL, version = version + 1, updated_at = clock_timestamp()
+    WHERE id = ${claim.id} AND generation = ${claim.generation} AND version = ${claim.version}
+      AND status = 'OFFERED' AND lease_owner = ${claim.lease_owner} AND lease_until > clock_timestamp()
+    RETURNING id`;
+  return rows.length === 1;
 }
 
 /** Version, generation, owner and DB lease expiry fence every worker result. */
