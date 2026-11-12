@@ -43,12 +43,35 @@ export async function orderDetail(orderId: string, db?: DB): Promise<any> {
 
 export async function list(actor: User): Promise<any[]> {
   const rows = await projection.listVisibleIds(actor.role, actor.id);
-  return Promise.all(rows.map((order) => orderDetail(order.id)));
+  return Promise.all(
+    rows.map(async (order) =>
+      actor.role === 'DRIVER' ? driverView(await orderDetail(order.id)) : orderDetail(order.id),
+    ),
+  );
 }
 
 export async function detail(actor: User, orderId: string): Promise<any> {
   await accessOrder(undefined, actor, orderId);
-  return orderDetail(orderId);
+  const order = await orderDetail(orderId);
+  return actor.role === 'DRIVER' ? driverView(order) : order;
+}
+
+function driverView(order: any): any {
+  return {
+    id: order.id,
+    status: order.status,
+    restaurant_name: order.restaurant_name,
+    pickup: order.pickup,
+    created_at: order.created_at,
+    delivery_fee: order.delivery_fee,
+    total: order.total,
+    address: order.address,
+    note: order.note,
+    items: order.items,
+    delivery: order.delivery,
+    history: order.history,
+    review: null,
+  };
 }
 
 export async function quote(actor: User, items: unknown): Promise<any> {

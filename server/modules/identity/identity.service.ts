@@ -110,6 +110,17 @@ export async function findActiveDriver(
   return users.findActiveDriver(userId, db);
 }
 
+export async function lockActiveDriver(
+  userId: string,
+  db: DB,
+): Promise<{ id: string } | undefined> {
+  return users.lockActiveDriver(userId, db);
+}
+
+export async function lockDriver(userId: string, db: DB): Promise<{ id: string } | undefined> {
+  return users.lockDriver(userId, db);
+}
+
 /** Worker step: drops sessions past their expiry. */
 export async function purgeExpiredSessions(): Promise<number> {
   return sessions.deleteExpired();

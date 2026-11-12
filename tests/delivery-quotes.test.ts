@@ -1,3 +1,9 @@
+import {
+  testDatabaseUrl,
+  testSchemaUrl,
+  verifyTestSchema,
+  dropTestSchema,
+} from './test-database.js';
 import 'dotenv/config';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -22,15 +28,10 @@ import { MOCK_RESTAURANTS } from '../server/seed/data/mock-catalog.js';
  * failed quotes are recomputed instead of trusted.
  */
 const schema = 'test_quotes_' + randomUUID().replaceAll('-', '');
-const originalUrl =
-  process.env.TEST_DATABASE_URL ||
-  process.env.DATABASE_URL ||
-  'postgres://food:food_local_only@localhost:5433/food_delivery';
-const admin = new pg.Pool({ connectionString: originalUrl });
-const url = new URL(originalUrl);
-url.searchParams.set('options', `-c search_path=${schema}`);
-url.searchParams.set('schema', schema);
-process.env.DATABASE_URL = url.toString();
+const originalUrl = testDatabaseUrl();
+const admin = new pg.Pool({ connectionString: originalUrl, connectionTimeoutMillis: 3000 });
+process.env.DATABASE_URL = testSchemaUrl(originalUrl, schema);
+let schemaCreated = false;
 process.env.NODE_ENV = 'test';
 process.env.DEMO_MODE = 'true';
 process.env.DEMO_PASSWORD = 'QuoteTest123!';
@@ -134,7 +135,9 @@ async function quoteRows() {
 
 before(async () => {
   await admin.query(`CREATE SCHEMA ${schema}`);
+  schemaCreated = true;
   db = await import('../server/shared/db.js');
+  await verifyTestSchema(schema, db.prisma);
   const { migrate } = await import('../server/migrate.js');
   await migrate();
   const { seed } = await import('../server/seed/seed.js');
@@ -161,7 +164,7 @@ after(async () => {
   if (server)
     await new Promise<void>((resolve, reject) => server.close((e) => (e ? reject(e) : resolve())));
   if (db) await db.prisma.$disconnect();
-  await admin.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
+  await dropTestSchema(admin, schema, schemaCreated);
   await admin.end();
 });
 
@@ -239,19 +242,19 @@ test('changing the address replaces the quote snapshots and the fee', async () =
 });
 
 test('moving a restaurant invalidates and recomputes its quote', async () => {
-  const adminLogin = await fetch(base + '/api/auth/login', {
+  const ownerLogin = await fetch(base + '/api/auth/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'Bep' },
-    body: JSON.stringify({ email: 'admin@bep.local', password: process.env.DEMO_PASSWORD }),
+    body: JSON.stringify({ email: 'restaurant@bep.local', password: process.env.DEMO_PASSWORD }),
   });
-  assert.equal(adminLogin.status, 200);
-  const adminCookieHeader = adminLogin.headers.get('set-cookie')!.split(';')[0];
+  assert.equal(ownerLogin.status, 200);
+  const ownerCookieHeader = ownerLogin.headers.get('set-cookie')!.split(';')[0];
 
   const moved = await request(
     '/restaurants/' + firstRestaurant.id,
     'PATCH',
     { latitude: 21.04, longitude: 105.86 },
-    adminCookieHeader,
+    ownerCookieHeader,
   );
   assert.equal(moved.status, 200, JSON.stringify(moved.data));
   const rows = await quoteRows();
@@ -275,7 +278,7 @@ test('moving a restaurant invalidates and recomputes its quote', async () => {
     '/restaurants/' + firstRestaurant.id,
     'PATCH',
     { latitude: firstRestaurant.latitude, longitude: firstRestaurant.longitude },
-    adminCookieHeader,
+    ownerCookieHeader,
   );
 });
 
@@ -355,18 +358,18 @@ test('NO_WALKING_ROUTE is never stored while OUT_OF_RANGE is', async () => {
 });
 
 test('a hidden restaurant is excluded from prefetch', async () => {
-  const adminLogin = await fetch(base + '/api/auth/login', {
+  const ownerLogin = await fetch(base + '/api/auth/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'Bep' },
-    body: JSON.stringify({ email: 'admin@bep.local', password: process.env.DEMO_PASSWORD }),
+    body: JSON.stringify({ email: 'restaurant@bep.local', password: process.env.DEMO_PASSWORD }),
   });
-  const adminCookie = adminLogin.headers.get('set-cookie')!.split(';')[0];
+  const ownerCookie = ownerLogin.headers.get('set-cookie')!.split(';')[0];
   await db.prisma.deliveryQuote.deleteMany();
   const hidden = await request(
     '/restaurants/' + firstRestaurant.id,
     'PATCH',
     { catalog_visible: false },
-    adminCookie,
+    ownerCookie,
   );
   assert.equal(hidden.status, 200, JSON.stringify(hidden.data));
 
@@ -383,7 +386,7 @@ test('a hidden restaurant is excluded from prefetch', async () => {
     '/restaurants/' + firstRestaurant.id,
     'PATCH',
     { catalog_visible: true },
-    adminCookie,
+    ownerCookie,
   );
 });
 

@@ -66,6 +66,23 @@ export async function findActiveDriver(
   );
 }
 
+export async function lockActiveDriver(
+  userId: string,
+  db: DB,
+): Promise<{ id: string } | undefined> {
+  const rows = await db.$queryRaw<
+    Array<{ id: string }>
+  >`SELECT id FROM users WHERE id = ${userId} AND role = 'DRIVER' AND active = true FOR UPDATE`;
+  return rows[0];
+}
+
+export async function lockDriver(userId: string, db: DB): Promise<{ id: string } | undefined> {
+  const rows = await db.$queryRaw<
+    Array<{ id: string }>
+  >`SELECT id FROM users WHERE id = ${userId} AND role = 'DRIVER' FOR UPDATE`;
+  return rows[0];
+}
+
 export async function listAll(db: DB = prisma): Promise<User[]> {
   return (await db.user.findMany({
     select: { id: true, name: true, email: true, role: true, active: true },

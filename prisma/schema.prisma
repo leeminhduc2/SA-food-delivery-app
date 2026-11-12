@@ -269,6 +269,11 @@ model Delivery {
   order_id    String             @unique
   driver_id   String?
   status      String             @default("UNASSIGNED")
+  arrived_at DateTime? @db.Timestamptz(6)
+  picked_up_at DateTime? @db.Timestamptz(6)
+  in_transit_at DateTime? @db.Timestamptz(6)
+  delivered_at DateTime? @db.Timestamptz(6)
+  failed_at DateTime? @db.Timestamptz(6)
   updated_at  DateTime           @default(now()) @db.Timestamptz(6)
   driver      User?              @relation(fields: [driver_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   order       Order              @relation(fields: [order_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -284,6 +289,8 @@ model DriverAssignment {
   driver_id   String
   active      Boolean  @default(true)
   assigned_at DateTime @default(now()) @db.Timestamptz(6)
+  ended_at DateTime? @db.Timestamptz(6)
+  end_reason String?
   delivery    Delivery @relation(fields: [delivery_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   driver      User     @relation(fields: [driver_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
@@ -364,12 +371,15 @@ model Complaint {
 }
 
 model AuditLog {
-  id          String   @id
-  actor       String
-  action      String
-  resource_id String
-  detail      Json     @default("{}")
-  created_at  DateTime @default(now()) @db.Timestamptz(6)
+  id             String   @id
+  actor          String
+  action         String
+  resource_id    String
+  resource_type  String?
+  outcome        String?  @default("UNKNOWN")
+  correlation_id String?
+  detail         Json     @default("{}")
+  created_at     DateTime @default(now()) @db.Timestamptz(6)
 
   @@map("audit_logs")
 }
@@ -406,11 +416,43 @@ model DeliveryQuote {
   @@map("delivery_quotes")
 }
 
-/** One-time seed marker; reruns must not overwrite operator edits. */
+/**
+ * One-time seed marker; reruns must not overwrite operator edits.
+ */
 model SeedRun {
   name       String   @id
   version    Int
   applied_at DateTime @default(now()) @db.Timestamptz(6)
 
   @@map("seed_runs")
+}
+
+model DriverAvailability {
+  driver_id String @id
+  online Boolean @default(false)
+  ready Boolean @default(false)
+  heartbeat_at DateTime? @db.Timestamptz(6)
+  version Int @default(0)
+  @@map("driver_availability")
+}
+
+model DriverOperationalChange {
+  id String @id
+  driver_id String
+  source String
+  reason String
+  observed_version Int?
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  processed_at DateTime? @db.Timestamptz(6)
+  @@map("driver_operational_changes")
+}
+
+model DriverLocation {
+  driver_id String @id
+  latitude Float
+  longitude Float
+  captured_at DateTime @db.Timestamptz(6)
+  received_at DateTime @db.Timestamptz(6)
+  version Int @default(1)
+  @@map("driver_locations")
 }

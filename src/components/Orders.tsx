@@ -75,11 +75,18 @@ export function OrderCard({
         <MapPin size={17} />
         {o.address}
       </p>
+      {actor.role === 'DRIVER' && o.pickup && (
+        <p className="address">
+          Pickup: {o.pickup.name} · {o.pickup.address}
+        </p>
+      )}
       {o.note && <p className="info">Kitchen note: {o.note}</p>}
       <div className="state-pair">
-        <span>
-          Payment<strong>{label(o.payment.status)}</strong>
-        </span>
+        {actor.role !== 'DRIVER' && (
+          <span>
+            Payment<strong>{label(o.payment.status)}</strong>
+          </span>
+        )}
         <span>
           Delivery<strong>{label(o.delivery.status)}</strong>
         </span>

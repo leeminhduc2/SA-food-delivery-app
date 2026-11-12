@@ -20,6 +20,15 @@ jobs:
     timeout-minutes: 20
 
     services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
       postgres:
         image: postgres:17-alpine
         env:
@@ -38,6 +47,8 @@ jobs:
     env:
       DATABASE_URL: postgresql://ci:ci_local_only@127.0.0.1:5432/food_delivery_test?schema=public
       TEST_DATABASE_URL: postgresql://ci:ci_local_only@127.0.0.1:5432/food_delivery_test
+      REDIS_URL: redis://127.0.0.1:6379
+      DOTENV_CONFIG_PATH: .env.ci-does-not-exist
       PRISMA_HIDE_UPDATE_MESSAGE: '1'
 
     steps:

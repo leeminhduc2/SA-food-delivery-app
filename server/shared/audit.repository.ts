@@ -1,12 +1,36 @@
 import { id, prisma, type DB } from './db.js';
 import type { Prisma } from '@prisma/client';
 
+export async function findCommandReceipt(
+  actor: string,
+  action: string,
+  resourceId: string,
+  keyHash: string,
+  db: DB,
+): Promise<{ fingerprint: string } | undefined> {
+  const row = await db.auditLog.findFirst({
+    where: {
+      actor,
+      action,
+      resource_id: resourceId,
+      detail: { path: ['keyHash'], equals: keyHash },
+    },
+    select: { detail: true },
+  });
+  return row?.detail as { fingerprint: string } | undefined;
+}
+
 export async function audit(
   actor: string,
   action: string,
   resourceId: string,
   detail: unknown = {},
   db: DB = prisma,
+  metadata: {
+    resourceType?: string;
+    outcome?: 'SUCCESS' | 'FAILURE' | 'UNKNOWN';
+    correlationId?: string;
+  } = {},
 ): Promise<void> {
   await db.auditLog.create({
     data: {
@@ -15,6 +39,9 @@ export async function audit(
       action,
       resource_id: resourceId,
       detail: detail as Prisma.InputJsonValue,
+      resource_type: metadata.resourceType,
+      outcome: metadata.outcome ?? 'UNKNOWN',
+      correlation_id: metadata.correlationId,
     },
   });
 }

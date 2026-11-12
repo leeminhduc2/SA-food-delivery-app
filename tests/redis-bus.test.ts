@@ -15,30 +15,33 @@ const url = process.env.REDIS_URL;
 
 test(
   'a published push reaches a subscriber on another connection',
-  { skip: url ? false : 'REDIS_URL is not set' },
+  { skip: url ? false : 'REDIS_URL is not set', timeout: 8000 },
   async () => {
-    const publisher = createRedisBus(url!);
-    const subscriber = createRedisBus(url!);
-    const received: NotificationPush[] = [];
-    subscriber.subscribe((message) => received.push(message));
-    // Give SUBSCRIBE time to reach Redis before publishing.
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    const channel = `test:notifications:${randomUUID()}`;
+    const publisher = createRedisBus(url!, channel);
+    const subscriber = createRedisBus(url!, channel);
+    try {
+      const received: NotificationPush[] = [];
+      subscriber.subscribe((message) => received.push(message));
+      // Give SUBSCRIBE time to reach Redis before publishing.
+      await new Promise((resolve) => setTimeout(resolve, 200));
 
-    const message: NotificationPush = {
-      id: randomUUID(),
-      userId: 'user-under-test',
-      type: 'ORDER_STATUS',
-      payload: { orderId: 'o1', status: 'PREPARING' },
-      created_at: new Date().toISOString(),
-    };
-    await publisher.publish(message);
+      const message: NotificationPush = {
+        id: randomUUID(),
+        userId: 'user-under-test',
+        type: 'ORDER_STATUS',
+        payload: { orderId: 'o1', status: 'PREPARING' },
+        created_at: new Date().toISOString(),
+      };
+      await publisher.publish(message);
 
-    const deadline = Date.now() + 2000;
-    while (!received.length && Date.now() < deadline)
-      await new Promise((resolve) => setTimeout(resolve, 20));
+      const deadline = Date.now() + 2000;
+      while (!received.length && Date.now() < deadline)
+        await new Promise((resolve) => setTimeout(resolve, 20));
 
-    await publisher.close();
-    await subscriber.close();
-    assert.deepEqual(received, [message]);
+      assert.deepEqual(received, [message]);
+    } finally {
+      await Promise.all([publisher.close(), subscriber.close()]);
+    }
   },
 );

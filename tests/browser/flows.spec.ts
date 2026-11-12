@@ -140,6 +140,11 @@ test('customer checkout through restaurant preparation, assignment, driver deliv
   const driver = await browser.newContext();
   const driverPage = await driver.newPage();
   await login(driverPage, 'driver');
+  await expect(
+    driverPage.getByText(
+      'Finish your active delivery before going offline. You can still set yourself not ready.',
+    ),
+  ).toBeVisible();
   for (const state of ['Picked up', 'In transit', 'Delivered'])
     await driverPage.getByRole('button', { name: state, exact: true }).click();
   await expect(driverPage.locator('.order-card > .between .status')).toHaveText('Delivered');
@@ -224,4 +229,103 @@ test('saved delivery address drives walking distance, fee and address changes', 
   await expect(
     page.locator('.restaurant-card').filter({ hasText: 'Bếp Phố Hà Thành' }),
   ).toContainText('19.000');
+});
+
+test('admin workspace keeps catalog editing with restaurant owners and requires a reason', async ({
+  page,
+}) => {
+  await login(page, 'admin');
+  await page.getByRole('link', { name: 'Operations' }).click();
+  const restaurant = page.locator('.manage-row').first();
+  await expect(restaurant).toBeVisible();
+  await expect(restaurant.getByRole('button', { name: 'Manage menu' })).toHaveCount(0);
+  await expect(restaurant.getByRole('button', { name: 'Edit details' })).toHaveCount(0);
+  await expect(restaurant.getByRole('button', { name: 'Suspend' })).toBeDisabled();
+  await restaurant.getByLabel(/Reason to reject or suspend/).fill('Policy review');
+  await expect(restaurant.getByRole('button', { name: 'Suspend' })).toBeEnabled();
+  for (const width of [375, 768, 1024, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+    ).toBeTruthy();
+  }
+});
+
+test('driver denied GPS remains offline and offers an accessible retry', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'geolocation', {
+      configurable: true,
+      value: {
+        watchPosition: (_ok: unknown, fail: (error: { code: number }) => void) => {
+          setTimeout(() => fail({ code: 1 }), 0);
+          return 7;
+        },
+        clearWatch: () => {},
+      },
+    });
+  });
+  await login(page, 'driver');
+  await page.getByRole('link', { name: 'My deliveries' }).click();
+  const panel = page
+    .locator('section')
+    .filter({ has: page.getByRole('heading', { name: 'Driver availability' }) });
+  await expect(panel).toContainText('Offline');
+  await panel.getByRole('button', { name: 'Enable location' }).click();
+  await expect(panel.getByRole('alert')).toContainText('permission denied');
+  await expect(panel.getByRole('button', { name: 'Go online' })).toBeDisabled();
+  await expect(panel.getByRole('button', { name: 'Enable location' })).toBeEnabled();
+});
+
+test('driver GPS enables online and is cleaned up on logout', async ({ page }) => {
+  await page.addInitScript(() => {
+    const mock = window as any;
+    mock.geoCleared = 0;
+    Object.defineProperty(navigator, 'geolocation', {
+      configurable: true,
+      value: {
+        watchPosition: (ok: (position: unknown) => void) => {
+          mock.geoCallback = ok;
+          setTimeout(
+            () => ok({ coords: { latitude: 21.03, longitude: 105.85 }, timestamp: Date.now() }),
+            0,
+          );
+          return 7;
+        },
+        clearWatch: () => {
+          mock.geoCleared++;
+        },
+      },
+    });
+  });
+  let locations = 0;
+  page.on('request', (req) => {
+    if (req.url().endsWith('/api/driver/location') && req.method() === 'POST') locations++;
+  });
+  await login(page, 'driver');
+  await page.getByRole('link', { name: 'My deliveries' }).click();
+  const panel = page
+    .locator('section')
+    .filter({ has: page.getByRole('heading', { name: 'Driver availability' }) });
+  await panel.getByRole('button', { name: 'Enable location' }).click();
+  await expect(panel).toContainText('Location is recent');
+  await panel.getByRole('button', { name: 'Go online' }).click();
+  await expect(panel).toContainText('Online');
+  for (const width of [375, 768, 1024, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+    ).toBeTruthy();
+  }
+  await page.getByRole('button', { name: 'Account settings' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Sign out' }).click();
+  await expect.poll(() => page.evaluate(() => (window as any).geoCleared)).toBeGreaterThan(0);
+  const before = locations;
+  await page.evaluate(() =>
+    (window as any).geoCallback({
+      coords: { latitude: 21, longitude: 105 },
+      timestamp: Date.now() + 11000,
+    }),
+  );
+  await page.waitForTimeout(250);
+  expect(locations).toBe(before);
 });

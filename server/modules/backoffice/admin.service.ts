@@ -20,12 +20,23 @@ export async function overview(): Promise<any> {
   };
 }
 
-export async function setUserActive(actor: User, userId: string, raw: unknown): Promise<void> {
-  const { active } = z.object({ active: z.boolean() }).parse(raw);
+export async function setUserActive(
+  actor: User,
+  userId: string,
+  raw: unknown,
+  correlationId?: string,
+): Promise<void> {
+  const { active, reason } = z
+    .object({ active: z.boolean(), reason: z.string().trim().min(3).max(300) })
+    .parse(raw);
   check(userId !== actor.id, 409, 'SELF_CHANGE', 'You cannot disable your own account.');
   await transaction(async (db) => {
     const target = await setAccountActive(userId, active, db);
     check(target, 404, 'NOT_FOUND', 'Account not found.');
-    await audits.audit(actor.id, 'ACCOUNT_STATUS', target.id, { active }, db);
+    await audits.audit(actor.id, 'ACCOUNT_STATUS', target.id, { active, reason }, db, {
+      resourceType: 'USER',
+      outcome: 'SUCCESS',
+      correlationId,
+    });
   });
 }

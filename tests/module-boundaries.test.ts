@@ -117,7 +117,11 @@ const owners: Record<string, { tables: string[]; models: string[] }> = {
     models: ['restaurant', 'restaurantMember', 'menu', 'menuItem', 'restaurantImportJob'],
     tables: ['restaurants', 'restaurant_members', 'menus', 'menu_items', 'restaurant_import_jobs'],
   },
-  location: { models: ['address'], tables: ['addresses'] },
+  location: { models: ['address', 'driverLocation'], tables: ['addresses', 'driver_locations'] },
+  assignment: {
+    models: ['driverAvailability', 'driverOperationalChange'],
+    tables: ['driver_availability', 'driver_operational_changes'],
+  },
   ordering: { models: ['order', 'orderItem', 'cart'], tables: ['orders', 'order_items', 'carts'] },
   payment: {
     models: ['payment', 'paymentEvent', 'simulatedTransaction'],

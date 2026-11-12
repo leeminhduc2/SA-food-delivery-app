@@ -1,3 +1,9 @@
+import {
+  testDatabaseUrl,
+  testSchemaUrl,
+  verifyTestSchema,
+  dropTestSchema,
+} from './test-database.js';
 import 'dotenv/config';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -19,15 +25,10 @@ import {
  * archive, ownership, and audit records. No rows are deleted.
  */
 const schema = 'test_crud_' + randomUUID().replaceAll('-', '');
-const originalUrl =
-  process.env.TEST_DATABASE_URL ||
-  process.env.DATABASE_URL ||
-  'postgres://food:food_local_only@localhost:5433/food_delivery';
-const admin = new pg.Pool({ connectionString: originalUrl });
-const url = new URL(originalUrl);
-url.searchParams.set('options', `-c search_path=${schema}`);
-url.searchParams.set('schema', schema);
-process.env.DATABASE_URL = url.toString();
+const originalUrl = testDatabaseUrl();
+const admin = new pg.Pool({ connectionString: originalUrl, connectionTimeoutMillis: 3000 });
+process.env.DATABASE_URL = testSchemaUrl(originalUrl, schema);
+let schemaCreated = false;
 process.env.NODE_ENV = 'test';
 process.env.DEMO_MODE = 'true';
 process.env.DEMO_PASSWORD = 'CrudTest123!';
@@ -111,7 +112,9 @@ async function request(
 
 before(async () => {
   await admin.query(`CREATE SCHEMA ${schema}`);
+  schemaCreated = true;
   db = await import('../server/shared/db.js');
+  await verifyTestSchema(schema, db.prisma);
   const { migrate } = await import('../server/migrate.js');
   await migrate();
   const { seed } = await import('../server/seed/seed.js');
@@ -145,7 +148,7 @@ after(async () => {
   if (server)
     await new Promise<void>((resolve, reject) => server.close((e) => (e ? reject(e) : resolve())));
   if (db) await db.prisma.$disconnect();
-  await admin.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
+  await dropTestSchema(admin, schema, schemaCreated);
   await admin.end();
 });
 
@@ -308,7 +311,7 @@ test('item visibility, partial updates, categories and archive behave publicly a
   assert.equal(ownerArchived.status, 200);
 });
 
-test('ownership, admin creation and soft restaurant archive are enforced and audited', async () => {
+test('ownership, admin moderation and soft restaurant archive are enforced and audited', async () => {
   assert.equal(
     (
       await request(
@@ -324,6 +327,17 @@ test('ownership, admin creation and soft restaurant archive are enforced and aud
     (await request('/restaurants/' + restaurantId, 'DELETE', undefined, 'restaurant2')).status,
     403,
   );
+  assert.equal(
+    (
+      await request(
+        '/restaurants/' + restaurantId + '/items',
+        'POST',
+        { name: 'Test', price: 30000, stock: 1, available: true },
+        'restaurant2',
+      )
+    ).status,
+    403,
+  );
 
   const created = await request(
     '/restaurants',
@@ -336,12 +350,78 @@ test('ownership, admin creation and soft restaurant archive are enforced and aud
     },
     'admin',
   );
-  assert.equal(created.status, 201, JSON.stringify(created.data));
-  const newId = created.data.id;
-  const membership = await db.prisma.restaurantMember.count({
-    where: { restaurant_id: newId },
+  assert.equal(created.status, 403, JSON.stringify(created.data));
+  const ownerCreated = await request(
+    '/restaurants',
+    'POST',
+    {
+      name: 'Owner Kitchen',
+      description: 'A kitchen',
+      address: '20 Test Street, District 2',
+      cuisine: 'Vietnamese',
+    },
+    'restaurant',
+  );
+  assert.equal(ownerCreated.status, 201);
+  const newId = ownerCreated.data.id;
+  assert.equal(
+    (await request('/restaurants/' + newId, 'PATCH', { name: 'Admin edit' }, 'admin')).status,
+    403,
+  );
+  assert.equal(
+    (
+      await request(
+        '/restaurants/' + newId + '/items',
+        'POST',
+        { name: 'Test', price: 30000, stock: 1, available: true },
+        'admin',
+      )
+    ).status,
+    403,
+  );
+  assert.equal(
+    (await request('/items/' + itemLines[0].itemId, 'PATCH', { price: 99999 }, 'admin')).status,
+    403,
+  );
+  assert.equal(
+    (await request('/items/' + itemLines[0].itemId, 'PUT', { price: 99999 }, 'admin')).status,
+    403,
+  );
+  assert.equal(
+    (await request('/items/' + itemLines[0].itemId, 'DELETE', undefined, 'admin')).status,
+    403,
+  );
+  assert.equal((await request('/restaurants/' + newId, 'DELETE', undefined, 'admin')).status, 403);
+
+  assert.equal(
+    (
+      await request(
+        '/admin/restaurants/' + newId + '/approval',
+        'POST',
+        { status: 'REJECTED' },
+        'admin',
+      )
+    ).status,
+    400,
+  );
+  assert.equal((await db.prisma.restaurant.findUnique({ where: { id: newId } })).status, 'PENDING');
+  assert.equal(
+    (
+      await request(
+        '/admin/restaurants/' + newId + '/approval',
+        'POST',
+        { status: 'REJECTED', reason: 'Incomplete details' },
+        'admin',
+      )
+    ).status,
+    200,
+  );
+  const rejectedAudit = await db.prisma.auditLog.findFirst({
+    where: { action: 'RESTAURANT_REJECTED', resource_id: newId },
   });
-  assert.equal(membership, 0, 'admin-created kitchens must not gain an admin owner');
+  assert.equal(rejectedAudit.detail.reason, 'Incomplete details');
+  assert.equal(rejectedAudit.outcome, 'SUCCESS');
+  assert.equal(rejectedAudit.resource_type, 'RESTAURANT');
 
   const approved = await request(
     '/admin/restaurants/' + newId + '/approval',
@@ -352,7 +432,40 @@ test('ownership, admin creation and soft restaurant archive are enforced and aud
   assert.equal(approved.status, 200, JSON.stringify(approved.data));
   assert.equal((await request('/restaurants/' + newId)).status, 200);
 
-  const archived = await request('/restaurants/' + newId, 'DELETE', undefined, 'admin');
+  const body = { reason: 'Policy violation', idempotencyKey: 'suspend-test-key' };
+  assert.equal(
+    (
+      await request(
+        '/admin/restaurants/' + newId + '/suspend',
+        'POST',
+        { ...body, reason: '' },
+        'admin',
+      )
+    ).status,
+    400,
+  );
+  const archived = await request('/admin/restaurants/' + newId + '/suspend', 'POST', body, 'admin');
+  assert.equal(
+    (await request('/admin/restaurants/' + newId + '/suspend', 'POST', body, 'admin')).status,
+    200,
+  );
+  assert.equal(
+    (
+      await request(
+        '/admin/restaurants/' + newId + '/suspend',
+        'POST',
+        { ...body, reason: 'Different reason' },
+        'admin',
+      )
+    ).status,
+    409,
+  );
+  assert.equal(
+    await db.prisma.auditLog.count({
+      where: { action: 'RESTAURANT_SUSPENDED', resource_id: newId },
+    }),
+    1,
+  );
   assert.equal(archived.status, 200);
   const row = await db.prisma.restaurant.findUnique({ where: { id: newId } });
   assert.ok(row, 'restaurant archive must keep the row');
@@ -368,7 +481,7 @@ test('ownership, admin creation and soft restaurant archive are enforced and aud
           'ITEM_CREATED',
           'ITEM_UPDATED',
           'ITEM_ARCHIVED',
-          'RESTAURANT_ARCHIVED',
+          'RESTAURANT_SUSPENDED',
         ],
       },
     },
@@ -380,7 +493,7 @@ test('ownership, admin creation and soft restaurant archive are enforced and aud
     'ITEM_CREATED',
     'ITEM_UPDATED',
     'ITEM_ARCHIVED',
-    'RESTAURANT_ARCHIVED',
+    'RESTAURANT_SUSPENDED',
   ])
     assert.ok(actions.has(expected), `missing audit action ${expected}`);
 });

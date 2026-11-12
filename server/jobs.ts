@@ -4,6 +4,7 @@ import { purgeExpiredSessions } from './modules/identity/index.js';
 import { deliverNotifications } from './modules/notification/index.js';
 import { expireUnpaidOrders } from './modules/ordering/index.js';
 import { reconcilePayments } from './modules/payment/index.js';
+import { purgeStaleDriverLocations } from './modules/location/index.js';
 
 /** Settle payments with the provider, then release orders whose window closed. */
 export async function runPaymentMaintenance(): Promise<void> {
@@ -17,4 +18,5 @@ export async function runBackgroundCycle(): Promise<void> {
   await runPaymentMaintenance();
   await deliverNotifications();
   await purgeExpiredSessions();
+  await purgeStaleDriverLocations();
 }

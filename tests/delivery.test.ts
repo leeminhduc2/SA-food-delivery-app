@@ -1,3 +1,9 @@
+import {
+  testDatabaseUrl,
+  testSchemaUrl,
+  verifyTestSchema,
+  dropTestSchema,
+} from './test-database.js';
 import 'dotenv/config';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -18,15 +24,10 @@ import { shippingQuote } from '../server/modules/location/domain/geo.js';
 import { MOCK_RESTAURANTS } from '../server/seed/data/mock-catalog.js';
 
 const schema = 'test_delivery_' + randomUUID().replaceAll('-', '');
-const originalUrl =
-  process.env.TEST_DATABASE_URL ||
-  process.env.DATABASE_URL ||
-  'postgres://food:food_local_only@localhost:5433/food_delivery';
-const admin = new pg.Pool({ connectionString: originalUrl });
-const url = new URL(originalUrl);
-url.searchParams.set('options', `-c search_path=${schema}`);
-url.searchParams.set('schema', schema);
-process.env.DATABASE_URL = url.toString();
+const originalUrl = testDatabaseUrl();
+const admin = new pg.Pool({ connectionString: originalUrl, connectionTimeoutMillis: 3000 });
+process.env.DATABASE_URL = testSchemaUrl(originalUrl, schema);
+let schemaCreated = false;
 process.env.NODE_ENV = 'test';
 process.env.DEMO_MODE = 'true';
 process.env.DEMO_PASSWORD = 'DeliveryTest123!';
@@ -159,7 +160,9 @@ async function quote() {
 
 before(async () => {
   await admin.query(`CREATE SCHEMA ${schema}`);
+  schemaCreated = true;
   db = await import('../server/shared/db.js');
+  await verifyTestSchema(schema, db.prisma);
   const { migrate } = await import('../server/migrate.js');
   await migrate();
   const { seed } = await import('../server/seed/seed.js');
@@ -187,7 +190,7 @@ after(async () => {
   if (server)
     await new Promise<void>((resolve, reject) => server.close((e) => (e ? reject(e) : resolve())));
   if (db) await db.prisma.$disconnect();
-  await admin.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
+  await dropTestSchema(admin, schema, schemaCreated);
   await admin.end();
 });
 

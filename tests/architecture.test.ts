@@ -1,3 +1,9 @@
+import {
+  testDatabaseUrl,
+  testSchemaUrl,
+  verifyTestSchema,
+  dropTestSchema,
+} from './test-database.js';
 import 'dotenv/config';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -56,17 +62,14 @@ const fakeRouting: RoutingProvider = {
 setGeocodingProvider(fakeGeocoding);
 setRoutingProvider(fakeRouting);
 const schema = 'test_' + randomUUID().replaceAll('-', '');
-const originalUrl =
-  process.env.TEST_DATABASE_URL ||
-  process.env.DATABASE_URL ||
-  'postgres://food:food_local_only@localhost:5433/food_delivery';
-const admin = new pg.Pool({ connectionString: originalUrl });
-const url = new URL(originalUrl);
-url.searchParams.set('options', `-c search_path=${schema}`);
-// Prisma reads `schema`; libpq-based pg pools read `options`.
-url.searchParams.set('schema', schema);
-process.env.DATABASE_URL = url.toString();
-const schemaPool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+const originalUrl = testDatabaseUrl();
+const admin = new pg.Pool({ connectionString: originalUrl, connectionTimeoutMillis: 3000 });
+process.env.DATABASE_URL = testSchemaUrl(originalUrl, schema);
+const schemaPool = new pg.Pool({
+  connectionString: process.env.DATABASE_URL,
+  connectionTimeoutMillis: 3000,
+});
+let schemaCreated = false;
 process.env.NODE_ENV = 'test';
 process.env.LOG_REQUESTS = 'false';
 process.env.DEMO_MODE = 'true';
@@ -128,7 +131,9 @@ async function pay(o: any, status = 'SUCCEEDED', eventId = randomUUID(), changes
 }
 before(async () => {
   await admin.query(`CREATE SCHEMA ${schema}`);
+  schemaCreated = true;
   db = await import('../server/shared/db.js');
+  await verifyTestSchema(schema, db.prisma);
   const { migrate } = await import('../server/migrate.js');
   await migrate();
   const { seed } = await import('../server/seed/seed.js');
@@ -164,7 +169,7 @@ after(async () => {
   if (db) await db.prisma.$disconnect();
   await schemaPool.end();
   assert.match(schema, /^test_[a-f0-9]{32}$/);
-  await admin.query(`DROP SCHEMA ${schema} CASCADE`);
+  await dropTestSchema(admin, schema, schemaCreated);
   await admin.end();
 });
 test('authentication, CSRF, registration, profile, role and account suspension', async () => {
@@ -222,9 +227,39 @@ test('authentication, CSRF, registration, profile, role and account suspension',
     role: 'DRIVER',
   });
   assert.equal(u.data.pendingApproval, true);
-  await request('/admin/users/driver2', 'PATCH', { active: false }, 'admin');
+  assert.equal(
+    (await request('/admin/users/driver2', 'PATCH', { active: false }, 'admin')).status,
+    400,
+  );
+  assert.equal((await db.prisma.user.findUnique({ where: { id: 'driver2' } })).active, true);
+  assert.equal(
+    await db.prisma.auditLog.count({ where: { action: 'ACCOUNT_STATUS', resource_id: 'driver2' } }),
+    0,
+  );
+  await request(
+    '/admin/users/driver2',
+    'PATCH',
+    { active: false, reason: 'Safety review' },
+    'admin',
+  );
+  const statusAudit = await db.prisma.auditLog.findFirst({
+    where: { action: 'ACCOUNT_STATUS', resource_id: 'driver2' },
+  });
+  assert.equal(statusAudit.resource_type, 'USER');
+  assert.equal(statusAudit.outcome, 'SUCCESS');
+  assert.ok(statusAudit.correlation_id);
+  assert.equal(statusAudit.detail.reason, 'Safety review');
   assert.equal((await request('/orders', 'GET', undefined, 'driver2')).status, 401);
-  await request('/admin/users/driver2', 'PATCH', { active: true }, 'admin');
+  assert.equal(
+    (await request('/driver/availability', 'PATCH', { ready: true }, 'driver2')).status,
+    401,
+  );
+  await request(
+    '/admin/users/driver2',
+    'PATCH',
+    { active: true, reason: 'Review complete' },
+    'admin',
+  );
   cookies.driver2 = (
     await request('/auth/login', 'POST', {
       email: 'driver2@bep.local',
@@ -233,6 +268,37 @@ test('authentication, CSRF, registration, profile, role and account suspension',
   ).headers
     .get('set-cookie')!
     .split(';')[0];
+});
+test('account status and its audit roll back together on audit failure', async () => {
+  await schemaPool.query(
+    `CREATE FUNCTION reject_test_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.action = 'ACCOUNT_STATUS' AND NEW.detail->>'reason' = 'force audit failure' THEN RAISE EXCEPTION 'test audit failure'; END IF; RETURN NEW; END $$`,
+  );
+  await schemaPool.query(
+    'CREATE TRIGGER reject_test_audit BEFORE INSERT ON audit_logs FOR EACH ROW EXECUTE FUNCTION reject_test_audit()',
+  );
+  try {
+    const result = await request(
+      '/admin/users/driver2',
+      'PATCH',
+      { active: false, reason: 'force audit failure' },
+      'admin',
+    );
+    assert.equal(result.status, 500);
+    assert.equal((await db.prisma.user.findUnique({ where: { id: 'driver2' } })).active, true);
+    assert.equal(
+      await db.prisma.auditLog.count({
+        where: {
+          action: 'ACCOUNT_STATUS',
+          resource_id: 'driver2',
+          detail: { path: ['reason'], equals: 'force audit failure' },
+        },
+      }),
+      0,
+    );
+  } finally {
+    await schemaPool.query('DROP TRIGGER reject_test_audit ON audit_logs');
+    await schemaPool.query('DROP FUNCTION reject_test_audit()');
+  }
 });
 test('discovery searches dishes; cart enforces single restaurant and optimistic version', async () => {
   const found = await request('/restaurants?q=Ph%E1%BB%9F');
@@ -280,6 +346,225 @@ test('checkout retry is atomic and payload conflicts are rejected', async () => 
     (await request('/orders/' + responses[0].data.id, 'GET', undefined, 'buyer2')).status,
     403,
   );
+});
+test('checkout replay survives catalog, address and router changes without reserving twice', async () => {
+  const body = { items: lines, expectedTotal: 75_000, idempotencyKey: randomUUID() };
+  const first = await request('/checkout', 'POST', body);
+  assert.equal(first.status, 201);
+  const stock = (await schemaPool.query("SELECT stock FROM menu_items WHERE id='pho'")).rows[0]
+    .stock;
+  const address = (
+    await schemaPool.query(
+      "SELECT id, address, is_default FROM addresses WHERE user_id='customer' AND is_default=true",
+    )
+  ).rows[0];
+  assert.ok(address);
+  let routerCalls = 0;
+  try {
+    await schemaPool.query("UPDATE menu_items SET stock=0 WHERE id='pho'");
+    await schemaPool.query("UPDATE restaurants SET accepting_orders=false WHERE id='saigon'");
+    await schemaPool.query('UPDATE addresses SET address=$1, is_default=false WHERE id=$2', [
+      'Changed destination',
+      address.id,
+    ]);
+    setRoutingProvider({
+      name: 'unavailable',
+      async walkingRoute() {
+        routerCalls++;
+        throw new Error('router unavailable');
+      },
+    });
+    const replay = await request('/checkout', 'POST', body);
+    assert.equal(replay.status, 201);
+    assert.equal(replay.data.id, first.data.id);
+    assert.equal(
+      (await request('/checkout', 'POST', { ...body, note: 'changed' })).data.code,
+      'IDEMPOTENCY_CONFLICT',
+    );
+    assert.equal(routerCalls, 0);
+    assert.equal(
+      (await schemaPool.query("SELECT stock FROM menu_items WHERE id='pho'")).rows[0].stock,
+      0,
+    );
+    assert.equal(
+      (await request('/checkout', 'POST', { ...body, idempotencyKey: randomUUID() })).data.code,
+      'ADDRESS_REQUIRED',
+    );
+  } finally {
+    setRoutingProvider(fakeRouting);
+    await schemaPool.query("UPDATE menu_items SET stock=$1 WHERE id='pho'", [stock]);
+    await schemaPool.query("UPDATE restaurants SET accepting_orders=true WHERE id='saigon'");
+    await schemaPool.query('UPDATE addresses SET address=$1, is_default=$2 WHERE id=$3', [
+      address.address,
+      address.is_default,
+      address.id,
+    ]);
+  }
+});
+test('concurrent driver assignment enforces one active trip and cancellation releases it', async () => {
+  const first = (await checkout()).data;
+  const second = (await checkout()).data;
+  await pay(first);
+  await pay(second);
+  const results = await Promise.all(
+    [first, second].map((order) =>
+      request(`/deliveries/${order.delivery.id}/assign`, 'POST', { driverId: 'driver' }, 'admin'),
+    ),
+  );
+  assert.deepEqual(results.map((result) => result.status).sort(), [200, 409]);
+  assert.equal(results.find((result) => result.status === 409)?.data.code, 'DRIVER_BUSY');
+  const winner = results[0].status === 200 ? first : second;
+  const loser = results[0].status === 200 ? second : first;
+  await schemaPool.query(
+    "INSERT INTO driver_locations (driver_id, latitude, longitude, captured_at, received_at) VALUES ('driver',21,105,now()-interval '20 minutes',now()-interval '20 minutes') ON CONFLICT (driver_id) DO UPDATE SET captured_at=excluded.captured_at,received_at=excluded.received_at",
+  );
+  await (await import('../server/modules/location/index.js')).purgeStaleDriverLocations();
+  assert.ok(await db.prisma.driverLocation.findUnique({ where: { driver_id: 'driver' } }));
+  await db.prisma.driverLocation.delete({ where: { driver_id: 'driver' } });
+  assert.equal(
+    (await request('/driver/availability', 'PATCH', { ready: false }, 'driver')).status,
+    200,
+  );
+  assert.equal(
+    (await request('/driver/availability', 'PATCH', { online: false }, 'driver')).data.code,
+    'ACTIVE_DELIVERY',
+  );
+  assert.equal(
+    (
+      await request(
+        `/deliveries/${winner.delivery.id}/assign`,
+        'POST',
+        { driverId: 'driver' },
+        'admin',
+      )
+    ).status,
+    200,
+  );
+  assert.equal(
+    (
+      await schemaPool.query(
+        "SELECT count(*)::int AS n FROM driver_assignments WHERE driver_id='driver' AND active",
+      )
+    ).rows[0].n,
+    1,
+  );
+  await assert.rejects(
+    schemaPool.query(
+      'INSERT INTO driver_assignments (id, delivery_id, driver_id, active) VALUES ($1,$2,$3,true)',
+      [randomUUID(), loser.delivery.id, 'driver'],
+    ),
+    (error: any) => error.code === '23505',
+  );
+  assert.equal(
+    (await request(`/orders/${winner.id}/cancel`, 'POST', { reason: 'Changed plans' })).status,
+    200,
+  );
+  const closed = await schemaPool.query(
+    'SELECT active, end_reason, ended_at FROM driver_assignments WHERE delivery_id=$1',
+    [winner.delivery.id],
+  );
+  assert.equal(closed.rows[0].active, false);
+  assert.equal(closed.rows[0].end_reason, 'CANCELLED');
+  assert.ok(closed.rows[0].ended_at);
+  assert.equal(
+    (
+      await request(
+        `/deliveries/${loser.delivery.id}/assign`,
+        'POST',
+        { driverId: 'driver' },
+        'admin',
+      )
+    ).status,
+    200,
+  );
+  assert.equal(
+    (await request(`/orders/${loser.id}/cancel`, 'POST', { reason: 'Changed plans' })).status,
+    200,
+  );
+});
+test('driver availability requires fresh GPS and heartbeat does not refresh location', async () => {
+  assert.equal((await request('/driver/availability', 'GET', undefined, 'customer')).status, 403);
+  assert.equal(
+    (await request('/driver/availability', 'PATCH', { online: true }, 'driver')).data.code,
+    'STALE_LOCATION',
+  );
+  await schemaPool.query(
+    "INSERT INTO driver_locations (driver_id, latitude, longitude, captured_at, received_at) VALUES ('driver',21,105,now(),now())",
+  );
+  assert.equal(
+    (await request('/driver/availability', 'PATCH', { online: true, ready: true }, 'driver'))
+      .status,
+    200,
+  );
+  await schemaPool.query(
+    "UPDATE driver_locations SET captured_at=now()-interval '100 seconds',received_at=now()-interval '100 seconds' WHERE driver_id='driver'",
+  );
+  await schemaPool.query(
+    "UPDATE driver_availability SET heartbeat_at=now()-interval '100 seconds' WHERE driver_id='driver'",
+  );
+  const stale = await request('/driver/availability', 'GET', undefined, 'driver');
+  assert.equal(stale.data.heartbeatFresh, false);
+  assert.equal(stale.data.locationFresh, false);
+  const beat = await request('/driver/heartbeat', 'POST', {}, 'driver');
+  assert.equal(beat.status, 200);
+  assert.equal(beat.data.heartbeatFresh, true);
+  assert.equal(beat.data.locationFresh, false);
+  assert.equal(
+    (await request('/driver/availability', 'PATCH', { online: false, ready: false }, 'driver'))
+      .status,
+    200,
+  );
+  assert.ok(
+    (
+      await schemaPool.query(
+        "SELECT count(*)::int AS n FROM driver_operational_changes WHERE driver_id='driver'",
+      )
+    ).rows[0].n >= 3,
+  );
+});
+test('driver GPS validates ownership, time and rate without overwriting latest position', async () => {
+  await db.prisma.driverLocation.deleteMany({ where: { driver_id: 'driver' } });
+  const now = (await schemaPool.query('SELECT now() AS now')).rows[0].now as Date;
+  const at = (seconds: number) => new Date(now.getTime() + seconds * 1000).toISOString();
+  const input = { latitude: 21, longitude: 105, capturedAt: at(0) };
+  assert.equal((await request('/driver/location', 'POST', input, 'customer')).status, 403);
+  assert.equal(
+    (await request('/driver/location', 'POST', { ...input, latitude: 91 }, 'driver')).status,
+    400,
+  );
+  assert.equal(
+    (await request('/driver/location', 'POST', { ...input, capturedAt: at(-100) }, 'driver')).data
+      .code,
+    'STALE_LOCATION',
+  );
+  assert.equal(
+    (await request('/driver/location', 'POST', { ...input, capturedAt: at(20) }, 'driver')).data
+      .code,
+    'STALE_LOCATION',
+  );
+  assert.equal((await request('/driver/location', 'POST', input, 'driver')).status, 200);
+  assert.equal(
+    (await request('/driver/location', 'POST', input, 'driver')).data.code,
+    'LOCATION_OUT_OF_ORDER',
+  );
+  assert.equal(
+    (
+      await request(
+        '/driver/location',
+        'POST',
+        { ...input, latitude: 22, capturedAt: at(1) },
+        'driver',
+      )
+    ).data.code,
+    'LOCATION_RATE_LIMITED',
+  );
+  const row = await db.prisma.driverLocation.findUnique({ where: { driver_id: 'driver' } });
+  assert.equal(row.latitude, 21);
+  await schemaPool.query(
+    "UPDATE driver_locations SET captured_at=now()-interval '20 minutes',received_at=now()-interval '20 minutes' WHERE driver_id='driver'",
+  );
+  await (await import('../server/modules/location/index.js')).purgeStaleDriverLocations();
+  assert.equal(await db.prisma.driverLocation.findUnique({ where: { driver_id: 'driver' } }), null);
 });
 test('last serving concurrency permits exactly one checkout and never negative stock', async () => {
   await schemaPool.query("UPDATE menu_items SET stock=1 WHERE id='banhmi'");
@@ -425,6 +710,34 @@ test('complete lifecycle: preparation, reassignment, authorized delivery and buy
     403,
   );
   assert.equal((await request('/orders/' + o.id, 'GET', undefined, 'driver')).status, 403);
+  const revokedHistory = await request(
+    '/driver/deliveries/history?limit=1',
+    'GET',
+    undefined,
+    'driver',
+  );
+  assert.equal(revokedHistory.status, 200);
+  assert.equal(revokedHistory.data.items[0].result, 'REASSIGNED');
+  assert.equal(revokedHistory.data.items[0].finalDriver, false);
+  assert.ok(revokedHistory.data.nextCursor);
+  const previousPage = await request(
+    '/driver/deliveries/history?limit=1&cursor=' + revokedHistory.data.nextCursor,
+    'GET',
+    undefined,
+    'driver',
+  );
+  assert.equal(previousPage.status, 200);
+  assert.notEqual(
+    previousPage.data.items[0].assignmentId,
+    revokedHistory.data.items[0].assignmentId,
+  );
+  assert.equal(
+    (await request('/driver/deliveries/history?cursor=invalid', 'GET', undefined, 'driver2'))
+      .status,
+    400,
+  );
+  for (const field of ['address', 'note', 'payment', 'location', 'items'])
+    assert.equal(field in revokedHistory.data.items[0], false);
   for (const status of ['ACCEPTED', 'PREPARING', 'READY_FOR_PICKUP'])
     assert.equal(
       (await request(`/orders/${o.id}/transition`, 'POST', { status }, 'restaurant')).status,
@@ -436,6 +749,32 @@ test('complete lifecycle: preparation, reassignment, authorized delivery and buy
         .status,
       200,
     );
+  const deliveredAssignment = await schemaPool.query(
+    'SELECT active, end_reason FROM driver_assignments WHERE delivery_id=$1 AND driver_id=$2',
+    [o.delivery.id, 'driver2'],
+  );
+  assert.deepEqual(deliveredAssignment.rows[0], { active: false, end_reason: 'DELIVERED' });
+  const milestones = await db.prisma.delivery.findUnique({ where: { id: o.delivery.id } });
+  assert.ok(milestones.picked_up_at);
+  assert.ok(milestones.in_transit_at);
+  assert.ok(milestones.delivered_at);
+  assert.equal(milestones.failed_at, null);
+  const finalDetail = await request('/orders/' + o.id, 'GET', undefined, 'driver2');
+  assert.equal(finalDetail.status, 200);
+  assert.ok(finalDetail.data.pickup.address);
+  assert.equal('payment' in finalDetail.data, false);
+  assert.equal((await request('/orders/' + o.id, 'GET', undefined, 'driver')).status, 403);
+  assert.ok(
+    (await request('/orders', 'GET', undefined, 'driver2')).data.some(
+      (row: any) => row.id === o.id,
+    ),
+  );
+  const history = await request('/driver/deliveries/history?limit=1', 'GET', undefined, 'driver2');
+  assert.equal(history.status, 200);
+  assert.equal(history.data.items[0].finalDriver, true);
+  assert.equal(history.data.items[0].result, 'DELIVERED');
+  const other = await request('/driver/deliveries/history', 'GET', undefined, 'customer');
+  assert.equal(other.status, 403);
   assert.equal((await request('/orders/' + o.id)).data.status, 'DELIVERED');
   assert.equal(
     (
@@ -594,6 +933,37 @@ test('delivery failure requires a reason and stays distinct from successful deli
     ).data.code,
     'REASON_REQUIRED',
   );
+  await schemaPool.query(
+    `CREATE FUNCTION reject_failed_history() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.entity = 'DELIVERY' AND NEW.to_state = 'FAILED' THEN RAISE EXCEPTION 'forced history failure'; END IF; RETURN NEW; END $$`,
+  );
+  await schemaPool.query(
+    'CREATE TRIGGER reject_failed_history BEFORE INSERT ON state_history FOR EACH ROW EXECUTE FUNCTION reject_failed_history()',
+  );
+  try {
+    assert.equal(
+      (
+        await request(
+          `/deliveries/${o.delivery.id}/transition`,
+          'POST',
+          { status: 'FAILED', reason: 'Customer unreachable' },
+          'driver',
+        )
+      ).status,
+      500,
+    );
+    assert.equal(
+      (
+        await schemaPool.query(
+          'SELECT active FROM driver_assignments WHERE delivery_id=$1 AND driver_id=$2',
+          [o.delivery.id, 'driver'],
+        )
+      ).rows[0].active,
+      true,
+    );
+  } finally {
+    await schemaPool.query('DROP TRIGGER reject_failed_history ON state_history');
+    await schemaPool.query('DROP FUNCTION reject_failed_history()');
+  }
   assert.equal(
     (
       await request(
@@ -606,6 +976,15 @@ test('delivery failure requires a reason and stays distinct from successful deli
     200,
   );
   assert.equal((await request('/orders/' + o.id)).data.status, 'DELIVERY_FAILED');
+  assert.equal(
+    (
+      await schemaPool.query(
+        'SELECT end_reason FROM driver_assignments WHERE delivery_id=$1 AND driver_id=$2',
+        [o.delivery.id, 'driver'],
+      )
+    ).rows[0].end_reason,
+    'FAILED',
+  );
 });
 test('outbox retry is idempotent, complaints are owned, sensitive actions audited', async () => {
   await ops.deliverNotifications();

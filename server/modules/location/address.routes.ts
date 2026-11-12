@@ -2,8 +2,13 @@ import { Router } from 'express';
 import { rateLimit } from 'express-rate-limit';
 import * as address from './application/address.service.js';
 import { actor } from '../../shared/http/actor.js';
+import { recordDriverLocation } from './application/driver-location-ingestion.service.js';
 
 export const addressRoutes = Router();
+
+addressRoutes.post('/driver/location', async (req, res) => {
+  res.json(await recordDriverLocation(actor(req, 'DRIVER').id, req.body));
+});
 
 const resolveLimit = rateLimit({
   windowMs: 60_000,

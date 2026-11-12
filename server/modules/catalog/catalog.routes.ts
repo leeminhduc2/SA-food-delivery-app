@@ -21,17 +21,17 @@ catalogRoutes.get('/restaurants/:id', async (req, res) => {
 });
 
 catalogRoutes.post('/restaurants', async (req, res) => {
-  const owner = actor(req, 'RESTAURANT', 'ADMIN');
+  const owner = actor(req, 'RESTAURANT');
   res.status(201).json(await catalog.createRestaurant(owner, req.body));
 });
 
 catalogRoutes.patch('/restaurants/:id', async (req, res) => {
-  const owner = actor(req, 'RESTAURANT', 'ADMIN');
+  const owner = actor(req, 'RESTAURANT');
   res.json(await catalog.updateRestaurant(owner, String(req.params.id), req.body));
 });
 
 catalogRoutes.delete('/restaurants/:id', async (req, res) => {
-  const owner = actor(req, 'RESTAURANT', 'ADMIN');
+  const owner = actor(req, 'RESTAURANT');
   await catalog.archiveRestaurant(owner, String(req.params.id));
   res.json({ ok: true });
 });
@@ -45,7 +45,7 @@ catalogRoutes.get('/manage/restaurants', async (req, res) => {
 });
 
 catalogRoutes.post('/restaurants/:id/items', async (req, res) => {
-  const owner = actor(req, 'RESTAURANT', 'ADMIN');
+  const owner = actor(req, 'RESTAURANT');
   res.status(201).json(await catalog.createItem(owner, String(req.params.id), req.body));
 });
 
@@ -54,23 +54,29 @@ catalogRoutes.get('/items/:id', async (req, res) => {
 });
 
 catalogRoutes.put('/items/:id', async (req, res) => {
-  const owner = actor(req, 'RESTAURANT', 'ADMIN');
+  const owner = actor(req, 'RESTAURANT');
   res.json(await catalog.updateItem(owner, String(req.params.id), req.body));
 });
 
 catalogRoutes.patch('/items/:id', async (req, res) => {
-  const owner = actor(req, 'RESTAURANT', 'ADMIN');
+  const owner = actor(req, 'RESTAURANT');
   res.json(await catalog.updateItem(owner, String(req.params.id), req.body));
 });
 
 catalogRoutes.delete('/items/:id', async (req, res) => {
-  const owner = actor(req, 'RESTAURANT', 'ADMIN');
+  const owner = actor(req, 'RESTAURANT');
   await catalog.archiveItem(owner, String(req.params.id));
   res.json({ ok: true });
 });
 
 catalogRoutes.post('/admin/restaurants/:id/approval', async (req, res) => {
   const administrator = actor(req, 'ADMIN');
-  await catalog.setApproval(administrator, String(req.params.id), req.body);
+  await catalog.setApproval(administrator, String(req.params.id), req.body, req.requestId);
+  res.json({ ok: true });
+});
+
+catalogRoutes.post('/admin/restaurants/:id/suspend', async (req, res) => {
+  const administrator = actor(req, 'ADMIN');
+  await catalog.suspendRestaurant(administrator, String(req.params.id), req.body, req.requestId);
   res.json({ ok: true });
 });

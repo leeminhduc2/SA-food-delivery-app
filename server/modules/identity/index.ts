@@ -3,6 +3,8 @@ export { identityRoutes } from './identity.routes.js';
 export { authenticate } from './authenticate.middleware.js';
 export {
   findActiveDriver,
+  lockActiveDriver,
+  lockDriver,
   hashPassword,
   listUsers,
   purgeExpiredSessions,

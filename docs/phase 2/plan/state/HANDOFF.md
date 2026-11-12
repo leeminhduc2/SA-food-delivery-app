@@ -1,42 +1,7 @@
-# Bàn giao ban đầu cho GPT 6.1 Terra
+# Handoff — P00–P03 complete
 
-Checkpoint khởi tạo ngày 12/11/2026, không phải code dở dang.
-
-## Đã thực hiện
-
-- Soạn bộ kế hoạch và cơ chế checkpoint theo scope demo đã chốt.
-- Không code ứng dụng; tất cả task NOT_STARTED. Không migration/API/.env/commit/push.
-- Baseline lúc soạn: feat/notification-sse, acbb8df; docs/phase 2/ untracked. Phải kiểm lại trước sửa.
-
-## Tiếp tục tại P00-T01
-
-Đọc [README](../README.md), [STATUS](STATUS.md), [P00](../phases/P00-baseline-and-execution.md), rồi chạy từ repo root:
-
-```powershell
-git status --short
-git branch --show-current
-git log -1 --format='%h %s'
-```
-
-Đối chiếu source/scripts với plan. Tạo run và cập nhật IN_PROGRESS trước hành động triển khai. Không đánh dấu P00 xong vì tài liệu đã có.
-
-Ứng dụng chưa được test lại trong phiên soạn. Audit cũ không kết nối được PostgreSQL/Redis; kiểm health có timeout, không in secrets/tự sửa .env. DB tests phải schema riêng. Test file mới trong phases là mục tiêu, chưa có ở baseline.
-
-## Template cập nhật sau này
-
-Giữ checkpoint ngắn; logs đầy đủ chuyển run/incident.
-
-```text
-Timestamp thực tế / branch / HEAD / user scope:
-Phase-task status / last DONE:
-Git diff và thay đổi người dùng cần giữ:
-Files đã sửa, hành vi và phần còn dở:
-AC pass (ID + evidence), AC chưa đạt/chưa kiểm:
-Code state: VERIFIED | UNVERIFIED | BUILD_FAILING | TEST_FAILING
-Commands/results + run links:
-Migration names/status/schema test redacted:
-Blocker kind + incident link:
-Các cách đã thử và vì sao không lặp lại:
-Next safe action (file/use case/command cụ thể):
-Điều kiện task/phase DONE:
-```
+- Scope completed P00–P03; branch `phase2`, baseline HEAD `7d13780`, initial working tree clean. No commit/push and no application database migrations. User `.env` not edited.
+- Five additive migrations: `20261112100000_audit_metadata`, `20261112110000_driver_assignment_history`, `20261112120000_driver_active_capacity`, `20261112130000_driver_availability_location`, `20261112140000_delivery_milestones`. Applied to randomly named disposable test schemas only; no live migration. Before applying to existing data, back up and run the read-only driver assignment preflight against the intended schema; resolve open conflicts manually, do not choose a winner automatically.
+- Latest verification in runs/20261112-P03-T03.md. `npm test` 107 pass / 1 existing asset skip; browser 8/8; final targeted 29/29; typecheck, build, OpenAPI pass. Redis integration used a real isolated Redis. Unchanged source documentation formatting debt remains.
+- Automatic assignment and offers are P04–P05 and remain NOT_STARTED. Next task if user requests further work: P04-T01; read its prerequisites and source first. Do not treat GPS/availability as automatic dispatch.
+- Temporary test PostgreSQL/Redis containers were stopped after verification; run/incident files contain no credentials or raw GPS.

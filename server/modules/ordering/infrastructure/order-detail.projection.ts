@@ -24,7 +24,23 @@ export async function listVisibleIds(
     };
   else if (role === 'DRIVER')
     where = {
-      delivery: { is: { assignments: { some: { driver_id: userId, active: true } } } },
+      delivery: {
+        is: {
+          OR: [
+            { assignments: { some: { driver_id: userId, active: true } } },
+            {
+              driver_id: userId,
+              status: { in: ['DELIVERED', 'FAILED', 'CANCELLED'] },
+              assignments: {
+                some: {
+                  driver_id: userId,
+                  end_reason: { in: ['DELIVERED', 'FAILED', 'CANCELLED', 'MIGRATION_TERMINAL'] },
+                },
+              },
+            },
+          ],
+        },
+      },
     };
   return db.order.findMany({
     where,
@@ -37,11 +53,22 @@ export async function listVisibleIds(
 export async function detailRow(orderId: string, db: DB = prisma): Promise<any | undefined> {
   const row = await db.order.findUnique({
     where: { id: orderId },
-    include: { restaurant: { select: { name: true } } },
+    include: {
+      restaurant: { select: { name: true, address: true, latitude: true, longitude: true } },
+    },
   });
   if (!row) return undefined;
   const { restaurant, ...order } = row;
-  return { ...order, restaurant_name: restaurant.name };
+  return {
+    ...order,
+    restaurant_name: restaurant.name,
+    pickup: {
+      name: restaurant.name,
+      address: restaurant.address,
+      latitude: restaurant.latitude,
+      longitude: restaurant.longitude,
+    },
+  };
 }
 
 export async function detailItems(orderId: string, db: DB = prisma): Promise<any[]> {

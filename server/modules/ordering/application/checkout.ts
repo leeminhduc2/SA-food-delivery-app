@@ -13,8 +13,43 @@ import * as orders from '../infrastructure/order.repository.js';
 import { checkoutSchema } from '../ordering.schemas.js';
 import { orderDetail } from './order-queries.js';
 
+function checkoutFingerprint(
+  input: ReturnType<typeof checkoutSchema.parse>,
+  address: string,
+): string {
+  const canonical = {
+    address,
+    note: input.note,
+    expectedTotal: input.expectedTotal,
+    items: input.items
+      .map((line) => ({ ...line, optionIds: [...new Set(line.optionIds)].sort() }))
+      .sort(
+        (a, b) =>
+          a.itemId.localeCompare(b.itemId) || a.optionIds.join().localeCompare(b.optionIds.join()),
+      ),
+  };
+  return createHash('sha256').update(JSON.stringify(canonical)).digest('hex');
+}
+
+function assertSameCheckout(
+  old: { address: string; fingerprint: string },
+  input: ReturnType<typeof checkoutSchema.parse>,
+): void {
+  check(
+    old.fingerprint === checkoutFingerprint(input, old.address),
+    409,
+    'IDEMPOTENCY_CONFLICT',
+    'This checkout key was already used with different details.',
+  );
+}
+
 export async function checkout(actor: User, raw: unknown): Promise<any> {
   const input = checkoutSchema.parse(raw);
+  const existing = await orders.findByCustomerAndKey(actor.id, input.idempotencyKey);
+  if (existing) {
+    assertSameCheckout(existing, input);
+    return orderDetail(existing.id);
+  }
   const savedAddress = await defaultAddressFor(actor.id);
   // The delivery address is a saved, routed location. A client-supplied string
   // is never an authoritative destination.
@@ -38,30 +73,14 @@ export async function checkout(actor: User, raw: unknown): Promise<any> {
       'We cannot calculate a walking delivery route to this address right now. Please try again or choose another address.',
     );
   }
-  const canonical = {
-    address: addressText,
-    note: input.note,
-    expectedTotal: input.expectedTotal,
-    items: input.items
-      .map((line) => ({ ...line, optionIds: [...new Set(line.optionIds)].sort() }))
-      .sort(
-        (a, b) =>
-          a.itemId.localeCompare(b.itemId) || a.optionIds.join().localeCompare(b.optionIds.join()),
-      ),
-  };
-  const fingerprint = createHash('sha256').update(JSON.stringify(canonical)).digest('hex');
-  const orderId = await transaction(async (db) => {
+  const fingerprint = checkoutFingerprint(input, addressText);
+  const result = await transaction(async (db) => {
     // Serialize per customer/key before looking up a committed result. Unique constraint remains the final guard.
     await orders.advisoryCheckoutLock(actor.id + ':' + input.idempotencyKey, db);
     const old = await orders.findByCustomerAndKey(actor.id, input.idempotencyKey, db);
     if (old) {
-      check(
-        old.fingerprint === fingerprint,
-        409,
-        'IDEMPOTENCY_CONFLICT',
-        'This checkout key was already used with different details.',
-      );
-      return old.id;
+      assertSameCheckout(old, input);
+      return { orderId: old.id, created: false };
     }
     const quote = await priceCart(db, input.items, true);
     const deliveryFee = routed.info.shippingFee as number;
@@ -112,13 +131,13 @@ export async function checkout(actor: User, raw: unknown): Promise<any> {
     await audits.history(newOrderId, 'ORDER', null, 'PENDING_PAYMENT', actor.id, '', db);
     await notify(db, actor.id, 'ORDER_CREATED', { orderId: newOrderId });
     await carts.clear(actor.id, db);
-    return newOrderId;
+    return { orderId: newOrderId, created: true };
   });
   // Provider call is deliberately outside the business transaction; a worker retries the persisted reference.
   try {
-    await ensurePayment(orderId);
+    if (result.created) await ensurePayment(result.orderId);
   } catch {
     /* The pending payment remains recoverable. */
   }
-  return orderDetail(orderId);
+  return orderDetail(result.orderId);
 }

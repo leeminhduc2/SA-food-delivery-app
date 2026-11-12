@@ -2,13 +2,23 @@ import 'dotenv/config';
 import pg from 'pg';
 const schema = process.env.E2E_SCHEMA!;
 if (!/^e2e_[a-f0-9]{32}$/.test(schema)) throw new Error('An isolated E2E_SCHEMA is required.');
-const url = new URL(
-  process.env.TEST_DATABASE_URL ||
-    process.env.DATABASE_URL ||
-    'postgres://food:food_local_only@localhost:5433/food_delivery',
-);
-const admin = new pg.Pool({ connectionString: url.toString() });
-await admin.query(`CREATE SCHEMA ${schema}`);
+const owner = process.env.E2E_OWNER;
+if (!owner || !/^[a-f0-9-]{36}$/.test(owner) || !process.env.TEST_DATABASE_URL)
+  throw new Error('E2E_OWNER and TEST_DATABASE_URL are required.');
+const url = new URL(process.env.TEST_DATABASE_URL);
+const admin = new pg.Pool({ connectionString: url.toString(), connectionTimeoutMillis: 3000 });
+const setup = await admin.connect();
+try {
+  await setup.query('BEGIN');
+  await setup.query(`CREATE SCHEMA ${schema}`);
+  await setup.query(`COMMENT ON SCHEMA ${schema} IS '${owner}'`);
+  await setup.query('COMMIT');
+} catch (error) {
+  await setup.query('ROLLBACK');
+  throw error;
+} finally {
+  setup.release();
+}
 url.searchParams.set('options', `-c search_path=${schema}`);
 // Prisma reads `schema`; libpq-based pg pools read `options`.
 url.searchParams.set('schema', schema);
@@ -20,6 +30,21 @@ process.env.PAYMENT_WEBHOOK_SECRET = 'browser-test-webhook-secret-only-123';
 process.env.APP_ORIGIN = 'http://127.0.0.1:5174';
 process.env.LOG_REQUESTS = 'false';
 process.env.NODE_ENV = 'test';
+const targetPool = new pg.Pool({
+  connectionString: process.env.DATABASE_URL,
+  connectionTimeoutMillis: 3000,
+});
+try {
+  const target = await targetPool.query('SELECT current_schema() AS schema');
+  if (target.rows[0].schema !== schema) throw new Error('pg E2E schema mismatch');
+} finally {
+  await targetPool.end();
+}
+const { prisma } = await import('../server/shared/db.js');
+const prismaTarget = await prisma.$queryRaw<
+  Array<{ schema: string }>
+>`SELECT current_schema() AS schema`;
+if (prismaTarget[0]?.schema !== schema) throw new Error('Prisma E2E schema mismatch');
 const { migrate } = await import('../server/migrate.js');
 await migrate();
 const { seed } = await import('../server/seed/seed.js');
@@ -75,13 +100,10 @@ setRoutingProvider({
   },
 });
 const { createApp } = await import('../server/app.js');
-const { prisma } = await import('../server/shared/db.js');
 const server = createApp().listen(3002, '127.0.0.1');
 async function close() {
   server.close(async () => {
     await prisma.$disconnect();
-    if (!/^e2e_[a-f0-9]{32}$/.test(schema)) throw new Error('Unexpected schema');
-    await admin.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
     await admin.end();
     process.exit(0);
   });

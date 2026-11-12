@@ -6,7 +6,8 @@
  */
 import { setDeliveryOrderGateway } from './delivery/index.js';
 import { prefetchDeliveryQuotes } from './catalog/index.js';
-import { setAddressSavedListener } from './location/index.js';
+import { setAddressSavedListener, configureDriverLocation } from './location/index.js';
+import { assignmentConfig, retainDriverLocation } from './assignment/index.js';
 import {
   deliveryOrderGateway,
   paymentOrderGateway,
@@ -25,4 +26,13 @@ export function registerModules(): void {
   // Saving a delivery address prefetches one persisted quote per visible
   // restaurant; the catalog owns restaurant knowledge, location owns the event.
   setAddressSavedListener(prefetchDeliveryQuotes);
+  configureDriverLocation(
+    {
+      maxAgeSeconds: assignmentConfig.DRIVER_LOCATION_MAX_AGE_SECONDS,
+      maxFutureSeconds: assignmentConfig.DRIVER_LOCATION_MAX_FUTURE_SECONDS,
+      minIntervalSeconds: assignmentConfig.DRIVER_LOCATION_MIN_INTERVAL_SECONDS,
+      retentionSeconds: assignmentConfig.OFFLINE_LOCATION_RETENTION_SECONDS,
+    },
+    retainDriverLocation,
+  );
 }

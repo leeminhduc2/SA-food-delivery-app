@@ -33,6 +33,8 @@ import { Auth, Profile } from './components/Account';
 import { Dish } from './components/Catalog';
 import { AddressMap, AddressSettings, type SavedAddress } from './components/DeliveryAddress';
 import { OrderCard } from './components/Orders';
+import { DriverHistory } from './components/DriverHistory';
+import { DriverAvailability } from './components/DriverAvailability';
 import { Empty, Modal } from './components/Primitives';
 import { SmartImage } from './components/SmartImage';
 import { AdminPanels, ItemForm, RestaurantForm } from './components/Workspace';
@@ -126,6 +128,8 @@ export function App() {
     [managedRestaurant, setManagedRestaurant] = useState<any>(null);
   const [note, setNote] = useState(''),
     [defaultAddress, setDefaultAddress] = useState<SavedAddress | null>(null);
+  const [suspendReasons, setSuspendReasons] = useState<Record<string, string>>({});
+  const suspendKeys = useRef<Record<string, string>>({});
   const checkoutKey = useRef(crypto.randomUUID());
   const checkoutPayload = useRef<any>(null);
   const navigate = (p: string) => {
@@ -550,6 +554,7 @@ export function App() {
         </div>
       )}
       <main id="main" tabIndex={-1}>
+        {actor?.role === 'DRIVER' && page === 'orders' && <DriverAvailability key={actor.id} />}
         {error && (
           <div role="alert" className="alert">
             <span>{error}</span>
@@ -1029,6 +1034,7 @@ export function App() {
                 ))}
               </div>
             )}
+            {actor.role === 'DRIVER' && <DriverHistory key={actor.id} />}
           </>
         ) : page === 'workspace' && actor && ['ADMIN', 'RESTAURANT'].includes(actor.role) ? (
           <>
@@ -1103,35 +1109,70 @@ export function App() {
                         </button>
                         <button
                           className="button secondary small"
-                          disabled={busy || r.status === 'REJECTED'}
+                          disabled={
+                            busy ||
+                            r.status === 'REJECTED' ||
+                            (suspendReasons[r.id] || '').trim().length < 3
+                          }
                           onClick={() =>
-                            action(`/admin/restaurants/${r.id}/approval`, { status: 'REJECTED' })
+                            action(`/admin/restaurants/${r.id}/approval`, {
+                              status: 'REJECTED',
+                              reason: suspendReasons[r.id],
+                            })
                           }
                         >
                           Reject
                         </button>
+                        <label>
+                          Reason to reject or suspend {r.name}
+                          <input
+                            value={suspendReasons[r.id] || ''}
+                            maxLength={300}
+                            onChange={(event) => {
+                              setSuspendReasons({ ...suspendReasons, [r.id]: event.target.value });
+                              delete suspendKeys.current[r.id];
+                            }}
+                          />
+                        </label>
+                        <button
+                          className="button secondary small"
+                          disabled={busy || (suspendReasons[r.id] || '').trim().length < 3}
+                          onClick={() => {
+                            suspendKeys.current[r.id] ||= crypto.randomUUID();
+                            void action(`/admin/restaurants/${r.id}/suspend`, {
+                              reason: suspendReasons[r.id],
+                              idempotencyKey: suspendKeys.current[r.id],
+                            });
+                          }}
+                        >
+                          Suspend
+                        </button>
                       </>
                     )}
-                    <button
-                      className="button secondary small"
-                      onClick={() =>
-                        run(async () => {
-                          setManagedRestaurant(await api('/restaurants/' + r.id));
-                          setModal('menu');
-                        })
-                      }
-                    >
-                      Manage menu
-                    </button>
-                    <button
-                      className="text-button"
-                      onClick={() => {
-                        setManagedRestaurant(r);
-                        setModal('restaurant');
-                      }}
-                    >
-                      Edit details
-                    </button>
+                    {actor.role === 'RESTAURANT' && (
+                      <>
+                        <button
+                          className="button secondary small"
+                          onClick={() =>
+                            run(async () => {
+                              setManagedRestaurant(await api('/restaurants/' + r.id));
+                              setModal('menu');
+                            })
+                          }
+                        >
+                          Manage menu
+                        </button>
+                        <button
+                          className="text-button"
+                          onClick={() => {
+                            setManagedRestaurant(r);
+                            setModal('restaurant');
+                          }}
+                        >
+                          Edit details
+                        </button>
+                      </>
+                    )}
                   </div>
                 </article>
               ))}

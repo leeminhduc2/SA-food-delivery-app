@@ -486,11 +486,16 @@ components:
       required: [status]
       properties:
         status: { type: string, enum: [APPROVED, REJECTED] }
+        reason: { type: string, minLength: 3, maxLength: 300, description: Required for REJECTED }
+      allOf:
+        - if: { properties: { status: { const: REJECTED } }, required: [status] }
+          then: { required: [reason] }
     AccountStatusInput:
       type: object
-      required: [active]
+      required: [active, reason]
       properties:
         active: { type: boolean }
+        reason: { type: string, minLength: 3, maxLength: 300 }
     ResolutionInput:
       type: object
       required: [resolution]
@@ -1557,6 +1562,127 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/driver/location:
+    post:
+      tags: [Delivery]
+      operationId: recordDriverLocation
+      summary: Update the signed-in driver's latest position
+      security: [{ sessionCookie: [], requestedWithHeader: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [latitude, longitude, capturedAt]
+              properties:
+                latitude: { type: number, minimum: -90, maximum: 90 }
+                longitude: { type: number, minimum: -180, maximum: 180 }
+                capturedAt: { type: string, format: date-time }
+      responses:
+        '200': { description: Timestamp and version of latest position }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { description: Driver location update rate exceeded }
+
+  /api/driver/availability:
+    get:
+      tags: [Delivery]
+      operationId: getDriverAvailability
+      summary: Read current driver availability and freshness
+      security: [{ sessionCookie: [] }]
+      responses:
+        '200': { description: Availability snapshot }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    patch:
+      tags: [Delivery]
+      operationId: updateDriverAvailability
+      summary: Change online or ready state
+      security: [{ sessionCookie: [], requestedWithHeader: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                online: { type: boolean }
+                ready: { type: boolean }
+      responses:
+        '200': { description: Availability updated }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/driver/heartbeat:
+    post:
+      tags: [Delivery]
+      operationId: driverHeartbeat
+      summary: Refresh online driver heartbeat
+      security: [{ sessionCookie: [], requestedWithHeader: [] }]
+      responses:
+        '200': { description: Availability snapshot }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /api/driver/deliveries/history:
+    get:
+      tags: [Delivery]
+      operationId: driverDeliveryHistory
+      summary: List the signed-in driver's assignment history
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - {
+            in: query,
+            name: limit,
+            schema: { type: integer, minimum: 1, maximum: 100, default: 25 },
+          }
+        - { in: query, name: cursor, schema: { type: string } }
+      responses:
+        '200':
+          description: Assignment metadata and opaque next cursor
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, nextCursor]
+                properties:
+                  items: { type: array, items: { type: object, additionalProperties: true } }
+                  nextCursor: { type: [string, 'null'] }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/admin/restaurants/{id}/suspend:
+    parameters:
+      - $ref: '#/components/parameters/RestaurantId'
+    post:
+      tags: [Admin]
+      operationId: suspendRestaurant
+      summary: Hide and pause a restaurant for a documented reason
+      security: [{ sessionCookie: [], requestedWithHeader: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason, idempotencyKey]
+              properties:
+                reason: { type: string, minLength: 3, maxLength: 300 }
+                idempotencyKey: { type: string, minLength: 8, maxLength: 120 }
+      responses:
+        '200': { description: Restaurant suspended or request replayed }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
 
   /api/admin/users/{id}:
     parameters:

@@ -1,3 +1,9 @@
+import {
+  testDatabaseUrl,
+  testSchemaUrl,
+  verifyTestSchema,
+  dropTestSchema,
+} from './test-database.js';
 import 'dotenv/config';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -12,25 +18,24 @@ import pg from 'pg';
  * enforce the quote invariants the services rely on.
  */
 const schema = 'test_migration_' + randomUUID().replaceAll('-', '');
-const originalUrl =
-  process.env.TEST_DATABASE_URL ||
-  process.env.DATABASE_URL ||
-  'postgres://food:food_local_only@localhost:5433/food_delivery';
-const admin = new pg.Pool({ connectionString: originalUrl });
-const url = new URL(originalUrl);
-url.searchParams.set('options', `-c search_path=${schema}`);
-url.searchParams.set('schema', schema);
-process.env.DATABASE_URL = url.toString();
-const schemaPool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+const originalUrl = testDatabaseUrl();
+const admin = new pg.Pool({ connectionString: originalUrl, connectionTimeoutMillis: 3000 });
+process.env.DATABASE_URL = testSchemaUrl(originalUrl, schema);
+const schemaPool = new pg.Pool({
+  connectionString: process.env.DATABASE_URL,
+  connectionTimeoutMillis: 3000,
+});
+let schemaCreated = false;
 process.env.NODE_ENV = 'test';
 process.env.LOG_REQUESTS = 'false';
 
 const migrationName = '20261103150000_catalog_management_and_delivery_quotes';
 let db: any;
-
 before(async () => {
   await admin.query(`CREATE SCHEMA ${schema}`);
+  schemaCreated = true;
   db = await import('../server/shared/db.js');
+  await verifyTestSchema(schema, db.prisma);
   const { migrate } = await import('../server/migrate.js');
   await migrate();
 });
@@ -38,7 +43,7 @@ before(async () => {
 after(async () => {
   if (db) await db.prisma.$disconnect();
   await schemaPool.end();
-  await admin.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
+  await dropTestSchema(admin, schema, schemaCreated);
   await admin.end();
 });
 
@@ -51,6 +56,35 @@ async function columns(table: string) {
   );
   return new Map(result.rows.map((row: any) => [row.column_name, row]));
 }
+
+test('audit migration preserves legacy detail and labels its outcome unknown', async () => {
+  const client = await schemaPool.connect();
+  try {
+    await client.query(
+      `CREATE TEMP TABLE audit_logs (id text PRIMARY KEY, actor text NOT NULL, action text NOT NULL, resource_id text NOT NULL, detail jsonb NOT NULL, created_at timestamptz NOT NULL DEFAULT now())`,
+    );
+    await client.query(
+      `INSERT INTO audit_logs (id, actor, action, resource_id, detail) VALUES ('old', 'actor', 'OLD_ACTION', 'resource', '{"original":"kept"}')`,
+    );
+    const sql = await readFile(
+      path.resolve('prisma/migrations/20261112100000_audit_metadata/migration.sql'),
+      'utf8',
+    );
+    await client.query(sql);
+    const { rows } = await client.query(
+      `SELECT detail, resource_type, outcome, correlation_id FROM audit_logs WHERE id = 'old'`,
+    );
+    assert.deepEqual(rows[0], {
+      detail: { original: 'kept' },
+      resource_type: null,
+      outcome: 'UNKNOWN',
+      correlation_id: null,
+    });
+  } finally {
+    await client.query('DROP TABLE IF EXISTS pg_temp.audit_logs');
+    client.release();
+  }
+});
 
 test('new columns are NOT NULL with true defaults and the new tables exist', async () => {
   const restaurants = await columns('restaurants');

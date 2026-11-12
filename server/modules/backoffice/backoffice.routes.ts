@@ -16,6 +16,6 @@ backofficeRoutes.get('/admin/overview', async (req, res) => {
 
 backofficeRoutes.patch('/admin/users/:id', async (req, res) => {
   const administrator = actor(req, 'ADMIN');
-  await admin.setUserActive(administrator, String(req.params.id), req.body);
+  await admin.setUserActive(administrator, String(req.params.id), req.body, req.requestId);
   res.json({ ok: true });
 });

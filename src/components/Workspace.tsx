@@ -310,6 +310,7 @@ export function AdminPanels({
   action: (p: string, b: unknown, m?: string) => Promise<void>;
 }) {
   const [resolutions, setResolutions] = useState<Record<string, string>>({});
+  const [accountReasons, setAccountReasons] = useState<Record<string, string>>({});
   return (
     <>
       <section className="panel">
@@ -334,10 +335,26 @@ export function AdminPanels({
                   <td>{label(u.role)}</td>
                   <td>{u.active ? 'Active' : 'Inactive'}</td>
                   <td>
+                    <label>
+                      Reason for changing {u.name}'s account
+                      <input
+                        value={accountReasons[u.id] || ''}
+                        maxLength={300}
+                        onChange={(event) =>
+                          setAccountReasons({ ...accountReasons, [u.id]: event.target.value })
+                        }
+                      />
+                    </label>
                     <button
                       className="button secondary small"
-                      disabled={busy}
-                      onClick={() => action('/admin/users/' + u.id, { active: !u.active }, 'PATCH')}
+                      disabled={busy || (accountReasons[u.id] || '').trim().length < 3}
+                      onClick={() =>
+                        action(
+                          '/admin/users/' + u.id,
+                          { active: !u.active, reason: accountReasons[u.id] },
+                          'PATCH',
+                        )
+                      }
                     >
                       {u.active ? 'Disable' : 'Activate'}
                     </button>

@@ -13,4 +13,5 @@ export {
   cancelDelivery,
   createDelivery,
   isDriverAssigned,
+  hasActiveTrip,
 } from './application/delivery.service.js';

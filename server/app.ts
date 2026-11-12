@@ -6,6 +6,7 @@ import { resolve } from 'node:path';
 import { ZodError } from 'zod';
 import { docsRoutes } from './docs.routes.js';
 import { backofficeRoutes } from './modules/backoffice/index.js';
+import { assignmentRoutes } from './modules/assignment/index.js';
 import { catalogRoutes, importRoutes } from './modules/catalog/index.js';
 import { deliveryRoutes } from './modules/delivery/index.js';
 import { authenticate, identityRoutes } from './modules/identity/index.js';
@@ -117,6 +118,7 @@ export function createApp() {
   app.use(
     '/api',
     addressRoutes,
+    assignmentRoutes,
     catalogRoutes,
     orderRoutes,
     deliveryRoutes,

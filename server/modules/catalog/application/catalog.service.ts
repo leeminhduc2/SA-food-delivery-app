@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { createHash } from 'node:crypto';
 import type { Prisma } from '@prisma/client';
 import { transaction, type DB } from '../../../shared/db.js';
 import { requireActor } from '../../../shared/authz.js';
@@ -192,7 +193,7 @@ export async function assertMember(
   restaurantId: string,
 ): Promise<void> {
   check(
-    actor.role === 'ADMIN' || (await restaurants.isMember(actor.id, restaurantId, db)),
+    actor.role === 'RESTAURANT' && (await restaurants.isMember(actor.id, restaurantId, db)),
     403,
     'FORBIDDEN',
     'You do not manage this restaurant.',
@@ -204,7 +205,7 @@ export async function getRestaurant(actor: User | undefined, restaurantId: strin
   check(restaurant, 404, 'NOT_FOUND', 'Restaurant not found.');
   if (restaurant.status !== 'APPROVED') {
     const privileged = requireActor(actor, 'RESTAURANT', 'ADMIN');
-    await assertMember(undefined, privileged, restaurant.id);
+    if (privileged.role !== 'ADMIN') await assertMember(undefined, privileged, restaurant.id);
   }
   const privilegedViewer =
     actor?.role === 'ADMIN' ||
@@ -251,14 +252,63 @@ export async function getItem(actor: User | undefined, itemId: string): Promise<
 }
 
 export async function createRestaurant(actor: User, raw: unknown): Promise<any> {
+  requireActor(actor, 'RESTAURANT');
   const input = restaurantSchema.parse(raw);
   return transaction(async (db) => {
     const row = await restaurants.insert(input, db);
-    // An administrator creating a kitchen does not become its owner.
-    if (actor.role !== 'ADMIN') await restaurants.addMember(actor.id, row.id, db);
+    await restaurants.addMember(actor.id, row.id, db);
     await audits.audit(actor.id, 'RESTAURANT_REGISTERED', row.id, {}, db);
     return row;
   });
+}
+
+export async function suspendRestaurant(
+  actor: User,
+  restaurantId: string,
+  raw: unknown,
+  correlationId?: string,
+): Promise<void> {
+  requireActor(actor, 'ADMIN');
+  const input = z
+    .object({
+      reason: z.string().trim().min(3).max(300),
+      idempotencyKey: z.string().min(8).max(120),
+    })
+    .parse(raw);
+  const digest = (value: string) => createHash('sha256').update(value).digest('hex');
+  const keyHash = digest(input.idempotencyKey);
+  const fingerprint = digest(input.reason);
+  await transaction(async (db) => {
+    const lockKey = `restaurant-suspend:${actor.id}:${restaurantId}:${keyHash}`;
+    await db.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`;
+    const old = await audits.findCommandReceipt(
+      actor.id,
+      'RESTAURANT_SUSPENDED',
+      restaurantId,
+      keyHash,
+      db,
+    );
+    if (old) {
+      check(
+        old.fingerprint === fingerprint,
+        409,
+        'IDEMPOTENCY_CONFLICT',
+        'This key was already used with different details.',
+      );
+      return;
+    }
+    const row = await restaurants.archive(restaurantId, db);
+    check(row, 404, 'NOT_FOUND', 'Restaurant not found.');
+    await audits.audit(
+      actor.id,
+      'RESTAURANT_SUSPENDED',
+      restaurantId,
+      { reason: input.reason, keyHash, fingerprint },
+      db,
+      { resourceType: 'RESTAURANT', outcome: 'SUCCESS', correlationId },
+    );
+  });
+  await forgetRestaurantQuotes(restaurantId);
 }
 
 export async function updateRestaurant(
@@ -369,12 +419,29 @@ export async function archiveItem(actor: User, itemId: string): Promise<void> {
   });
 }
 
-export async function setApproval(actor: User, restaurantId: string, raw: unknown): Promise<void> {
-  const { status } = z.object({ status: z.enum(['APPROVED', 'REJECTED']) }).parse(raw);
+export async function setApproval(
+  actor: User,
+  restaurantId: string,
+  raw: unknown,
+  correlationId?: string,
+): Promise<void> {
+  const { status, reason } = z
+    .object({
+      status: z.enum(['APPROVED', 'REJECTED']),
+      reason: z.string().trim().min(3).max(300).optional(),
+    })
+    .refine((value) => value.status !== 'REJECTED' || Boolean(value.reason), {
+      message: 'Reason is required when rejecting.',
+    })
+    .parse(raw);
   await transaction(async (db) => {
     const row = await restaurants.setStatus(restaurantId, status, db);
     check(row, 404, 'NOT_FOUND', 'Restaurant not found.');
-    await audits.audit(actor.id, 'RESTAURANT_' + status, row.id, {}, db);
+    await audits.audit(actor.id, 'RESTAURANT_' + status, row.id, reason ? { reason } : {}, db, {
+      resourceType: 'RESTAURANT',
+      outcome: 'SUCCESS',
+      correlationId,
+    });
   });
 }
 

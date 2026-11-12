@@ -58,9 +58,17 @@ export async function setStatus(
   status: string,
   db: DB = prisma,
 ): Promise<void> {
+  const now = new Date();
   await db.delivery.updateMany({
     where: { id: deliveryId },
-    data: { status, updated_at: new Date() },
+    data: {
+      status,
+      updated_at: now,
+      ...(status === 'PICKED_UP' ? { picked_up_at: now } : {}),
+      ...(status === 'IN_TRANSIT' ? { in_transit_at: now } : {}),
+      ...(status === 'DELIVERED' ? { delivered_at: now } : {}),
+      ...(status === 'FAILED' ? { failed_at: now } : {}),
+    },
   });
 }
 
@@ -71,11 +79,27 @@ export async function assign(deliveryId: string, driverId: string, db: DB = pris
   });
 }
 
-export async function deactivateAssignments(deliveryId: string, db: DB = prisma): Promise<void> {
+export async function deactivateAssignments(
+  deliveryId: string,
+  reason: string,
+  db: DB = prisma,
+): Promise<void> {
   await db.driverAssignment.updateMany({
     where: { delivery_id: deliveryId, active: true },
-    data: { active: false },
+    data: { active: false, ended_at: new Date(), end_reason: reason },
   });
+}
+
+export async function findActiveForDriver(
+  driverId: string,
+  db: DB,
+): Promise<{ id: string } | undefined> {
+  return (
+    (await db.driverAssignment.findFirst({
+      where: { driver_id: driverId, active: true },
+      select: { id: true },
+    })) ?? undefined
+  );
 }
 
 export async function insertAssignment(
@@ -111,7 +135,19 @@ export async function findActiveForOrderAndDriver(
     (await db.delivery.findFirst({
       where: {
         order_id: orderId,
-        assignments: { some: { driver_id: driverId, active: true } },
+        OR: [
+          { assignments: { some: { driver_id: driverId, active: true } } },
+          {
+            driver_id: driverId,
+            status: { in: ['DELIVERED', 'FAILED', 'CANCELLED'] },
+            assignments: {
+              some: {
+                driver_id: driverId,
+                end_reason: { in: ['DELIVERED', 'FAILED', 'CANCELLED', 'MIGRATION_TERMINAL'] },
+              },
+            },
+          },
+        ],
       },
       select: { id: true },
     })) ?? undefined

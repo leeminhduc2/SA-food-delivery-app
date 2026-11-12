@@ -26,9 +26,9 @@ export type NotificationBus = {
   close(): Promise<void>;
 };
 
-export function createRedisBus(url: string): NotificationBus {
+export function createRedisBus(url: string, channel = NOTIFICATION_CHANNEL): NotificationBus {
   const publisher = new Redis(url, { lazyConnect: false, maxRetriesPerRequest: 1 });
-  const subscriber = new Redis(url, { lazyConnect: false });
+  const subscriber = new Redis(url, { lazyConnect: false, maxRetriesPerRequest: 1 });
   const handlers: Array<(message: NotificationPush) => void> = [];
   let subscribed = false;
 
@@ -36,8 +36,8 @@ export function createRedisBus(url: string): NotificationBus {
   for (const client of [publisher, subscriber])
     client.on('error', (error) => console.error('Redis error', error.message));
 
-  subscriber.on('message', (channel, raw) => {
-    if (channel !== NOTIFICATION_CHANNEL) return;
+  subscriber.on('message', (receivedChannel, raw) => {
+    if (receivedChannel !== channel) return;
     let message: NotificationPush;
     try {
       message = JSON.parse(raw) as NotificationPush;
@@ -49,18 +49,21 @@ export function createRedisBus(url: string): NotificationBus {
 
   return {
     async publish(message) {
-      await publisher.publish(NOTIFICATION_CHANNEL, JSON.stringify(message));
+      await publisher.publish(channel, JSON.stringify(message));
     },
     subscribe(handler) {
       handlers.push(handler);
       // ioredis re-subscribes automatically after a reconnect.
       if (!subscribed) {
         subscribed = true;
-        void subscriber.subscribe(NOTIFICATION_CHANNEL);
+        void subscriber.subscribe(channel).catch(() => {
+          subscribed = false;
+        });
       }
     },
     async close() {
-      await Promise.allSettled([publisher.quit(), subscriber.quit()]);
+      publisher.disconnect();
+      subscriber.disconnect();
     },
   };
 }

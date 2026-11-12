@@ -1,3 +1,9 @@
+import {
+  testDatabaseUrl,
+  testSchemaUrl,
+  verifyTestSchema,
+  dropTestSchema,
+} from './test-database.js';
 import 'dotenv/config';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -7,17 +13,14 @@ import pg from 'pg';
 import { PrismaClient } from '@prisma/client';
 
 const schema = 'test_import_' + randomUUID().replaceAll('-', '');
-const originalUrl =
-  process.env.TEST_DATABASE_URL ||
-  process.env.DATABASE_URL ||
-  'postgres://food:food_local_only@localhost:5433/food_delivery';
-const adminPool = new pg.Pool({ connectionString: originalUrl });
-const url = new URL(originalUrl);
-url.searchParams.set('options', `-c search_path=${schema}`);
-// Prisma reads `schema`; libpq-based pg pools read `options`.
-url.searchParams.set('schema', schema);
-process.env.DATABASE_URL = url.toString();
-const schemaPool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+const originalUrl = testDatabaseUrl();
+const adminPool = new pg.Pool({ connectionString: originalUrl, connectionTimeoutMillis: 3000 });
+process.env.DATABASE_URL = testSchemaUrl(originalUrl, schema);
+const schemaPool = new pg.Pool({
+  connectionString: process.env.DATABASE_URL,
+  connectionTimeoutMillis: 3000,
+});
+let schemaCreated = false;
 process.env.NODE_ENV = 'test';
 process.env.LOG_REQUESTS = 'false';
 process.env.DEMO_MODE = 'true';
@@ -101,7 +104,9 @@ async function osmRow(osmId: string, osmType = 'node') {
 
 before(async () => {
   await adminPool.query(`CREATE SCHEMA ${schema}`);
+  schemaCreated = true;
   db = await import('../server/shared/db.js');
+  await verifyTestSchema(schema, db.prisma);
   const { migrate } = await import('../server/migrate.js');
   await migrate();
   const { seed } = await import('../server/seed/seed.js');
@@ -132,7 +137,7 @@ after(async () => {
   if (db) await db.prisma.$disconnect();
   await schemaPool.end();
   assert.match(schema, /^test_import_[a-f0-9]{32}$/);
-  await adminPool.query(`DROP SCHEMA ${schema} CASCADE`);
+  await dropTestSchema(adminPool, schema, schemaCreated);
   await adminPool.end();
 });
 
