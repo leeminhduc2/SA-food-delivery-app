@@ -127,3 +127,12 @@ export function clearRoutingCache(): void {
   cache.clear();
   inFlight.clear();
 }
+
+/**
+ * Walking ETA for assignment ranking. Uses the live (uncached) path so driver
+ * positions are not retained, with the same timeout and concurrency limits.
+ */
+export async function estimateWalking(from: LatLng, to: LatLng) {
+  const route = await liveWalkingRoute(from, to);
+  return { durationSeconds: route.durationSeconds, distanceMeters: route.distanceMeters };
+}

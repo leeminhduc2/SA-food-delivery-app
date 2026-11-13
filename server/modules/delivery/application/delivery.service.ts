@@ -54,6 +54,36 @@ export async function driverParticipated(
   );
 }
 
+/**
+ * Pickups per driver with picked_up_at in the closed window, counted once per
+ * delivery (failed-after-pickup included, cancelled-before-pickup excluded).
+ * `complete` is false when a post-pickup delivery for these drivers lacks a
+ * pickup time and was touched in the window.
+ */
+export async function pickupLoads(
+  driverIds: readonly string[],
+  window: { from: Date; to: Date },
+  db: DB = prisma,
+): Promise<{ counts: Map<string, number>; complete: boolean }> {
+  const ids = [...driverIds];
+  if (!ids.length) return { counts: new Map(), complete: true };
+  const rows = await db.$queryRaw<Array<{ driver_id: string; pickups: number }>>`
+    SELECT driver_id, count(*)::int AS pickups FROM deliveries
+    WHERE driver_id = ANY(${ids}) AND picked_up_at >= ${window.from} AND picked_up_at <= ${window.to}
+    GROUP BY driver_id`;
+  const [gap] = await db.$queryRaw<Array<{ missing: boolean }>>`
+    SELECT EXISTS (
+      SELECT 1 FROM deliveries
+      WHERE driver_id = ANY(${ids}) AND picked_up_at IS NULL
+        AND status IN ('PICKED_UP', 'IN_TRANSIT', 'DELIVERED', 'FAILED')
+        AND updated_at >= ${window.from}
+    ) AS missing`;
+  return {
+    counts: new Map(rows.map((row) => [row.driver_id, row.pickups])),
+    complete: !gap.missing,
+  };
+}
+
 export async function hasActiveTrip(driverId: string, db: DB = prisma): Promise<boolean> {
   return Boolean(await deliveries.findActiveForDriver(driverId, db));
 }

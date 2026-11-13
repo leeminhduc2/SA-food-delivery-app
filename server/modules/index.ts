@@ -14,6 +14,7 @@ import {
   deliveryConfig,
   incidentForOrder,
   registerDeliveryHandlers,
+  pickupLoads,
 } from './delivery/index.js';
 import { findComplaintForOrder, hasOpenComplaint } from './support/index.js';
 import { prefetchDeliveryQuotes } from './catalog/index.js';
@@ -23,6 +24,7 @@ import {
   listCandidateLocations,
   setTrackingAccessGateway,
   setTrackingRouteGateway,
+  estimateWalking,
 } from './location/index.js';
 import { activeDriverIds } from './identity/index.js';
 import {
@@ -32,6 +34,7 @@ import {
   setAssignmentOrderGateway,
   registerAssignmentHandlers,
   overrideDriver,
+  setStrategyDependencies,
 } from './assignment/index.js';
 import {
   deliveryOrderGateway,
@@ -71,6 +74,10 @@ export function registerModules(): void {
   // Saving a delivery address prefetches one persisted quote per visible
   // restaurant; the catalog owns restaurant knowledge, location owns the event.
   setAddressSavedListener(prefetchDeliveryQuotes);
+  setStrategyDependencies({
+    routeEstimator: (from, to) => estimateWalking(from, to),
+    pickupLoads: (driverIds, window) => pickupLoads(driverIds, window),
+  });
   setCandidateSources({
     locations: listCandidateLocations,
     activeDrivers: activeDriverIds,

@@ -1,16 +1,13 @@
 ﻿import { randomUUID } from 'node:crypto';
-import { id, prisma, transaction, type DB } from '../../../shared/db.js';
+import { dbNow, id, prisma, transaction, type DB } from '../../../shared/db.js';
 import { subscribe } from '../../../shared/events.js';
 import { deliveryForAssignmentLocked } from '../../delivery/index.js';
 import { activeAdministratorIds, lockDriver } from '../../identity/index.js';
 import { notifyOnce } from '../../notification/index.js';
 import { assignmentOrderGateway } from '../assignment.ports.js';
 import { assignmentConfig as config } from '../config.js';
-import {
-  nearestStrategy,
-  haversineMeters,
-  type RankedDriver,
-} from '../domain/assignment-strategy.js';
+import { haversineMeters, type RankedDriver } from '../domain/assignment-strategy.js';
+import { activeStrategy } from './strategies/registry.js';
 import { decideNoCandidate } from '../domain/search-policy.js';
 import * as searches from '../infrastructure/assignment.repository.js';
 import { findEligibleCandidates } from './candidates.service.js';
@@ -57,9 +54,22 @@ async function notifyExhausted(claim: searches.SearchClaim, reason: string, db: 
 async function lockAvailability(driverId: string, db: DB): Promise<void> {
   await db.$queryRaw`SELECT driver_id FROM driver_availability WHERE driver_id = ${driverId} FOR UPDATE`;
 }
+/** Attempt evidence: the strategy's typed criterion plus scope and any fallback. */
+function rankingEvidence(strategy: string, ranked: RankedDriver, distanceMeters?: number) {
+  return {
+    ...ranked.criterion,
+    ...(distanceMeters === undefined ? {} : { distanceMeters }),
+    strategy,
+    appliedStrategy: ranked.appliedStrategy ?? strategy,
+    rankingScope: ranked.rankingScope ?? 'ALL',
+    fallbackReason: ranked.fallbackReason ?? null,
+  };
+}
+
 async function applyClaim(
   claim: searches.SearchClaim,
   ranked: RankedDriver | undefined,
+  strategy = 'NEAREST',
 ): Promise<void> {
   const gateway = assignmentOrderGateway();
   const metadata = await gateway.context(claim.delivery_id, prisma);
@@ -136,7 +146,7 @@ async function applyClaim(
             driverId: ranked.driverId,
             round: search.round,
             rank: ranked.rank,
-            criterion: ranked.criterion,
+            criterion: rankingEvidence(strategy, ranked),
             outcome: 'INELIGIBLE',
             reason: 'REVALIDATION_FAILED',
           },
@@ -151,6 +161,7 @@ async function applyClaim(
       db,
     );
     if (!expiresAt) return;
+    await db.$executeRaw`UPDATE assignment_searches SET strategy = ${strategy} WHERE id = ${claim.id}`;
     const offerId = id();
     await db.driverOffer.create({
       data: { id: offerId, search_id: claim.id, driver_id: ranked.driverId, expires_at: expiresAt },
@@ -169,10 +180,12 @@ async function applyClaim(
         driverId: ranked.driverId,
         round: search.round,
         rank: ranked.rank,
-        criterion: {
-          kind: 'HAVERSINE_METERS',
-          distanceMeters: haversineMeters(context.pickup, candidate.location),
-        },
+        // Distance is re-measured against the revalidated location.
+        criterion: rankingEvidence(
+          strategy,
+          ranked,
+          haversineMeters(context.pickup, candidate.location),
+        ),
         offerId,
         outcome: 'OFFERED',
       },
@@ -287,10 +300,12 @@ export async function runAssignmentWorker(
     const candidates = context?.pickup
       ? await findEligibleCandidates(current.id, context.pickup)
       : [];
+    // Ranking (including any route lookups) happens here, outside every transaction.
+    const strategy = activeStrategy();
     const ranked = context?.pickup
-      ? await nearestStrategy.rank({ pickup: context.pickup }, candidates)
+      ? await strategy.rank({ pickup: context.pickup, now: await dbNow() }, candidates)
       : [];
-    await applyClaim(current, ranked[0]);
+    await applyClaim(current, ranked[0], strategy.name);
     processed++;
   }
   return processed;

@@ -47,3 +47,4 @@ export {
   type PlaceLocation,
 } from './application/shipping.service.js';
 export { isValidCoordinate, type LatLng, type ShippingConfig } from './domain/geo.js';
+export { estimateWalking } from './application/routing.service.js';

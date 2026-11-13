@@ -5,7 +5,8 @@ const configSchema = z.object({
     .enum(['true', 'false'])
     .default('true')
     .transform((value) => value === 'true'),
-  ASSIGNMENT_STRATEGY: z.literal('NEAREST').default('NEAREST'),
+  // An unknown value fails startup; provider failures fall back with a recorded reason.
+  ASSIGNMENT_STRATEGY: z.enum(['NEAREST', 'LOWEST_ETA', 'BALANCED_LOAD']).default('NEAREST'),
   ASSIGNMENT_OFFER_TTL_SECONDS: positive.default(30),
   ASSIGNMENT_RADIUS_METERS: positive.default(5000),
   ASSIGNMENT_MAX_OFFERS: positive.default(10),

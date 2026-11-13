@@ -28,6 +28,7 @@ export {
   createDelivery,
   isDriverAssigned,
   driverParticipated,
+  pickupLoads,
   hasActiveTrip,
   activeDeliveryForDriver,
   unassignedDeliveriesForBootstrap,
