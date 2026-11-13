@@ -14,6 +14,15 @@ export async function insert(
   });
 }
 
+export async function hasOpenComplaint(orderId: string, db: DB = prisma): Promise<boolean> {
+  return Boolean(
+    await db.complaint.findFirst({
+      where: { order_id: orderId, status: 'OPEN' },
+      select: { id: true },
+    }),
+  );
+}
+
 export async function listForActor(role: string, userId: string, db: DB = prisma): Promise<any[]> {
   return db.complaint.findMany({
     where: role === 'ADMIN' ? {} : { customer_id: userId },

@@ -4,7 +4,16 @@
  * Delivery declare, and subscribes Ordering to their events.
  * Safe to call more than once.
  */
-import { setDeliveryOrderGateway, busyDriverIds, setDriverOverride } from './delivery/index.js';
+import {
+  setDeliveryOrderGateway,
+  busyDriverIds,
+  setDriverOverride,
+  setProofStorage,
+  setProofHoldGateway,
+  createLocalProofStorage,
+  deliveryConfig,
+} from './delivery/index.js';
+import { hasOpenComplaint } from './support/index.js';
 import { prefetchDeliveryQuotes } from './catalog/index.js';
 import {
   setAddressSavedListener,
@@ -40,6 +49,8 @@ export function registerModules(): void {
   setPaymentOrderGateway(paymentOrderGateway);
   setDeliveryOrderGateway(deliveryOrderGateway);
   setDriverOverride(overrideDriver);
+  setProofStorage(createLocalProofStorage(deliveryConfig.DELIVERY_PROOF_STORAGE_DIR));
+  setProofHoldGateway({ hasOpenComplaint: (orderId) => hasOpenComplaint(orderId) });
   setAssignmentOrderGateway(assignmentOrderGateway);
   setTrackingAccessGateway(trackingAccessGateway);
   setTrackingRouteGateway(trackingRouteGateway);

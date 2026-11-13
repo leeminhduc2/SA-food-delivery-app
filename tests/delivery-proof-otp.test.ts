@@ -28,14 +28,23 @@ let created = false,
 let db: typeof import('../server/shared/db.js');
 const cookies: Record<string, string> = {};
 test('OTP policy has bounded configurable expiry and attempt limits', () => {
-  assert.deepEqual(parseDeliveryConfig({}), {
-    DELIVERY_OTP_TTL_SECONDS: 600,
-    DELIVERY_OTP_MAX_ATTEMPTS: 5,
+  const defaults = parseDeliveryConfig({});
+  assert.equal(defaults.DELIVERY_OTP_TTL_SECONDS, 600);
+  assert.equal(defaults.DELIVERY_OTP_MAX_ATTEMPTS, 5);
+  assert.equal(defaults.DELIVERY_PROOF_REQUIRED, true);
+  assert.equal(defaults.DELIVERY_PROOF_MAX_BYTES, 5242880);
+  assert.equal(defaults.DELIVERY_PROOF_RETENTION_DAYS, 30);
+  assert.equal(defaults.DELIVERY_PROOF_STORAGE_DIR, '.data/delivery-proofs');
+  const custom = parseDeliveryConfig({
+    DELIVERY_OTP_TTL_SECONDS: '30',
+    DELIVERY_OTP_MAX_ATTEMPTS: '3',
+    DELIVERY_PROOF_REQUIRED: 'false',
   });
-  assert.deepEqual(
-    parseDeliveryConfig({ DELIVERY_OTP_TTL_SECONDS: '30', DELIVERY_OTP_MAX_ATTEMPTS: '3' }),
-    { DELIVERY_OTP_TTL_SECONDS: 30, DELIVERY_OTP_MAX_ATTEMPTS: 3 },
-  );
+  assert.equal(custom.DELIVERY_OTP_TTL_SECONDS, 30);
+  assert.equal(custom.DELIVERY_OTP_MAX_ATTEMPTS, 3);
+  assert.equal(custom.DELIVERY_PROOF_REQUIRED, false);
+  assert.throws(() => parseDeliveryConfig({ DELIVERY_PROOF_REQUIRED: 'yes' }));
+  assert.throws(() => parseDeliveryConfig({ DELIVERY_PROOF_MAX_BYTES: '5242881' }));
   for (const value of ['0', '-1', '601', 'abc'])
     assert.throws(() => parseDeliveryConfig({ DELIVERY_OTP_TTL_SECONDS: value }));
   assert.throws(() => parseDeliveryConfig({ DELIVERY_OTP_MAX_ATTEMPTS: '6' }));

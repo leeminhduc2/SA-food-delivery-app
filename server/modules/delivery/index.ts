@@ -5,11 +5,18 @@
  */
 export { deliveryRoutes } from './delivery.routes.js';
 export { createOtpChallenge } from './application/delivery-proof.service.js';
+export { cleanupStagedUploads } from './application/photo-proof.service.js';
+export { purgeExpiredProofPhotos } from './application/proof-retention.service.js';
+export { createLocalProofStorage } from './infrastructure/proof-storage.js';
+export { deliveryConfig } from './config.js';
 export {
   setDeliveryOrderGateway,
   type DeliverableOrder,
   type DeliveryOrderGateway,
   setDriverOverride,
+  setProofStorage,
+  setProofHoldGateway,
+  type ProofStorage,
 } from './delivery.ports.js';
 export {
   cancelDelivery,

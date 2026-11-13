@@ -256,8 +256,20 @@ components:
         description: { type: string, maxLength: 500 }
         price: { type: integer, minimum: 1000, maximum: 10000000, description: Whole VND }
         stock: { type: integer, minimum: 0, maximum: 100000 }
-        stockReason: { type: string, minLength: 3, maxLength: 300, description: Required with idempotencyKey when changing stock through PATCH }
-        idempotencyKey: { type: string, minLength: 8, maxLength: 120, description: Required with stockReason when changing stock through PATCH }
+        stockReason:
+          {
+            type: string,
+            minLength: 3,
+            maxLength: 300,
+            description: Required with idempotencyKey when changing stock through PATCH,
+          }
+        idempotencyKey:
+          {
+            type: string,
+            minLength: 8,
+            maxLength: 120,
+            description: Required with stockReason when changing stock through PATCH,
+          }
         available: { type: boolean }
         image: { type: string }
         category: { type: string, maxLength: 60, default: Main dishes }
@@ -276,7 +288,19 @@ components:
             category: { type: string }
             low_stock_threshold: { type: integer, minimum: 0, maximum: 100000 }
             sellable: { type: boolean }
-            unavailableReason: { type: [string, 'null'], enum: [RESTAURANT_UNAVAILABLE, RESTAURANT_CLOSED, ITEM_HIDDEN, ITEM_UNAVAILABLE, OUT_OF_STOCK, null] }
+            unavailableReason:
+              {
+                type: [string, 'null'],
+                enum:
+                  [
+                    RESTAURANT_UNAVAILABLE,
+                    RESTAURANT_CLOSED,
+                    ITEM_HIDDEN,
+                    ITEM_UNAVAILABLE,
+                    OUT_OF_STOCK,
+                    null,
+                  ],
+              }
             mock:
               type: boolean
               description: True when the dish belongs to the fictional demo catalog.
@@ -1854,7 +1878,12 @@ paths:
         required: true
         content:
           application/json:
-            schema: { type: object, required: [idempotencyKey], properties: { idempotencyKey: { type: string, minLength: 8, maxLength: 120 } } }
+            schema:
+              {
+                type: object,
+                required: [idempotencyKey],
+                properties: { idempotencyKey: { type: string, minLength: 8, maxLength: 120 } },
+              }
       responses:
         '200': { description: Challenge ID, one-time OTP or null, and expiry }
         '400': { $ref: '#/components/responses/BadRequest' }
@@ -1890,6 +1919,62 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+  /api/deliveries/{id}/proofs/photo:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Delivery]
+      operationId: uploadDeliveryPhoto
+      summary: Upload a private delivery photo for the current assignment
+      description: Raw JPEG or PNG body up to DELIVERY_PROOF_MAX_BYTES. The magic bytes must match Content-Type. VERIFIED means the file was validated and stored, not that the scene was checked. Replaying a key returns the original proof; a different photo with the same key conflicts.
+      security: [{ sessionCookie: [], requestedWithHeader: [] }]
+      parameters:
+        - in: header
+          name: X-Idempotency-Key
+          required: true
+          schema: { type: string, minLength: 8, maxLength: 120 }
+      requestBody:
+        required: true
+        content:
+          image/jpeg:
+            schema: { type: string, format: binary }
+          image/png:
+            schema: { type: string, format: binary }
+      responses:
+        '201': { description: 'Proof ID, method PHOTO and status VERIFIED; never a storage path' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '413': { description: Photo larger than the configured limit }
+        '415': { description: Not a JPEG or PNG, or the signature does not match Content-Type }
+        '503': { description: Private storage unavailable }
+  /api/deliveries/{id}/proofs/{proofId}/content:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+      - in: path
+        name: proofId
+        required: true
+        schema: { type: string }
+    get:
+      tags: [Delivery]
+      operationId: readDeliveryPhoto
+      summary: Read a photo proof as the order owner, restaurant member, final driver or admin
+      description: Authorized on every request and sent with Cache-Control private, no-store. Purged or missing bytes return 410; placeholder content is never returned.
+      security: [{ sessionCookie: [] }]
+      responses:
+        '200':
+          description: Photo bytes
+          content:
+            image/jpeg:
+              schema: { type: string, format: binary }
+            image/png:
+              schema: { type: string, format: binary }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '410': { description: Photo purged after retention or unavailable }
   /api/items/{id}/stock-adjustments:
     parameters:
       - $ref: '#/components/parameters/Id'
@@ -1906,11 +1991,18 @@ paths:
               type: object
               required: [delta, reason, idempotencyKey]
               properties:
-                delta: { type: integer, minimum: -100000, maximum: 100000, description: Nonzero change in available servings }
+                delta:
+                  {
+                    type: integer,
+                    minimum: -100000,
+                    maximum: 100000,
+                    description: Nonzero change in available servings,
+                  }
                 reason: { type: string, minLength: 3, maxLength: 300 }
                 idempotencyKey: { type: string, minLength: 8, maxLength: 120 }
       responses:
-        '200': { description: Movement ID, current stock, and original balanceAfter for this operation }
+        '200':
+          { description: Movement ID, current stock, and original balanceAfter for this operation }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -1925,7 +2017,11 @@ paths:
       summary: Read stock history as an owner or administrator
       security: [{ sessionCookie: [] }]
       parameters:
-        - { in: query, name: limit, schema: { type: integer, minimum: 1, maximum: 100, default: 25 } }
+        - {
+            in: query,
+            name: limit,
+            schema: { type: integer, minimum: 1, maximum: 100, default: 25 },
+          }
         - { in: query, name: cursor, schema: { type: string } }
       responses:
         '200': { description: Stock movement page with an opaque nextCursor }
@@ -1978,7 +2074,12 @@ paths:
         required: true
         content:
           application/json:
-            schema: { type: object, required: [name], properties: { name: { type: string, minLength: 1, maxLength: 60 } } }
+            schema:
+              {
+                type: object,
+                required: [name],
+                properties: { name: { type: string, minLength: 1, maxLength: 60 } },
+              }
       responses:
         '201': { description: Menu group created }
         '400': { $ref: '#/components/responses/BadRequest' }
@@ -1997,7 +2098,12 @@ paths:
         required: true
         content:
           application/json:
-            schema: { type: object, required: [name], properties: { name: { type: string, minLength: 1, maxLength: 60 } } }
+            schema:
+              {
+                type: object,
+                required: [name],
+                properties: { name: { type: string, minLength: 1, maxLength: 60 } },
+              }
       responses:
         '200': { description: Renamed menu group }
         '400': { $ref: '#/components/responses/BadRequest' }
@@ -2049,14 +2155,33 @@ paths:
       summary: List assignment searches
       security: [{ sessionCookie: [] }]
       parameters:
-        - { in: query, name: limit, schema: { type: integer, minimum: 1, maximum: 100, default: 25 } }
+        - {
+            in: query,
+            name: limit,
+            schema: { type: integer, minimum: 1, maximum: 100, default: 25 },
+          }
         - { in: query, name: cursor, schema: { type: string }, description: Opaque page cursor }
         - { in: query, name: status, schema: { type: string }, description: Search status }
         - { in: query, name: restaurantId, schema: { type: string } }
         - { in: query, name: orderId, schema: { type: string } }
-        - { in: query, name: driverId, schema: { type: string }, description: Current driver or a driver with an attempt }
-        - { in: query, name: from, schema: { type: string, format: date-time }, description: Inclusive UTC creation time }
-        - { in: query, name: to, schema: { type: string, format: date-time }, description: Exclusive UTC creation time }
+        - {
+            in: query,
+            name: driverId,
+            schema: { type: string },
+            description: Current driver or a driver with an attempt,
+          }
+        - {
+            in: query,
+            name: from,
+            schema: { type: string, format: date-time },
+            description: Inclusive UTC creation time,
+          }
+        - {
+            in: query,
+            name: to,
+            schema: { type: string, format: date-time },
+            description: Exclusive UTC creation time,
+          }
       responses:
         '200': { description: Assignment search page }
         '400': { $ref: '#/components/responses/BadRequest' }
@@ -2069,13 +2194,27 @@ paths:
       summary: List orders for operational monitoring
       security: [{ sessionCookie: [] }]
       parameters:
-        - { in: query, name: limit, schema: { type: integer, minimum: 1, maximum: 100, default: 25 } }
+        - {
+            in: query,
+            name: limit,
+            schema: { type: integer, minimum: 1, maximum: 100, default: 25 },
+          }
         - { in: query, name: cursor, schema: { type: string } }
         - { in: query, name: status, schema: { type: string } }
         - { in: query, name: restaurantId, schema: { type: string } }
         - { in: query, name: driverId, schema: { type: string } }
-        - { in: query, name: from, schema: { type: string, format: date-time }, description: Inclusive UTC order creation time }
-        - { in: query, name: to, schema: { type: string, format: date-time }, description: Exclusive UTC order creation time }
+        - {
+            in: query,
+            name: from,
+            schema: { type: string, format: date-time },
+            description: Inclusive UTC order creation time,
+          }
+        - {
+            in: query,
+            name: to,
+            schema: { type: string, format: date-time },
+            description: Exclusive UTC order creation time,
+          }
       responses:
         '200': { description: Page with items and nextCursor }
         '400': { $ref: '#/components/responses/BadRequest' }
@@ -2089,13 +2228,27 @@ paths:
       description: Creation-time filters and ordering use the associated order creation time.
       security: [{ sessionCookie: [] }]
       parameters:
-        - { in: query, name: limit, schema: { type: integer, minimum: 1, maximum: 100, default: 25 } }
+        - {
+            in: query,
+            name: limit,
+            schema: { type: integer, minimum: 1, maximum: 100, default: 25 },
+          }
         - { in: query, name: cursor, schema: { type: string } }
         - { in: query, name: status, schema: { type: string } }
         - { in: query, name: restaurantId, schema: { type: string } }
         - { in: query, name: driverId, schema: { type: string } }
-        - { in: query, name: from, schema: { type: string, format: date-time }, description: Inclusive UTC order creation time }
-        - { in: query, name: to, schema: { type: string, format: date-time }, description: Exclusive UTC order creation time }
+        - {
+            in: query,
+            name: from,
+            schema: { type: string, format: date-time },
+            description: Inclusive UTC order creation time,
+          }
+        - {
+            in: query,
+            name: to,
+            schema: { type: string, format: date-time },
+            description: Exclusive UTC order creation time,
+          }
       responses:
         '200': { description: Page with items and nextCursor }
         '400': { $ref: '#/components/responses/BadRequest' }
@@ -2163,7 +2316,12 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
   /api/admin/alerts/{kind}/{id}/acknowledge:
     parameters:
-      - { in: path, name: kind, required: true, schema: { type: string, enum: [EXHAUSTED, INCIDENT] } }
+      - {
+          in: path,
+          name: kind,
+          required: true,
+          schema: { type: string, enum: [EXHAUSTED, INCIDENT] },
+        }
       - $ref: '#/components/parameters/Id'
     post:
       tags: [Admin]

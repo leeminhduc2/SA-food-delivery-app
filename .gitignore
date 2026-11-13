@@ -10,3 +10,4 @@ backups/
 .tmp/
 
 CLAUDE.md
+.data/

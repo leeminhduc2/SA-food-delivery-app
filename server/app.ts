@@ -152,6 +152,11 @@ export function createApp() {
         code = 'CONFLICT';
         message = 'This record already exists.';
       }
+      if (error.type === 'entity.too.large') {
+        status = 413;
+        code = 'PAYLOAD_TOO_LARGE';
+        message = 'The request body is too large.';
+      }
       if (error.type === 'entity.parse.failed') {
         status = 400;
         code = 'INVALID_JSON';

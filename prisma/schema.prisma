@@ -352,6 +352,13 @@ model DeliveryProof {
   challenge_id String? @unique
   method String
   status String
+  driver_id String?
+  storage_key String? @unique
+  content_type String?
+  byte_size Int?
+  sha256 String?
+  key_hash String?
+  purged_at DateTime? @db.Timestamptz(6)
   created_at DateTime @default(now()) @db.Timestamptz(6)
   delivery Delivery @relation(fields: [delivery_id], references: [id], onDelete: Restrict, onUpdate: Restrict)
   assignment DriverAssignment @relation(fields: [assignment_id], references: [id], onDelete: Restrict, onUpdate: Restrict)
@@ -359,6 +366,17 @@ model DeliveryProof {
   attempts DeliveryOtpAttempt[]
   @@index([delivery_id, assignment_id, status], map: "delivery_proofs_assignment")
   @@map("delivery_proofs")
+}
+
+model DeliveryProofUpload {
+  storage_key String @id
+  delivery_id String
+  attempts Int @default(0)
+  last_error String?
+  next_attempt_at DateTime @default(now()) @db.Timestamptz(6)
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  @@index([next_attempt_at], map: "delivery_proof_uploads_due")
+  @@map("delivery_proof_uploads")
 }
 
 model DeliveryOtpAttempt {

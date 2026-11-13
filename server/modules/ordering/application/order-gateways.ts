@@ -8,6 +8,7 @@ import {
   isReadyForPickup,
 } from '../domain/order-status.js';
 import * as orders from '../infrastructure/order.repository.js';
+import { accessOrder } from './order-queries.js';
 
 const toPayable = (row: orders.OrderRow | undefined): PayableOrder | undefined =>
   row && { id: row.id, status: row.status, expiresAt: row.expires_at };
@@ -29,4 +30,7 @@ export const deliveryOrderGateway: DeliveryOrderGateway = {
   },
   acceptsDriverAssignment: (order) => acceptsDriverAssignment(order.status),
   isReadyForPickup: (order) => isReadyForPickup(order.status),
+  authorizeViewer: async (actor, orderId) => {
+    await accessOrder(undefined, actor, orderId);
+  },
 };

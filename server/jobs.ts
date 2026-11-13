@@ -6,6 +6,7 @@ import { expireUnpaidOrders } from './modules/ordering/index.js';
 import { reconcilePayments } from './modules/payment/index.js';
 import { purgeStaleDriverLocations } from './modules/location/index.js';
 import { runAssignmentWorker, runOperationalInvalidation } from './modules/assignment/index.js';
+import { cleanupStagedUploads, purgeExpiredProofPhotos } from './modules/delivery/index.js';
 
 /** Settle payments with the provider, then release orders whose window closed. */
 export async function runPaymentMaintenance(): Promise<void> {
@@ -25,6 +26,8 @@ export async function runBackgroundCycle(): Promise<void> {
     { name: 'notification', run: deliverNotifications },
     { name: 'session cleanup', run: purgeExpiredSessions },
     { name: 'location cleanup', run: purgeStaleDriverLocations },
+    { name: 'proof upload cleanup', run: () => cleanupStagedUploads() },
+    { name: 'proof retention', run: () => purgeExpiredProofPhotos() },
   ]);
 }
 

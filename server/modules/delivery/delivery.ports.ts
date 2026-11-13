@@ -9,6 +9,8 @@ export interface DeliveryOrderGateway {
   lockOrder(db: DB, orderId: string): Promise<DeliverableOrder | undefined>;
   acceptsDriverAssignment(order: DeliverableOrder): boolean;
   isReadyForPickup(order: DeliverableOrder): boolean;
+  /** Throws 403/404 unless the actor may read this order (owner, member, assigned driver, admin). */
+  authorizeViewer(actor: User, orderId: string): Promise<void>;
 }
 
 let gateway: DeliveryOrderGateway | undefined;
@@ -35,4 +37,33 @@ export function setDriverOverride(implementation: DriverOverride): void {
 export function getDriverOverride(): DriverOverride {
   if (!driverOverride) throw new Error('Driver override capability is not configured.');
   return driverOverride;
+}
+
+/** Private bytes for photo proofs. Keys come from newKey(), never from request input. */
+export interface ProofStorage {
+  newKey(): string;
+  put(key: string, bytes: Buffer): Promise<void>;
+  /** null when the bytes are missing; never substitutes placeholder content. */
+  read(key: string): Promise<Buffer | null>;
+  /** Idempotent: removing a missing key succeeds. */
+  remove(key: string): Promise<void>;
+}
+let storage: ProofStorage | undefined;
+export function setProofStorage(implementation: ProofStorage): void {
+  storage = implementation;
+}
+export function proofStorage(): ProofStorage {
+  if (!storage) throw new Error('Proof storage is not configured.');
+  return storage;
+}
+
+/** Legal hold source owned by Support. Delivery never reads complaints directly. */
+export type ProofHoldGateway = { hasOpenComplaint(orderId: string): Promise<boolean> };
+let holds: ProofHoldGateway | undefined;
+export function setProofHoldGateway(implementation: ProofHoldGateway): void {
+  holds = implementation;
+}
+export function proofHolds(): ProofHoldGateway {
+  if (!holds) throw new Error('Proof hold gateway is not configured.');
+  return holds;
 }
