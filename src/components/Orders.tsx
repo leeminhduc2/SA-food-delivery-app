@@ -25,11 +25,13 @@ export function OrderCard({
     [content, setContent] = useState(''),
     [driver, setDriver] = useState(''),
     [overrideReason, setOverrideReason] = useState(''),
+    [rejectionReason, setRejectionReason] = useState(''),
     [exceptionCode, setExceptionCode] = useState('NO_DRIVER'),
     [trackingOpen, setTrackingOpen] = useState(false),
     [support, setSupport] = useState(false);
   const arrivalKey = useRef(crypto.randomUUID());
   const overrideKeys = useRef<Record<string, string>>({});
+  const rejectionKeys = useRef<Record<string, string>>({});
   const stages = [
     'PENDING_PAYMENT',
     'CONFIRMED',
@@ -169,6 +171,43 @@ export function OrderCard({
           <ChevronRight size={17} />
         </button>
       )}
+      {actor.role === 'RESTAURANT' && o.status === 'CONFIRMED' && (
+        <details>
+          <summary>Reject this order</summary>
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              const reason = rejectionReason.trim();
+              rejectionKeys.current[reason] ||= crypto.randomUUID();
+              void action(`/orders/${o.id}/reject`, {
+                reason,
+                idempotencyKey: rejectionKeys.current[reason],
+              });
+            }}
+          >
+            <p className="muted">
+              Reject before accepting. A successful payment enters the refund queue.
+            </p>
+            <Field
+              label="Reason for rejection"
+              required
+              minLength={3}
+              maxLength={300}
+              value={rejectionReason}
+              onChange={(event) => setRejectionReason(event.target.value)}
+            />
+            <button className="button secondary" disabled={busy}>
+              Confirm rejection
+            </button>
+          </form>
+        </details>
+      )}
+      {actor.role === 'RESTAURANT' &&
+        ['ACCEPTED', 'PREPARING', 'READY_FOR_PICKUP'].includes(o.status) && (
+          <p className="small-text muted">
+            After acceptance, contact support if the order cannot be prepared.
+          </p>
+        )}
       {actor.role === 'DRIVER' && deliveryNext[o.delivery.status] && (
         <>
           <button

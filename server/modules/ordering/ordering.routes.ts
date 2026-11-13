@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { actor } from '../../shared/http/actor.js';
 import * as cart from './application/cart.js';
 import { checkout } from './application/checkout.js';
-import { cancel, simulatePayment, transition } from './application/order-lifecycle.js';
+import { cancel, rejectOrder, simulatePayment, transition } from './application/order-lifecycle.js';
 import { detail, list, quote } from './application/order-queries.js';
 
 export const orderRoutes = Router();
@@ -45,6 +45,12 @@ orderRoutes.post('/orders/:id/transition', async (req, res) => {
 orderRoutes.post('/orders/:id/cancel', async (req, res) => {
   const owner = actor(req, 'CUSTOMER', 'RESTAURANT', 'ADMIN');
   res.json(await cancel(owner, String(req.params.id), req.body));
+});
+
+orderRoutes.post('/orders/:id/reject', async (req, res) => {
+  res.json(
+    await rejectOrder(actor(req, 'RESTAURANT'), String(req.params.id), req.body, req.requestId),
+  );
 });
 
 orderRoutes.post('/orders/:id/simulate-payment', async (req, res) => {

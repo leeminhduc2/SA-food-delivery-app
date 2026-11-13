@@ -31,7 +31,7 @@ Trạng thái này là triển khai **ứng dụng**, không phải soạn tài 
 | [P07-T03](../phases/P07-admin-monitoring-and-reassignment.md#p07-t03) | Retry/reassign ngoại lệ và account lock          | DONE        | [run](runs/20261113-1621-P07-T03.md) | —        |
 | [P08-T01](../phases/P08-restaurant-profile-menus-hours.md#p08-t01)    | Phone và lịch mở cửa có cấu trúc                 | DONE        | [run](runs/20261113-1629-P08-T01.md) | —        |
 | [P08-T02](../phases/P08-restaurant-profile-menus-hours.md#p08-t02)    | CRUD nhóm món có ownership                       | DONE        | [run](runs/20261113-1636-P08-T02.md) | —        |
-| [P08-T03](../phases/P08-restaurant-profile-menus-hours.md#p08-t03)    | Restaurant reject và workspace                   | NOT_STARTED | —                                    | —        |
+| [P08-T03](../phases/P08-restaurant-profile-menus-hours.md#p08-t03)    | Restaurant reject và workspace                   | DONE        | [run](runs/20261113-1645-P08-T03.md) | —        |
 | [P09-T01](../phases/P09-inventory-ledger-and-alerts.md#p09-t01)       | Opening balance và StockMovement                 | NOT_STARTED | —                                    | —        |
 | [P09-T02](../phases/P09-inventory-ledger-and-alerts.md#p09-t02)       | Hợp nhất đường ghi tồn và stock adjustment       | NOT_STARTED | —                                    | —        |
 | [P09-T03](../phases/P09-inventory-ledger-and-alerts.md#p09-t03)       | Low-stock alert và effective sellability         | NOT_STARTED | —                                    | —        |

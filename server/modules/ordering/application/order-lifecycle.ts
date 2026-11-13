@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { transaction, type DB } from '../../../shared/db.js';
 import { check } from '../../../shared/errors.js';
 import type { User } from '../../../shared/types.js';
@@ -13,7 +14,7 @@ import {
   isAwaitingPayment,
 } from '../domain/order-status.js';
 import * as orders from '../infrastructure/order.repository.js';
-import { cancelSchema, transitionSchema } from '../ordering.schemas.js';
+import { cancelSchema, rejectSchema, transitionSchema } from '../ordering.schemas.js';
 import { accessOrder, orderDetail } from './order-queries.js';
 import { restaurantRecipients } from './notification-recipients.js';
 
@@ -92,6 +93,18 @@ export async function transition(actor: User, orderId: string, raw: unknown): Pr
   return orderDetail(orderId);
 }
 
+async function compensateCancellation(
+  db: DB,
+  order: orders.OrderRow,
+  actorId: string,
+  reason: string,
+) {
+  await cancelPayment(db, order.id, actorId);
+  await cancelDelivery(db, order.id, actorId);
+  await releaseOrderStock(db, order.id);
+  await changeOrder(db, order, 'CANCELLED', actorId, reason);
+}
+
 export async function cancel(actor: User, orderId: string, raw: unknown): Promise<any> {
   const { reason } = cancelSchema.parse(raw);
   await transaction(async (db) => {
@@ -102,11 +115,71 @@ export async function cancel(actor: User, orderId: string, raw: unknown): Promis
       'CANCELLATION_NOT_ALLOWED',
       'Cancellation is available only before the restaurant accepts. Contact support for later issues.',
     );
-    await cancelPayment(db, order.id, actor.id);
-    await cancelDelivery(db, order.id, actor.id);
-    await releaseOrderStock(db, order.id);
-    await changeOrder(db, order, 'CANCELLED', actor.id, reason);
+    await compensateCancellation(db, order, actor.id, reason);
     await audits.audit(actor.id, 'ORDER_CANCELLED', order.id, { reason }, db);
+  });
+  return orderDetail(orderId);
+}
+
+export async function rejectOrder(
+  actor: User,
+  orderId: string,
+  raw: unknown,
+  correlationId?: string,
+): Promise<any> {
+  check(actor.role === 'RESTAURANT', 403, 'FORBIDDEN', 'Restaurant access required.');
+  const input = rejectSchema.parse(raw);
+  const hash = (value: string) => createHash('sha256').update(value).digest('hex');
+  const keyHash = hash(input.idempotencyKey),
+    fingerprint = hash(input.reason);
+  await transaction(async (db) => {
+    const order = await accessOrder(db, actor, orderId, true);
+    const receipt = await audits.findCommandReceipt(
+      actor.id,
+      'RESTAURANT_REJECTED',
+      order.id,
+      keyHash,
+      db,
+    );
+    if (receipt) {
+      check(
+        receipt.fingerprint === fingerprint,
+        409,
+        'IDEMPOTENCY_CONFLICT',
+        'This key was used with different details.',
+      );
+      return;
+    }
+    check(
+      order.status === 'CONFIRMED',
+      409,
+      'REJECTION_NOT_ALLOWED',
+      'Only confirmed orders can be rejected before acceptance.',
+    );
+    await compensateCancellation(db, order, actor.id, `RESTAURANT_REJECTED: ${input.reason}`);
+    await audits.audit(
+      actor.id,
+      'RESTAURANT_REJECTED',
+      order.id,
+      { keyHash, fingerprint, reason: input.reason },
+      db,
+      { resourceType: 'ORDER', outcome: 'SUCCESS', correlationId },
+    );
+    await notifyOnce(
+      db,
+      order.customer_id,
+      'ORDER_REJECTED',
+      { orderId: order.id, reason: input.reason },
+      order.id,
+    );
+    for (const memberId of await restaurantRecipients(order.restaurant_id, db))
+      await notifyOnce(
+        db,
+        memberId,
+        'RESTAURANT_ORDER_REJECTED',
+        { orderId: order.id, reason: input.reason },
+        order.id,
+      );
   });
   return orderDetail(orderId);
 }

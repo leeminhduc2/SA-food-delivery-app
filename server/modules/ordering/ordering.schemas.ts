@@ -15,3 +15,6 @@ export const transitionSchema = z.object({
 });
 
 export const cancelSchema = z.object({ reason: z.string().trim().min(3).max(300) });
+export const rejectSchema = z
+  .object({ reason: z.string().trim().min(3).max(300), idempotencyKey: z.string().min(8).max(120) })
+  .strict();
