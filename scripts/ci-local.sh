@@ -7,6 +7,7 @@
 #   CI_DATABASE_URL=postgresql://user:pass@host:5432/db bash scripts/ci-local.sh
 #                                         # reuse an existing database instead of Docker
 #   SKIP_INSTALL=1 bash scripts/ci-local.sh   # skip `npm ci` when node_modules is current
+#   SKIP_E2E=1 bash scripts/ci-local.sh       # skip the Playwright browser suites
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -74,6 +75,7 @@ export REDIS_URL="$CI_REDIS_URL"
 export PRISMA_HIDE_UPDATE_MESSAGE=1
 export DOTENV_CONFIG_PATH=.env.ci-local-none
 export CI=true
+export REQUIRE_REDIS=1
 
 if [ -z "${SKIP_INSTALL:-}" ]; then
   step 'Install dependencies'
@@ -102,6 +104,14 @@ for i in $(seq 1 "$TEST_REPEAT"); do
   step "Run integration and smoke tests ($i/$TEST_REPEAT)"
   npm test || fail "npm test failed on run $i/$TEST_REPEAT"
 done
+
+if [ -z "${SKIP_E2E:-}" ]; then
+  step 'Run browser tests'
+  npm run test:e2e || fail 'browser tests failed (traces in test-results/)'
+  step 'Run browser tests with automatic assignment'
+  ASSIGNMENT_AUTOMATION_ENABLED=true npx playwright test tests/browser/offer-flow.spec.ts ||
+    fail 'automation browser tests failed (traces in test-results/)'
+fi
 
 step 'Validate Compose configuration'
 if docker info >/dev/null 2>&1; then

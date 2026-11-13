@@ -5,3 +5,6 @@ package-lock.json
 Phase_1_Food_Delivery.md
 public/images
 test-results
+# Source inputs authored outside this repository's formatter; kept verbatim.
+docs/phase 2/IMPLEMENTATION_STATUS_AUDIT.md
+docs/phase 2/SA_Food_Delivery_AI_Coding_Master_Prompt.md
