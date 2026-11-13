@@ -118,6 +118,15 @@ export async function deliveryForAssignment(deliveryId: string, db: DB = prisma)
   return deliveries.findById(deliveryId, db);
 }
 
+export async function hasOperationalIncident(deliveryId: string, db: DB = prisma) {
+  return Boolean(
+    await db.deliveryIncident.findFirst({
+      where: { delivery_id: deliveryId, status: 'OPEN', type: 'DRIVER_UNAVAILABLE' },
+      select: { id: true },
+    }),
+  );
+}
+
 /** Caller holds Order, Delivery and both Driver locks and has checked eligibility. */
 export async function applyAdminDriverOverride(
   delivery: { id: string; order_id: string; driver_id: string | null; status: string },

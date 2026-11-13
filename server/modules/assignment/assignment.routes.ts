@@ -7,8 +7,12 @@ import {
 } from './application/availability.service.js';
 import { respondToOffer } from './application/offer-response.service.js';
 import { overrideDriver } from './application/admin-override.service.js';
+import { retrySearch } from './application/admin-retry.service.js';
 import { listDriverOffers, adminSearchDetail } from './application/offer-queries.service.js';
 export const assignmentRoutes = Router();
+assignmentRoutes.post('/admin/assignments/:id/retry', async (req, res) =>
+  res.json(await retrySearch(actor(req, 'ADMIN'), String(req.params.id), req.body, req.requestId)),
+);
 assignmentRoutes.post('/admin/deliveries/:id/reassign', async (req, res) =>
   res.json(
     await overrideDriver(actor(req, 'ADMIN'), String(req.params.id), req.body, req.requestId),

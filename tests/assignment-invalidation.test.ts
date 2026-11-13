@@ -189,6 +189,165 @@ test('locked account before pickup releases trip and schedules a new generation'
   );
 });
 
+test('admin retry creates one new generation and enforces eligibility and receipts', async () => {
+  const f = await fixture('admin-retry', 'OFFERED');
+  const actor = {
+    ...(await db.prisma.user.findUniqueOrThrow({ where: { id: 'admin' } })),
+    role: 'ADMIN' as const,
+  };
+  const { retrySearch } =
+    await import('../server/modules/assignment/application/admin-retry.service.js');
+  const input = { reason: 'Retry after operations review', idempotencyKey: 'retry-search-key-1' };
+  await assert.rejects(retrySearch(actor, f.search, { ...input, reason: '' }));
+  await assert.rejects(retrySearch(actor, f.search, input));
+  await db.prisma.driverOffer.update({
+    where: { id: 'offer-admin-retry' },
+    data: { status: 'EXPIRED' },
+  });
+  await db.prisma.assignmentSearch.update({
+    where: { id: f.search },
+    data: { status: 'EXHAUSTED' },
+  });
+  const [first, replay] = await Promise.all([
+    retrySearch(actor, f.search, input),
+    retrySearch(actor, f.search, input),
+  ]);
+  assert.deepEqual(first, replay);
+  assert.equal(first.generation, 2);
+  assert.equal(await db.prisma.assignmentSearch.count({ where: { delivery_id: f.delivery } }), 2);
+  assert.equal(
+    await db.prisma.auditLog.count({
+      where: { resource_id: f.search, action: 'ADMIN_SEARCH_RETRY' },
+    }),
+    1,
+  );
+  await assert.rejects(retrySearch(actor, f.search, { ...input, reason: 'Changed reason' }));
+  await assert.rejects(
+    retrySearch(actor, f.search, { ...input, idempotencyKey: 'another-retry-key' }),
+  );
+  const picked = await fixture('retry-picked-up', 'PICKED_UP');
+  await db.prisma.assignmentSearch.update({
+    where: { id: picked.search },
+    data: { status: 'EXHAUSTED' },
+  });
+  await assert.rejects(
+    retrySearch(actor, picked.search, { ...input, idempotencyKey: 'retry-picked-key' }),
+  );
+  const incident = await fixture('retry-incident', 'OFFERED');
+  await db.prisma.driverOffer.update({
+    where: { id: 'offer-retry-incident' },
+    data: { status: 'REVOKED' },
+  });
+  await db.prisma.assignmentSearch.update({
+    where: { id: incident.search },
+    data: { status: 'CANCELLED' },
+  });
+  await db.prisma.deliveryIncident.create({
+    data: {
+      id: 'retry-incident-open',
+      delivery_id: incident.delivery,
+      order_id: 'operational-order-retry-incident',
+      type: 'DRIVER_UNAVAILABLE',
+      reason: 'Offline',
+    },
+  });
+  assert.equal(
+    (await retrySearch(actor, incident.search, { ...input, idempotencyKey: 'retry-incident-key' }))
+      .generation,
+    2,
+  );
+  const customer = {
+    ...(await db.prisma.user.findUniqueOrThrow({ where: { id: 'customer' } })),
+    role: 'CUSTOMER' as const,
+  };
+  await assert.rejects(retrySearch(customer, incident.search, input));
+});
+
+for (const winner of ['pickup', 'reassign'] as const) {
+  test(`${winner} wins the order lock against the other operation`, async () => {
+    const f = await fixture(`race-${winner}`, 'ASSIGNED');
+    const replacement = await fixture(`replacement-${winner}`, 'OFFERED');
+    await db.prisma.driverOffer.update({
+      where: { id: `offer-replacement-${winner}` },
+      data: { status: 'REVOKED' },
+    });
+    const orderId = `operational-order-race-${winner}`;
+    await db.prisma.order.update({ where: { id: orderId }, data: { status: 'READY_FOR_PICKUP' } });
+    const actor = {
+      ...(await db.prisma.user.findUniqueOrThrow({ where: { id: 'admin' } })),
+      role: 'ADMIN' as const,
+    };
+    const driver = {
+      ...(await db.prisma.user.findUniqueOrThrow({ where: { id: f.driver } })),
+      role: 'DRIVER' as const,
+    };
+    const { overrideDriver } =
+      await import('../server/modules/assignment/application/admin-override.service.js');
+    const { transition } =
+      await import('../server/modules/delivery/application/delivery.service.js');
+    const { detail } = await import('../server/modules/ordering/application/order-queries.js');
+    const blocker = await admin.connect();
+    try {
+      await blocker.query(`SET search_path TO "${schema}"`);
+      await blocker.query('BEGIN');
+      await blocker.query('SELECT id FROM orders WHERE id = $1 FOR UPDATE', [orderId]);
+      const pickup = () => transition(driver, f.delivery, { status: 'PICKED_UP' });
+      const reassign = () =>
+        overrideDriver(actor, f.delivery, {
+          driverId: replacement.driver,
+          reason: 'Driver unavailable',
+          exceptionCode: 'DRIVER_UNAVAILABLE',
+          idempotencyKey: `race-${winner}-key`,
+        });
+      const operations = winner === 'pickup' ? [pickup, reassign] : [reassign, pickup];
+      const first = operations[0]();
+      const waitFor = async (count: number) => {
+        for (let i = 0; i < 100; i++) {
+          const result = await admin.query(
+            "SELECT count(*)::int AS count FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock' AND query LIKE '%SELECT id FROM orders WHERE id =%' AND pid <> pg_backend_pid()",
+          );
+          if (result.rows[0].count >= count) return;
+          await new Promise((resolve) => setTimeout(resolve, 25));
+        }
+        throw new Error('Commands did not reach order lock barrier');
+      };
+      await waitFor(1);
+      const second = operations[1]();
+      const results = Promise.allSettled([first, second]);
+      await waitFor(2);
+      await blocker.query('COMMIT');
+      const outcomes = await results;
+      assert.equal(outcomes[0].status, 'fulfilled');
+      assert.equal(outcomes[1].status, 'rejected');
+      const delivery = await db.prisma.delivery.findUniqueOrThrow({ where: { id: f.delivery } });
+      if (winner === 'pickup') {
+        assert.equal(delivery.status, 'PICKED_UP');
+        assert.equal(delivery.driver_id, f.driver);
+      } else {
+        assert.equal(delivery.status, 'ASSIGNED');
+        assert.equal(delivery.driver_id, replacement.driver);
+        await assert.rejects(detail(driver, orderId));
+        const audit = await db.prisma.auditLog.findFirstOrThrow({
+          where: { action: 'ADMIN_DRIVER_OVERRIDE', resource_id: f.delivery },
+        });
+        assert.equal((audit.detail as any).oldDriverId, f.driver);
+      }
+      assert.equal(
+        await db.prisma.driverAssignment.count({
+          where: { delivery_id: f.delivery, active: true },
+        }),
+        1,
+      );
+    } finally {
+      await blocker.query('ROLLBACK').catch(() => undefined);
+      blocker.release();
+      await db.prisma.driverOperationalChange.deleteMany({
+        where: { driver_id: replacement.driver, reason: 'ADMIN_OVERRIDE' },
+      });
+    }
+  });
+}
+
 test('locked account after pickup retains occupancy and opens a single incident', async () => {
   const f = await fixture('pickup', 'PICKED_UP');
   await db.prisma.user.update({ where: { id: f.driver }, data: { active: false } });

@@ -1887,6 +1887,32 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /api/admin/assignments/{id}/retry:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Admin]
+      operationId: retryAssignmentSearch
+      summary: Start a new search generation after exhaustion or an operational incident
+      security: [{ sessionCookie: [], requestedWithHeader: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason, idempotencyKey]
+              properties:
+                reason: { type: string, minLength: 3, maxLength: 300 }
+                idempotencyKey: { type: string, minLength: 8, maxLength: 120 }
+      responses:
+        '200': { description: New search ID and generation, or original receipt }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
   /api/admin/monitoring/summary:
     get:
       tags: [Admin]

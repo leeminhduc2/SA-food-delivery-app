@@ -52,6 +52,111 @@ async function read(url: string, signal?: AbortSignal) {
   if (!response.ok) throw new Error(data.message || 'Could not load monitoring data.');
   return data;
 }
+
+function Intervention({ detail, refreshed }: { detail: Detail; refreshed: () => void }) {
+  const [reason, setReason] = useState('');
+  const [driverId, setDriverId] = useState('');
+  const [exceptionCode, setExceptionCode] = useState('NO_DRIVER');
+  const [message, setMessage] = useState('');
+  const [working, setWorking] = useState(false);
+  const retryKey = useRef(crypto.randomUUID()),
+    reassignKey = useRef(crypto.randomUUID());
+  function changed() {
+    retryKey.current = crypto.randomUUID();
+    reassignKey.current = crypto.randomUUID();
+  }
+  async function submit(action: 'retry' | 'reassign') {
+    setWorking(true);
+    setMessage('');
+    try {
+      const path =
+        action === 'retry'
+          ? `/api/admin/assignments/${encodeURIComponent(detail.searchId)}/retry`
+          : `/api/admin/deliveries/${encodeURIComponent(detail.deliveryId)}/reassign`;
+      const body =
+        action === 'retry'
+          ? { reason, idempotencyKey: retryKey.current }
+          : { reason, driverId, exceptionCode, idempotencyKey: reassignKey.current };
+      const response = await fetch(path, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'Bep' },
+        body: JSON.stringify(body),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.message || 'Intervention failed.');
+      setMessage(
+        action === 'retry' ? `Search generation ${result.generation} started.` : 'Driver assigned.',
+      );
+      changed();
+      refreshed();
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : 'Intervention failed.');
+    } finally {
+      setWorking(false);
+    }
+  }
+  return (
+    <section className="assignment-intervention" aria-label="Assignment intervention">
+      <h4>Intervention</h4>
+      <p>Assignment is allowed only before pickup and remains subject to driver eligibility.</p>
+      <label>
+        Reason
+        <input
+          value={reason}
+          maxLength={300}
+          onChange={(e) => {
+            setReason(e.target.value);
+            changed();
+          }}
+        />
+      </label>
+      {detail.status === 'EXHAUSTED' && (
+        <button
+          type="button"
+          className="button secondary"
+          disabled={working || reason.trim().length < 3}
+          onClick={() => void submit('retry')}
+        >
+          Retry search
+        </button>
+      )}
+      <label>
+        Replacement driver ID
+        <input
+          value={driverId}
+          onChange={(e) => {
+            setDriverId(e.target.value);
+            changed();
+          }}
+        />
+      </label>
+      <label>
+        Exception
+        <select
+          value={exceptionCode}
+          onChange={(e) => {
+            setExceptionCode(e.target.value);
+            changed();
+          }}
+        >
+          <option value="NO_DRIVER">No driver</option>
+          <option value="DRIVER_UNAVAILABLE">Driver unavailable</option>
+          <option value="OPERATIONAL_ERROR">Operational error</option>
+        </select>
+      </label>
+      <button
+        type="button"
+        className="button secondary"
+        disabled={working || reason.trim().length < 3 || !driverId.trim()}
+        onClick={() => void submit('reassign')}
+      >
+        Assign replacement driver
+      </button>
+      {message && <p role="status">{message}</p>}
+    </section>
+  );
+}
 export function AdminAssignments() {
   const [form, setForm] = useState(blank),
     [filters, setFilters] = useState(blank);
@@ -336,6 +441,14 @@ export function AdminAssignments() {
                   {new Date(attempt.createdAt).toLocaleString()}
                 </p>
               ))}
+              <Intervention
+                key={detail.searchId}
+                detail={detail}
+                refreshed={() => {
+                  void load();
+                  setDetailRetry((value) => value + 1);
+                }}
+              />
             </>
           )}
         </section>

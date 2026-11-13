@@ -5,6 +5,16 @@ test('admin monitoring filters, timeline, acknowledgement and responsive fallbac
 }) => {
   let failRequests = true;
   let acknowledged = false;
+  let retryBody: any;
+  let reassignBody: any;
+  await page.route('**/api/admin/assignments/search-test/retry', (route) => {
+    retryBody = route.request().postDataJSON();
+    return route.fulfill({ json: { searchId: 'search-next', generation: 2 } });
+  });
+  await page.route('**/api/admin/deliveries/delivery-test/reassign', (route) => {
+    reassignBody = route.request().postDataJSON();
+    return route.fulfill({ json: { ok: true, assignmentId: 'assignment-next' } });
+  });
   await page.route('**/api/admin/monitoring/summary', (route) =>
     route.fulfill({
       json: {
@@ -119,6 +129,16 @@ test('admin monitoring filters, timeline, acknowledgement and responsive fallbac
   await panel.getByRole('button', { name: 'View search details' }).click();
   await expect(panel.getByLabel('Search details')).toContainText('Driver driver-a');
   await expect(panel.getByLabel('Search details')).toContainText('No candidate');
+  await panel.getByLabel('Reason', { exact: true }).fill('Operations review');
+  await panel.getByRole('button', { name: 'Retry search' }).click();
+  await expect.poll(() => retryBody?.reason).toBe('Operations review');
+  await expect(panel.getByLabel('Search details')).toContainText('Driver driver-a');
+  await panel.getByLabel('Reason', { exact: true }).fill('Driver unavailable');
+  await panel.getByLabel('Replacement driver ID').fill('driver-b');
+  await panel.getByRole('combobox', { name: 'Exception' }).selectOption('DRIVER_UNAVAILABLE');
+  await panel.getByRole('button', { name: 'Assign replacement driver' }).click();
+  await expect.poll(() => reassignBody?.driverId).toBe('driver-b');
+  expect(reassignBody.exceptionCode).toBe('DRIVER_UNAVAILABLE');
   await panel.getByRole('button', { name: 'Acknowledge' }).click();
   await expect(panel).toContainText('Acknowledged');
   for (const width of [375, 768, 1440]) {

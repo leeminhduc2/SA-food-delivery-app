@@ -25,6 +25,7 @@ export {
   trackingDeliveryForOrder,
   deliveryForAssignmentLocked,
   deliveryForAssignment,
+  hasOperationalIncident,
   applyAdminDriverOverride,
   confirmOfferAssignment,
 } from './application/delivery.service.js';

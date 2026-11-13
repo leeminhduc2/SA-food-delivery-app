@@ -181,6 +181,7 @@ export async function overrideDriver(
           keyHash,
           fingerprint,
           assignmentId,
+          oldDriverId: delivery.driver_id,
           driverId: input.driverId,
           reason: input.reason,
           exceptionCode: input.exceptionCode,
