@@ -111,6 +111,24 @@ export async function detailDelivery(orderId: string, db: DB = prisma): Promise<
   };
 }
 
+/** Latest refund operation for display; status labels come from the UI. */
+export async function detailRefund(orderId: string, db: DB = prisma): Promise<any | null> {
+  return (
+    (await db.refundRequest.findFirst({
+      where: { order_id: orderId },
+      select: {
+        id: true,
+        status: true,
+        amount: true,
+        source: true,
+        decision_reason: true,
+        created_at: true,
+      },
+      orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+    })) ?? null
+  );
+}
+
 export async function detailHistory(orderId: string, db: DB = prisma): Promise<any[]> {
   const rows = await db.stateHistory.findMany({
     where: { order_id: orderId },

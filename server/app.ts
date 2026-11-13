@@ -14,7 +14,7 @@ import { registerModules } from './modules/index.js';
 import { addressRoutes, trackingRoutes } from './modules/location/index.js';
 import { notificationRoutes } from './modules/notification/index.js';
 import { orderRoutes } from './modules/ordering/index.js';
-import { paymentRoutes } from './modules/payment/index.js';
+import { paymentRoutes, refundRoutes } from './modules/payment/index.js';
 import { reviewRoutes } from './modules/review/index.js';
 import { supportRoutes } from './modules/support/index.js';
 import { AppError } from './shared/errors.js';
@@ -123,6 +123,7 @@ export function createApp() {
     catalogRoutes,
     orderRoutes,
     deliveryRoutes,
+    refundRoutes,
     reviewRoutes,
     supportRoutes,
     notificationRoutes,

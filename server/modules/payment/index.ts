@@ -4,8 +4,11 @@
  * and announces outcomes as PaymentSucceeded / PaymentFailed events.
  */
 export { paymentRoutes } from './payment.routes.js';
+export { refundRoutes } from './refund.routes.js';
+export { processRefunds } from './application/refund.service.js';
 export {
   setPaymentOrderGateway,
+  setRefundContextGateway,
   type PaymentOrderGateway,
   type PayableOrder,
 } from './payment.ports.js';

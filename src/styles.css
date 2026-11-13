@@ -1569,12 +1569,14 @@ td small {
   font-size: 10px;
   margin-top: 4px;
 }
-.support-request {
+.support-request,
+.queue-item {
   padding: 18px 0;
   border-bottom: 1px solid var(--line);
   font-size: 13px;
 }
-.support-request p {
+.support-request p,
+.queue-item p {
   font-size: 13px;
 }
 .resolve-form {

@@ -3,6 +3,7 @@ import { check } from '../../../shared/errors.js';
 import * as audits from '../../../shared/audit.repository.js';
 import * as payments from '../infrastructure/payment.repository.js';
 import { paymentAdapter, providerCall } from '../infrastructure/payment-provider.js';
+import { attachRefundOperation } from './refund.service.js';
 
 /** Commands Ordering issues to Payment. Each runs inside the caller's transaction. */
 export async function createPayment(db: DB, orderId: string, amount: number): Promise<void> {
@@ -30,5 +31,6 @@ export async function cancelPayment(db: DB, orderId: string, actor: string): Pro
   if (next !== payment.status) {
     await payments.setStatus(payment.id, next, db);
     await audits.history(orderId, 'PAYMENT', payment.status, next, actor, '', db);
+    if (next === 'REFUND_PENDING') await attachRefundOperation(db, payment, 'CANCELLATION', actor);
   }
 }

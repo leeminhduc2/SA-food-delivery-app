@@ -40,6 +40,7 @@ export async function orderDetail(orderId: string, db?: DB): Promise<any> {
     delivery: await projection.detailDelivery(orderId, db),
     history: await projection.detailHistory(orderId, db),
     review: await projection.detailReview(orderId, db),
+    refund: await projection.detailRefund(orderId, db),
   };
 }
 

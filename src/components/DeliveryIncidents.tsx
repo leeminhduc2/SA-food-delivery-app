@@ -81,7 +81,7 @@ export function DeliveryIncidents({ onChanged }: { onChanged: () => Promise<void
             incident.type === 'DRIVER_UNAVAILABLE' &&
             ['PICKED_UP', 'IN_TRANSIT'].includes(incident.deliveryStatus);
           return (
-            <article className="support-request" key={incident.id}>
+            <article className="queue-item" key={incident.id}>
               <div className="between">
                 <strong>
                   {label(incident.type)} · Order #{incident.orderId.slice(0, 8).toUpperCase()}
@@ -100,7 +100,7 @@ export function DeliveryIncidents({ onChanged }: { onChanged: () => Promise<void
                 />
               </label>
               <label className="field">
-                Resolution
+                Incident resolution
                 <select
                   value={choices[incident.id] ?? 'NO_ACTION'}
                   onChange={(e) => setChoices({ ...choices, [incident.id]: e.target.value })}

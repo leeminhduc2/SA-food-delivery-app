@@ -1,15 +1,15 @@
 import { transaction } from '../../../shared/db.js';
 import { publish } from '../../../shared/events.js';
-import * as audits from '../../../shared/audit.repository.js';
 import * as payments from '../infrastructure/payment.repository.js';
 import { paymentAdapter, providerCall } from '../infrastructure/payment-provider.js';
 import { orderGateway } from '../payment.ports.js';
 import { cancelPayment, ensurePayment } from './payment-lifecycle.js';
 import { applyPayment } from './webhook.js';
+import { attachRefundOperation, processRefunds } from './refund.service.js';
 
 /**
- * Worker step: settles refunds, queries the provider for pending payments and
- * expires payments whose order window has closed. Expiring orders that never
+ * Worker step: queries the provider for pending payments, expires payments
+ * whose order window has closed, then runs the single refund executor. Expiring orders that never
  * reached the provider is Ordering's job (`expireUnpaidOrders`).
  */
 export async function reconcilePayments(): Promise<void> {
@@ -18,24 +18,9 @@ export async function reconcilePayments(): Promise<void> {
   for (const payment of pending) {
     try {
       if (payment.status === 'REFUND_PENDING') {
-        const result = await providerCall(paymentAdapter.refund(payment.reference));
-        if (result?.status === 'REFUNDED')
-          await transaction(async (db) => {
-            await orders.lockOrder(db, payment.order_id);
-            const current = await payments.findByIdForUpdate(payment.id, db);
-            if (current?.status === 'REFUND_PENDING') {
-              await payments.setRefunded(payment.id, db);
-              await audits.history(
-                payment.order_id,
-                'PAYMENT',
-                'REFUND_PENDING',
-                'REFUNDED',
-                'worker',
-                '',
-                db,
-              );
-            }
-          });
+        // Execution happens in processRefunds; only make sure an operation exists
+        // (rows queued by an older release or before refund requests existed).
+        await transaction((db) => attachRefundOperation(db, payment, 'LEGACY', 'worker'));
         continue;
       }
       if (payment.status === 'PENDING') await ensurePayment(payment.order_id);
@@ -79,6 +64,7 @@ export async function reconcilePayments(): Promise<void> {
       await payments.setNextReconcile(payment.id);
     }
   }
+  await processRefunds();
 }
 
 /** Back-office view: payments needing a human look or a pending refund. */

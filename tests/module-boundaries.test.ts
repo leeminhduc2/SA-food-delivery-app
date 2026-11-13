@@ -150,8 +150,20 @@ const owners: Record<string, { tables: string[]; models: string[] }> = {
   },
   ordering: { models: ['order', 'orderItem', 'cart'], tables: ['orders', 'order_items', 'carts'] },
   payment: {
-    models: ['payment', 'paymentEvent', 'simulatedTransaction'],
-    tables: ['payments', 'payment_events', 'simulated_transactions'],
+    models: [
+      'payment',
+      'paymentEvent',
+      'simulatedTransaction',
+      'refundRequest',
+      'refundRequestHistory',
+    ],
+    tables: [
+      'payments',
+      'payment_events',
+      'simulated_transactions',
+      'refund_requests',
+      'refund_request_history',
+    ],
   },
   delivery: {
     models: [

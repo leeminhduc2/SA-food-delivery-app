@@ -1049,7 +1049,8 @@ export function App() {
                     simulated={config.simulatedPayments}
                     busy={busy}
                     action={action}
-                    refresh={refreshOrders}
+                    refresh={refresh}
+                    complaints={complaints}
                     drivers={
                       overview?.users.filter((u: any) => u.role === 'DRIVER' && u.active) || []
                     }

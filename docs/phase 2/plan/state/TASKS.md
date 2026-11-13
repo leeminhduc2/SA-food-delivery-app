@@ -40,8 +40,8 @@ Trạng thái này là triển khai **ứng dụng**, không phải soạn tài 
 | [P10-T03](../phases/P10-delivery-proof.md#p10-t03)                    | Proof requirement và completion UI               | DONE        | [run](runs/20261113-1935-P10-T03.md) | —        |
 | [P11-T01](../phases/P11-support-review-failure-refund.md#p11-t01)     | Complaint đa role và review response             | DONE        | [run](runs/20261113-2010-P11-T01.md) | —        |
 | [P11-T02](../phases/P11-support-review-failure-refund.md#p11-t02)     | Failure incident và quyết định có evidence       | DONE        | [run](runs/20261113-2040-P11-T02.md) | —        |
-| [P11-T03](../phases/P11-support-review-failure-refund.md#p11-t03)     | Refund approval, execution và recovery           | IN_PROGRESS | —                                    | —        |
-| [P12-T01](../phases/P12-dashboards-history-earnings.md#p12-t01)       | Restaurant metrics có định nghĩa rõ              | NOT_STARTED | —                                    | —        |
+| [P11-T03](../phases/P11-support-review-failure-refund.md#p11-t03)     | Refund approval, execution và recovery           | DONE        | [run](runs/20261113-2130-P11-T03.md) | —        |
+| [P12-T01](../phases/P12-dashboards-history-earnings.md#p12-t01)       | Restaurant metrics có định nghĩa rõ              | IN_PROGRESS | —                                    | —        |
 | [P12-T02](../phases/P12-dashboards-history-earnings.md#p12-t02)       | Driver history, performance và earning           | NOT_STARTED | —                                    | —        |
 | [P12-T03](../phases/P12-dashboards-history-earnings.md#p12-t03)       | Admin KPI và time filters                        | NOT_STARTED | —                                    | —        |
 | [P13-T01](../phases/P13-assignment-strategies.md#p13-t01)             | Lowest ETA và fallback có nhãn                   | NOT_STARTED | —                                    | —        |

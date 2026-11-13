@@ -25,8 +25,10 @@ function useLoader<T>(path: string) {
 
 /** Restaurant replies and moderation requests. The customer's review text is read-only. */
 export function RestaurantReviews({ restaurants }: { restaurants: any[] }) {
-  const [restaurantId, setRestaurantId] = useState(restaurants[0]?.id ?? '');
+  const [chosen, setRestaurantId] = useState('');
   if (!restaurants.length) return null;
+  // The managed list loads after mount; default to the first restaurant.
+  const restaurantId = restaurants.some((r) => r.id === chosen) ? chosen : restaurants[0].id;
   return (
     <section className="panel" aria-labelledby="restaurant-reviews-heading">
       <h2 id="restaurant-reviews-heading">Customer reviews</h2>
@@ -94,7 +96,7 @@ function ReviewItem({ review, saved }: { review: any; saved: () => Promise<void>
     }
   }
   return (
-    <article className="support-request">
+    <article className="queue-item">
       <div className="between">
         <strong>{review.rating}/5</strong>
         <span className="status">{review.hidden ? 'Hidden' : 'Published'}</span>
@@ -219,7 +221,7 @@ export function ModerationRequests({ onDecided }: { onDecided: () => Promise<voi
         <p className="muted">No pending moderation requests.</p>
       ) : (
         data.items.map((request) => (
-          <article className="support-request" key={request.id}>
+          <article className="queue-item" key={request.id}>
             <p>
               <strong>{request.review.rating}/5</strong> · {request.review.content}
             </p>

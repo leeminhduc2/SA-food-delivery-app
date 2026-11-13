@@ -8,6 +8,7 @@ import * as payments from '../infrastructure/payment.repository.js';
 import { paymentAdapter } from '../infrastructure/payment-provider.js';
 import { orderGateway } from '../payment.ports.js';
 import { ensurePayment } from './payment-lifecycle.js';
+import { attachRefundOperation } from './refund.service.js';
 
 export const eventSchema = z.object({
   eventId: z.string().min(1).max(150),
@@ -67,6 +68,7 @@ export async function applyPayment(raw: unknown): Promise<{ duplicate: boolean }
       await payments.setSucceeded(payment.id, next, event.externalTransactionId, late, db);
       await audits.history(order.id, 'PAYMENT', payment.status, next, 'provider', '', db);
       if (late) {
+        await attachRefundOperation(db, payment, 'LATE_PAYMENT', 'provider');
         await publish(db, 'PaymentFailed', {
           orderId: order.id,
           actor: 'system',

@@ -42,8 +42,14 @@ test(
       created = true;
       await mkdir(migrationDir, { recursive: true });
       await cp('prisma/schema.prisma', path.join(prismaDir, 'schema.prisma'));
+      // A real pre-P05 database: only migrations older than the first P05 one.
+      // Everything from P05 onwards (including later phases) is applied on upgrade.
+      const all = (await readdir('prisma/migrations', { withFileTypes: true }))
+        .filter((entry) => entry.isDirectory())
+        .map((entry) => entry.name)
+        .sort();
       for (const entry of await readdir('prisma/migrations', { withFileTypes: true })) {
-        if (!newMigrations.includes(entry.name))
+        if (!entry.isDirectory() || entry.name < newMigrations[0])
           await cp(
             path.join('prisma/migrations', entry.name),
             path.join(migrationDir, entry.name),
@@ -82,7 +88,7 @@ test(
       INSERT INTO driver_assignments(id,delivery_id,driver_id,active) VALUES ('legacy-assignment','legacy-delivery','legacy-driver',true);
       INSERT INTO driver_operational_changes(id,driver_id,source,reason) VALUES ('legacy-work','legacy-driver','ACCOUNT','ACCOUNT_LOCKED');
     `);
-      for (const name of newMigrations)
+      for (const name of all.filter((name) => name >= newMigrations[0]))
         await cp(path.join('prisma/migrations', name), path.join(migrationDir, name), {
           recursive: true,
         });

@@ -12,8 +12,9 @@ import {
   setProofHoldGateway,
   createLocalProofStorage,
   deliveryConfig,
+  incidentForOrder,
 } from './delivery/index.js';
-import { hasOpenComplaint } from './support/index.js';
+import { findComplaintForOrder, hasOpenComplaint } from './support/index.js';
 import { prefetchDeliveryQuotes } from './catalog/index.js';
 import {
   setAddressSavedListener,
@@ -38,8 +39,9 @@ import {
   assignmentOrderGateway,
   trackingAccessGateway,
   trackingRouteGateway,
+  accessOrder,
 } from './ordering/index.js';
-import { setPaymentOrderGateway } from './payment/index.js';
+import { setPaymentOrderGateway, setRefundContextGateway } from './payment/index.js';
 
 let registered = false;
 
@@ -47,6 +49,14 @@ export function registerModules(): void {
   if (registered) return;
   registered = true;
   setPaymentOrderGateway(paymentOrderGateway);
+  setRefundContextGateway({
+    orderForRefund: async (actor, orderId) => {
+      const order = await accessOrder(undefined, actor, orderId);
+      return { id: order.id, status: order.status, customerId: order.customer_id };
+    },
+    failureIncident: (orderId, incidentId) => incidentForOrder(orderId, incidentId),
+    complaint: (orderId, complaintId) => findComplaintForOrder(complaintId, orderId),
+  });
   setDeliveryOrderGateway(deliveryOrderGateway);
   setDriverOverride(overrideDriver);
   setProofStorage(createLocalProofStorage(deliveryConfig.DELIVERY_PROOF_STORAGE_DIR));

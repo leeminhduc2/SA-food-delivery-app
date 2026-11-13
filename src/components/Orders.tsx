@@ -6,6 +6,7 @@ import { Field } from './Primitives';
 import { DeliveryTracking } from './DeliveryTracking';
 import { CustomerDeliveryOtp } from './CustomerDeliveryOtp';
 import { DriverDeliveryProof } from './DriverDeliveryProof';
+import { CustomerRefundRequest, RefundStatus } from './RefundRequests';
 export function OrderCard({
   order: o,
   actor,
@@ -14,6 +15,7 @@ export function OrderCard({
   action,
   drivers,
   refresh,
+  complaints = [],
 }: {
   order: any;
   actor: Actor;
@@ -22,6 +24,7 @@ export function OrderCard({
   action: (p: string, b: unknown, m?: string) => Promise<void>;
   drivers: any[];
   refresh?: () => Promise<void> | void;
+  complaints?: any[];
 }) {
   const [expanded, setExpanded] = useState(false),
     [reason, setReason] = useState(''),
@@ -386,6 +389,17 @@ export function OrderCard({
           </form>
         </details>
       )}
+      {['CUSTOMER', 'ADMIN'].includes(actor.role) && o.refund && <RefundStatus refund={o.refund} />}
+      {actor.role === 'CUSTOMER' &&
+        ['DELIVERED', 'DELIVERY_FAILED'].includes(o.status) &&
+        o.payment?.status === 'SUCCEEDED' &&
+        (!o.refund || o.refund.status === 'REJECTED') && (
+          <CustomerRefundRequest
+            order={o}
+            complaints={complaints}
+            onRequested={refresh ?? (() => undefined)}
+          />
+        )}
       {o.review && (
         <p className="info">
           <Star size={15} /> Your review: {o.review.rating}/5 · {o.review.content}

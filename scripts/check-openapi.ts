@@ -25,6 +25,7 @@ const routeFiles: Array<{ file: string; router: string; prefix: string }> = [
     prefix: '/api/payments',
   },
   { file: 'server/modules/delivery/delivery.routes.ts', router: 'deliveryRoutes', prefix: '/api' },
+  { file: 'server/modules/payment/refund.routes.ts', router: 'refundRoutes', prefix: '/api' },
   {
     file: 'server/modules/assignment/assignment.routes.ts',
     router: 'assignmentRoutes',

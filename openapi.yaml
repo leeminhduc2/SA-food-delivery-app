@@ -1770,6 +1770,117 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+  /api/orders/{id}/refund-requests:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Payments]
+      operationId: requestRefund
+      summary: Request a full refund of the collected payment
+      description: Customer owner or Admin. DELIVERY_FAILED needs a failure incident (looked up when incidentId is omitted); DELIVERED needs complaintId of the same order. Amount is always the full Payment.amount and cannot be supplied. Cancelled orders keep the automatic refund. Restaurant and Driver accounts cannot refund customers.
+      security: [{ sessionCookie: [], requestedWithHeader: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [reason, idempotencyKey]
+              properties:
+                complaintId: { type: string }
+                incidentId: { type: string }
+                reason: { type: string, minLength: 3, maxLength: 300 }
+                idempotencyKey: { type: string, minLength: 8, maxLength: 120 }
+      responses:
+        '201': { description: Refund request in REQUESTED status }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          {
+            description: 'INCIDENT_REQUIRED, COMPLAINT_REQUIRED, REFUND_NOT_ELIGIBLE, REFUND_ALREADY_REQUESTED, PAYMENT_NOT_REFUNDABLE or IDEMPOTENCY_CONFLICT',
+          }
+    get:
+      tags: [Payments]
+      operationId: listOrderRefunds
+      summary: Refund requests of an order, for its customer or an administrator
+      security: [{ sessionCookie: [] }]
+      responses:
+        '200': { description: '{items}' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/admin/refund-requests:
+    get:
+      tags: [Admin]
+      operationId: listRefundRequests
+      summary: Refund queue with history, attempts and last provider error
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - {
+            in: query,
+            name: status,
+            schema:
+              {
+                type: string,
+                enum: [REQUESTED, APPROVED, REJECTED, PROCESSING, SUCCEEDED, FAILED],
+              },
+          }
+        - { in: query, name: orderId, schema: { type: string } }
+      responses:
+        '200': { description: '{items}' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/admin/refund-requests/{id}/decision:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Admin]
+      operationId: decideRefundRequest
+      summary: Approve or reject a REQUESTED refund with a reason
+      description: Approval moves the payment to REFUND_PENDING in the same transaction. The simulator is called later by the worker; REFUNDED is recorded only after the provider confirms.
+      security: [{ sessionCookie: [], requestedWithHeader: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision, reason, idempotencyKey]
+              properties:
+                decision: { type: string, enum: [APPROVE, REJECT] }
+                reason: { type: string, minLength: 3, maxLength: 300 }
+                idempotencyKey: { type: string, minLength: 8, maxLength: 120 }
+      responses:
+        '200': { description: Updated refund request }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/admin/refund-requests/{id}/retry:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Admin]
+      operationId: retryRefundRequest
+      summary: Requeue a FAILED refund after the attempt limit, with a reason
+      security: [{ sessionCookie: [], requestedWithHeader: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReasonWithKey' }
+      responses:
+        '200': { description: Refund request back in APPROVED }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
   /api/notifications:
     get:
       tags: [Support]
