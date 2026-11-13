@@ -630,10 +630,29 @@ model DeliveryIncident {
   type String
   status String @default("OPEN")
   reason String
+  actor_id String?
+  evidence Json @default("[]")
+  resolution String?
+  resolution_reason String?
+  resolved_by String?
+  resolved_at DateTime? @db.Timestamptz(6)
   created_at DateTime @default(now()) @db.Timestamptz(6)
   updated_at DateTime @default(now()) @db.Timestamptz(6)
+  history DeliveryIncidentHistory[]
   @@index([delivery_id, status], map: "delivery_incidents_delivery_status")
   @@map("delivery_incidents")
+}
+
+model DeliveryIncidentHistory {
+  id String @id
+  incident_id String
+  action String
+  actor_id String
+  reason String?
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  incident DeliveryIncident @relation(fields: [incident_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  @@index([incident_id, created_at], map: "delivery_incident_history_incident")
+  @@map("delivery_incident_history")
 }
 
 model DriverLocation {

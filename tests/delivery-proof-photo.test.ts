@@ -421,7 +421,10 @@ test('retention purges bytes after 30 days unless a complaint or incident holds 
     [incident, f.delivery, f.order],
   );
   assert.equal((await delivery.purgeExpiredProofPhotos({ now: at(31) })).purged, 0);
-  await pool.query("UPDATE delivery_incidents SET status='RESOLVED' WHERE id=$1", [incident]);
+  await pool.query(
+    "UPDATE delivery_incidents SET status='RESOLVED', resolution='NO_ACTION', resolved_at=clock_timestamp() WHERE id=$1",
+    [incident],
+  );
   assert.ok((await files()).includes(key));
   assert.deepEqual(await delivery.purgeExpiredProofPhotos({ now: at(31) }), {
     purged: 1,

@@ -9,6 +9,7 @@ export { cleanupStagedUploads } from './application/photo-proof.service.js';
 export { purgeExpiredProofPhotos } from './application/proof-retention.service.js';
 export { createLocalProofStorage } from './infrastructure/proof-storage.js';
 export { deliveryConfig } from './config.js';
+export { incidentForOrder } from './application/incident.service.js';
 export {
   setDeliveryOrderGateway,
   type DeliverableOrder,

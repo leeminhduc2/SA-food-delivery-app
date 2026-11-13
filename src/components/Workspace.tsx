@@ -5,6 +5,7 @@ import { errorText } from '../types';
 import { Field } from './Primitives';
 import { InventoryHistory } from './InventoryHistory';
 import { ModerationRequests } from './ReviewResponses';
+import { DeliveryIncidents } from './DeliveryIncidents';
 type OpeningDay = { day: number; intervals: Array<{ start: string; end: string }> };
 const weekdays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const emptySchedule = (): OpeningDay[] => weekdays.map((_, day) => ({ day, intervals: [] }));
@@ -683,6 +684,7 @@ export function AdminPanels({
           <p className="muted">No reviews to moderate.</p>
         )}
       </section>
+      <DeliveryIncidents onChanged={refresh} />
       <ModerationRequests onDecided={refresh} />
       <section className="panel">
         <h2>Recovery & reconciliation</h2>

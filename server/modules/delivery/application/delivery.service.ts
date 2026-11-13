@@ -10,6 +10,7 @@ import { orderGateway } from '../delivery.ports.js';
 import { canDriverTransition, hasFailureReason, isOpen } from '../domain/delivery-status.js';
 import { deliveryConfig } from '../config.js';
 import * as proofs from '../infrastructure/proof.repository.js';
+import { failAfterPickup } from './incident.service.js';
 
 const transitionSchema = z.object({
   status: z.enum(['PICKED_UP', 'IN_TRANSIT', 'DELIVERED', 'FAILED']),
@@ -337,8 +338,12 @@ export async function transition(actor: User, deliveryId: string, raw: unknown):
         'REASON_REQUIRED',
         'Please describe why delivery failed.',
       );
+    if (input.status === 'FAILED') {
+      await failAfterPickup(db, delivery, actor.id, input.reason);
+      return;
+    }
     await deliveries.setStatus(delivery.id, input.status, db);
-    if (input.status === 'DELIVERED' || input.status === 'FAILED')
+    if (input.status === 'DELIVERED')
       await deliveries.deactivateAssignments(delivery.id, input.status, db);
     await audits.history(
       order.id,
@@ -353,14 +358,5 @@ export async function transition(actor: User, deliveryId: string, raw: unknown):
       await publish(db, 'DeliveryPickedUp', { orderId: order.id, actor: actor.id });
     if (input.status === 'DELIVERED')
       await publish(db, 'DeliveryCompleted', { orderId: order.id, actor: actor.id });
-    if (input.status === 'FAILED') {
-      await deliveries.insertFailureIncident(delivery.id, order.id, input.reason, db);
-      await publish(db, 'DeliveryFailed', {
-        orderId: order.id,
-        actor: actor.id,
-        reason: input.reason,
-      });
-      await audits.audit(actor.id, 'DELIVERY_FAILED', delivery.id, { reason: input.reason }, db);
-    }
   });
 }

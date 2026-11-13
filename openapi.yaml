@@ -1700,6 +1700,76 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+  /api/admin/deliveries/{id}/fail:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Admin]
+      operationId: adminFailDelivery
+      summary: Close a trip after pickup as FAILED when an operational incident is open
+      description: Never replaces the driver after pickup. Releases the driver's capacity in the same transaction, opens one DELIVERY_FAILED incident and resolves the operational incident as NO_ACTION. No restock and no payment change.
+      security: [{ sessionCookie: [], requestedWithHeader: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReasonWithKey' }
+      responses:
+        '200': { description: Delivery ID, FAILED and the new incident ID }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: 'INVALID_TRANSITION, INCIDENT_REQUIRED or IDEMPOTENCY_CONFLICT' }
+  /api/admin/incidents:
+    get:
+      tags: [Admin]
+      operationId: listDeliveryIncidents
+      summary: Delivery incidents with history, newest first
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - { in: query, name: status, schema: { type: string, enum: [OPEN, RESOLVED] } }
+        - { in: query, name: type, schema: { type: string } }
+        - { in: query, name: orderId, schema: { type: string } }
+        - {
+            in: query,
+            name: limit,
+            schema: { type: integer, minimum: 1, maximum: 100, default: 25 },
+          }
+        - { in: query, name: cursor, schema: { type: string } }
+      responses:
+        '200': { description: '{items,nextCursor}' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/admin/incidents/{id}/resolve:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Admin]
+      operationId: resolveDeliveryIncident
+      summary: Record REFUND_REQUESTED, NO_REFUND or NO_ACTION with a reason and evidence references
+      description: Does not refund, restock, resolve complaints or create a redelivery.
+      security: [{ sessionCookie: [], requestedWithHeader: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [resolution, reason, idempotencyKey]
+              properties:
+                resolution: { type: string, enum: [REFUND_REQUESTED, NO_REFUND, NO_ACTION] }
+                reason: { type: string, minLength: 3, maxLength: 1000 }
+                evidence: { type: array, maxItems: 10, items: { type: string } }
+                idempotencyKey: { type: string, minLength: 8, maxLength: 120 }
+      responses:
+        '200': { description: Incident ID, RESOLVED and resolution }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
   /api/notifications:
     get:
       tags: [Support]

@@ -6,6 +6,11 @@ import { getDriverOverride } from './delivery.ports.js';
 import { verifyOtpProof } from './application/delivery-proof.service.js';
 import { photoTypes, readPhotoProof, uploadPhotoProof } from './application/photo-proof.service.js';
 import { deliveryConfig } from './config.js';
+import {
+  adminFailDelivery,
+  listIncidents,
+  resolveIncident,
+} from './application/incident.service.js';
 
 export const deliveryRoutes = Router();
 
@@ -35,6 +40,19 @@ deliveryRoutes.get('/deliveries/:id/proofs/:proofId/content', async (req, res) =
   res.setHeader('Content-Type', photo.contentType);
   res.setHeader('Content-Disposition', 'inline');
   res.send(photo.bytes);
+});
+
+deliveryRoutes.post('/admin/deliveries/:id/fail', async (req, res) => {
+  res.json(await adminFailDelivery(actor(req, 'ADMIN'), String(req.params.id), req.body));
+});
+
+deliveryRoutes.get('/admin/incidents', async (req, res) => {
+  actor(req, 'ADMIN');
+  res.json(await listIncidents(req.query));
+});
+
+deliveryRoutes.post('/admin/incidents/:id/resolve', async (req, res) => {
+  res.json(await resolveIncident(actor(req, 'ADMIN'), String(req.params.id), req.body));
 });
 
 deliveryRoutes.post('/deliveries/:id/arrive', async (req, res) => {

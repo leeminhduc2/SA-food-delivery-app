@@ -147,19 +147,43 @@ export async function listActiveAssignmentsForBootstrap(
   });
 }
 
+/**
+ * Opens one incident per delivery and type while it is OPEN. Returns the new ID,
+ * or null when an open incident of that type already exists (duplicate event).
+ */
+export async function openIncident(
+  incident: { deliveryId: string; orderId: string; type: string; reason: string; actorId: string },
+  db: DB,
+): Promise<string | null> {
+  const rows = await db.$queryRaw<Array<{ id: string }>>`
+    INSERT INTO delivery_incidents (id, delivery_id, order_id, type, reason, actor_id)
+    VALUES (${id()}, ${incident.deliveryId}, ${incident.orderId}, ${incident.type}, ${incident.reason}, ${incident.actorId})
+    ON CONFLICT (delivery_id, type) WHERE status = 'OPEN' DO NOTHING
+    RETURNING id`;
+  if (!rows.length) return null;
+  await db.deliveryIncidentHistory.create({
+    data: {
+      id: id(),
+      incident_id: rows[0].id,
+      action: 'OPENED',
+      actor_id: incident.actorId,
+      reason: incident.reason,
+    },
+  });
+  return rows[0].id;
+}
+
 export async function insertOperationalIncident(
   deliveryId: string,
   orderId: string,
   reason: string,
   db: DB,
 ) {
-  const result = await db.deliveryIncident.createMany({
-    data: [
-      { id: id(), delivery_id: deliveryId, order_id: orderId, type: 'DRIVER_UNAVAILABLE', reason },
-    ],
-    skipDuplicates: true,
-  });
-  return result.count === 1;
+  const opened = await openIncident(
+    { deliveryId, orderId, type: 'DRIVER_UNAVAILABLE', reason, actorId: 'system' },
+    db,
+  );
+  return opened !== null;
 }
 
 export async function insertFailureIncident(
@@ -167,13 +191,9 @@ export async function insertFailureIncident(
   orderId: string,
   reason: string,
   db: DB,
+  actorId = 'system',
 ) {
-  await db.deliveryIncident.createMany({
-    data: [
-      { id: id(), delivery_id: deliveryId, order_id: orderId, type: 'DELIVERY_FAILED', reason },
-    ],
-    skipDuplicates: true,
-  });
+  return openIncident({ deliveryId, orderId, type: 'DELIVERY_FAILED', reason, actorId }, db);
 }
 
 export async function insertOverrideIncident(
@@ -182,12 +202,10 @@ export async function insertOverrideIncident(
   reason: string,
   db: DB,
 ) {
-  await db.deliveryIncident.createMany({
-    data: [
-      { id: id(), delivery_id: deliveryId, order_id: orderId, type: 'ADMIN_OVERRIDE', reason },
-    ],
-    skipDuplicates: true,
-  });
+  return openIncident(
+    { deliveryId, orderId, type: 'ADMIN_OVERRIDE', reason, actorId: 'system' },
+    db,
+  );
 }
 
 export async function deactivateAssignments(
