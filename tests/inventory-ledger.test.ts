@@ -127,7 +127,11 @@ test('zero stock has one zero opening and seed reruns preserve stock and history
     ...(await db.prisma.user.findUniqueOrThrow({ where: { id: 'restaurant' } })),
     role: 'RESTAURANT' as const,
   };
-  await catalog.updateItem(actor, 'pho', { stock: 9 });
+  await catalog.updateItem(actor, 'pho', {
+    stock: 9,
+    stockReason: 'Inventory count',
+    idempotencyKey: 'seed-test-stock',
+  });
   const before = await pool.query(
     "SELECT id,kind,delta,balance_after FROM stock_movements WHERE item_id='pho' ORDER BY created_at,id",
   );

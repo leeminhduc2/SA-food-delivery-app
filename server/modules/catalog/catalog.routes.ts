@@ -2,6 +2,7 @@ import { Router } from 'express';
 import * as catalog from './application/catalog.service.js';
 import { actor } from '../../shared/http/actor.js';
 import * as groups from './application/menu-groups.service.js';
+import { adjustStock } from './application/inventory.service.js';
 
 export const catalogRoutes = Router();
 
@@ -68,6 +69,10 @@ catalogRoutes.post('/restaurants/:id/items', async (req, res) => {
 
 catalogRoutes.get('/items/:id', async (req, res) => {
   res.json(await catalog.getItem(req.user, String(req.params.id)));
+});
+
+catalogRoutes.post('/items/:id/stock-adjustments', async (req, res) => {
+  res.json(await adjustStock(actor(req, 'RESTAURANT'), String(req.params.id), req.body));
 });
 
 catalogRoutes.put('/items/:id', async (req, res) => {

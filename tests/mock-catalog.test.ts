@@ -187,7 +187,11 @@ test('re-running the seed creates no duplicates and preserves edits and flags', 
   const restaurantActor = await db.prisma.user.findUniqueOrThrow({ where: { id: 'restaurant' } });
   await (
     await import('../server/modules/catalog/application/catalog.service.js')
-  ).updateItem(restaurantActor, 'mock-item-001', { stock: 31 });
+  ).updateItem(restaurantActor, 'mock-item-001', {
+    stock: 31,
+    stockReason: 'Inventory count',
+    idempotencyKey: 'mock-stock-test',
+  });
   const movementsBefore = await db.prisma
     .$queryRaw`SELECT id,kind,delta,balance_after FROM stock_movements WHERE item_id = 'mock-item-001' ORDER BY created_at,id`;
   await db.prisma.menuItem.update({

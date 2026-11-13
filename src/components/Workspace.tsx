@@ -1,5 +1,5 @@
 import { X } from 'lucide-react';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { api, label, money } from '../api';
 import { errorText } from '../types';
 import { Field } from './Primitives';
@@ -241,17 +241,23 @@ export function ItemForm({
     }),
     [options, setOptions] = useState<any[]>(i?.options || []),
     [error, setError] = useState(''),
-    [busy, setBusy] = useState(false);
+    [busy, setBusy] = useState(false),
+    [currentStock, setCurrentStock] = useState<number>(i?.stock ?? 0),
+    [stockDelta, setStockDelta] = useState(''),
+    [stockReason, setStockReason] = useState(''),
+    [stockMessage, setStockMessage] = useState('');
+  const stockKeys = useRef<Record<string, string>>({});
   return (
     <form
       onSubmit={async (e) => {
         e.preventDefault();
         setBusy(true);
         try {
+          const { stock, ...editable } = form;
           await api(
             i ? '/items/' + i.id : `/restaurants/${restaurantId}/items`,
             i ? 'PATCH' : 'POST',
-            { ...form, options },
+            { ...editable, ...(!i ? { stock } : {}), options },
           );
           await saved();
         } catch (e) {
@@ -287,18 +293,78 @@ export function ItemForm({
           value={form.price}
           onChange={(e) => setForm({ ...form, price: Number(e.target.value) })}
         />
-        <Field
-          label="Available servings"
-          type="number"
-          min={0}
-          required
-          value={form.stock}
-          onChange={(e) => setForm({ ...form, stock: Number(e.target.value) })}
-        />
+        {!i && (
+          <Field
+            label="Available servings"
+            type="number"
+            min={0}
+            required
+            value={form.stock}
+            onChange={(e) => setForm({ ...form, stock: Number(e.target.value) })}
+          />
+        )}
       </div>
       <p className="small-text muted">
         Stock is the number still available, excluding servings reserved by pending orders.
       </p>
+      {i && (
+        <section className="stock-adjustment" aria-label="Stock adjustment">
+          <p>
+            Available servings: <strong>{currentStock}</strong>
+          </p>
+          <Field
+            label="Stock change (+/-)"
+            type="number"
+            step={1}
+            value={stockDelta}
+            onChange={(e) => setStockDelta(e.target.value)}
+          />
+          <Field
+            label="Stock adjustment reason"
+            maxLength={300}
+            value={stockReason}
+            onChange={(e) => setStockReason(e.target.value)}
+          />
+          <button
+            type="button"
+            className="button secondary"
+            disabled={
+              busy ||
+              !Number.isInteger(Number(stockDelta)) ||
+              !Number(stockDelta) ||
+              stockReason.trim().length < 3
+            }
+            onClick={async () => {
+              const delta = Number(stockDelta),
+                reason = stockReason.trim();
+              const signature = JSON.stringify([delta, reason]);
+              stockKeys.current[signature] ||= crypto.randomUUID();
+              setBusy(true);
+              setError('');
+              setStockMessage('');
+              try {
+                const result = await api(`/items/${i.id}/stock-adjustments`, 'POST', {
+                  delta,
+                  reason,
+                  idempotencyKey: stockKeys.current[signature],
+                });
+                setCurrentStock(result.stock);
+                setStockDelta('');
+                setStockReason('');
+                setStockMessage('Stock adjustment saved.');
+                delete stockKeys.current[signature];
+              } catch (e) {
+                setError(errorText(e));
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            Apply stock change
+          </button>
+          {stockMessage && <p role="status">{stockMessage}</p>}
+        </section>
+      )}
       <Field
         label="Menu category"
         required

@@ -101,7 +101,7 @@ Restaurant create/patch thêm phone nullable, openingSchedule nullable; timezone
 
 ## C07 Inventory
 
-- POST `/items/:id/stock-adjustments` RESTAURANT member `{delta,reason,idempotencyKey}`, integer delta khác 0, kết quả không âm; trả `{movementId,stock,balanceAfter}`. GET `/items/:id/stock-movements` paginated, member/Admin audit view.
+- POST `/items/:id/stock-adjustments` RESTAURANT member `{delta,reason,idempotencyKey}`, integer delta khác 0, kết quả không âm; trả `{movementId,stock,balanceAfter}`. Khi replay, `stock` là số dư hiện tại còn `balanceAfter` là số dư tại lần ghi ban đầu. GET `/items/:id/stock-movements` paginated, member/Admin audit view.
 - UI dùng delta command. Legacy PATCH item stock chỉ chấp nhận cùng stockReason/idempotencyKey: khóa row, đổi target thành delta, dùng cùng ledger; stock không đổi không movement. Thiếu fields khi đổi stock trả STOCK_ADJUSTMENT_REQUIRED; không âm thầm bỏ input.
 - Opening balance một lần/item ở cutover; create item có opening. Reserve delta âm, release delta dương unique order-item-operation. DELIVERED không trừ stock lần hai. Rollback nghiệp vụ rollback ledger/alert.
 - Alert khi crossing >threshold xuống <=threshold (default5); lên trên threshold rearm. stock=0 trả sellable=false/unavailableReason; không đổi manual available/visible. Không thêm nguồn tồn thứ hai.

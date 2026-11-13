@@ -168,42 +168,10 @@ export async function insert(
   return withOptions(row);
 }
 
-export async function update(
-  itemId: string,
-  item: {
-    name: string;
-    description: string;
-    price: number;
-    stock: number;
-    available: boolean;
-    visible: boolean;
-    image: string;
-    options: unknown;
-    menuId: string;
-  },
-  db: DB = prisma,
-): Promise<MenuItemRow> {
-  const row = await db.menuItem.update({
-    where: { id: itemId },
-    data: {
-      name: item.name,
-      description: item.description,
-      price: item.price,
-      stock: item.stock,
-      available: item.available,
-      visible: item.visible,
-      image: item.image,
-      options: item.options as Prisma.InputJsonValue,
-      menu_id: item.menuId,
-    },
-  });
-  return withOptions(row);
-}
-
 /** Partial update used by PATCH; only supplied fields are written. */
 export async function updatePartial(
   itemId: string,
-  fields: Prisma.MenuItemUncheckedUpdateInput,
+  fields: Omit<Prisma.MenuItemUncheckedUpdateInput, 'stock'>,
   db: DB = prisma,
 ): Promise<MenuItemRow> {
   const row = await db.menuItem.update({ where: { id: itemId }, data: fields });
@@ -214,19 +182,5 @@ export async function archive(itemId: string, db: DB = prisma): Promise<void> {
   await db.menuItem.updateMany({
     where: { id: itemId },
     data: { available: false, visible: false },
-  });
-}
-
-export async function reserve(itemId: string, quantity: number, db: DB = prisma): Promise<void> {
-  await db.menuItem.update({
-    where: { id: itemId },
-    data: { stock: { decrement: quantity } },
-  });
-}
-
-export async function release(itemId: string, quantity: number, db: DB = prisma): Promise<void> {
-  await db.menuItem.update({
-    where: { id: itemId },
-    data: { stock: { increment: quantity } },
   });
 }

@@ -256,6 +256,8 @@ components:
         description: { type: string, maxLength: 500 }
         price: { type: integer, minimum: 1000, maximum: 10000000, description: Whole VND }
         stock: { type: integer, minimum: 0, maximum: 100000 }
+        stockReason: { type: string, minLength: 3, maxLength: 300, description: Required with idempotencyKey when changing stock through PATCH }
+        idempotencyKey: { type: string, minLength: 8, maxLength: 120, description: Required with stockReason when changing stock through PATCH }
         available: { type: boolean }
         image: { type: string }
         category: { type: string, maxLength: 60, default: Main dishes }
@@ -1831,6 +1833,32 @@ paths:
                 idempotencyKey: { type: string, minLength: 8, maxLength: 120 }
       responses:
         '200': { description: Arrival timestamp }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/items/{id}/stock-adjustments:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Catalog]
+      operationId: adjustItemStock
+      summary: Apply an idempotent stock delta with a reason
+      security: [{ sessionCookie: [], requestedWithHeader: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [delta, reason, idempotencyKey]
+              properties:
+                delta: { type: integer, minimum: -100000, maximum: 100000, description: Nonzero change in available servings }
+                reason: { type: string, minLength: 3, maxLength: 300 }
+                idempotencyKey: { type: string, minLength: 8, maxLength: 120 }
+      responses:
+        '200': { description: Movement ID, current stock, and original balanceAfter for this operation }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }

@@ -207,7 +207,10 @@ test('restaurant edits menu options and stock with persistent results', async ({
   const dish = page.getByRole('dialog').locator('.manage-item').filter({ hasText: 'Nem rán' });
   await dish.getByRole('button', { name: 'Edit', exact: true }).click();
   await page.getByLabel('Price (VND)').fill('39000');
-  await page.getByLabel('Available servings').fill('25');
+  await page.getByLabel('Stock change (+/-)').fill('-5');
+  await page.getByLabel('Stock adjustment reason').fill('Inventory count');
+  await page.getByRole('button', { name: 'Apply stock change' }).click();
+  await expect(page.getByRole('status')).toContainText('Stock adjustment saved.');
   await page.getByRole('button', { name: 'Save dish', exact: true }).click();
   await expect(
     page.getByRole('dialog').locator('.manage-item').filter({ hasText: 'Nem rán' }),

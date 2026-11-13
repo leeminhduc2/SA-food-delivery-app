@@ -3,7 +3,7 @@ import { id, prisma, transaction, uniqueViolation } from '../../../shared/db.js'
 import { check } from '../../../shared/errors.js';
 import type { User } from '../../../shared/types.js';
 import * as audits from '../../../shared/audit.repository.js';
-import { assertMember } from './catalog.service.js';
+import { assertMember } from './authorization.service.js';
 
 const nameSchema = z.object({ name: z.string().trim().min(1).max(60) }).strict();
 

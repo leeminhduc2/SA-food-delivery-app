@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { createHash } from 'node:crypto';
 import type { Prisma } from '@prisma/client';
-import { id, transaction, type DB } from '../../../shared/db.js';
+import { transaction, type DB } from '../../../shared/db.js';
 import { requireActor } from '../../../shared/authz.js';
 import { check } from '../../../shared/errors.js';
 import { imageSchema, linesSchema } from '../domain/catalog.schemas.js';
@@ -18,7 +18,9 @@ import {
 } from '../../location/index.js';
 import { deliveryInfoForRestaurant } from './restaurant-location.js';
 import * as listing from '../infrastructure/restaurant-listing.projection.js';
-import { ensureOpeningBalance, recordStockMovement } from './inventory.service.js';
+import { adjustLocked, ensureOpeningBalance, moveStock } from './inventory.service.js';
+import { assertMember } from './authorization.service.js';
+export { assertMember } from './authorization.service.js';
 
 /**
  * Hide retired provider columns from public responses. The columns stay in the
@@ -103,6 +105,8 @@ export const itemPatchSchema = z
     description: z.string().max(500),
     price: z.number().int().min(1000).max(10000000),
     stock: z.number().int().min(0).max(100000),
+    stockReason: z.string().trim().min(3).max(300),
+    idempotencyKey: z.string().min(8).max(120),
     available: z.boolean(),
     visible: z.boolean(),
     image: imageSchema,
@@ -191,19 +195,6 @@ export async function shippingQuoteForRestaurant(actor: User, restaurantId: stri
   const address = await deliveryAddressForActor(actor.id);
   check(address, 400, 'ADDRESS_REQUIRED', 'Add a delivery address in Settings first.');
   return boundedDelivery(deliveryInfoForRestaurant(restaurant, address, { includeGeometry: true }));
-}
-
-export async function assertMember(
-  db: DB | undefined,
-  actor: User,
-  restaurantId: string,
-): Promise<void> {
-  check(
-    actor.role === 'RESTAURANT' && (await restaurants.isMember(actor.id, restaurantId, db)),
-    403,
-    'FORBIDDEN',
-    'You do not manage this restaurant.',
-  );
 }
 
 export async function getRestaurant(actor: User | undefined, restaurantId: string): Promise<any> {
@@ -392,10 +383,33 @@ export async function updateItem(actor: User, itemId: string, raw: unknown): Pro
     const old = await menu.findForUpdate(itemId, db);
     check(old, 404, 'NOT_FOUND', 'Item not found.');
     await assertMember(db, actor, old.restaurant_id);
-    if (input.stock !== undefined && input.stock !== old.stock)
-      await ensureOpeningBalance(db, old.id);
-    const fields: Prisma.MenuItemUncheckedUpdateInput = {};
-    for (const key of ['name', 'description', 'price', 'stock', 'available', 'visible', 'image'])
+    check(
+      input.stock !== undefined || (!input.stockReason && !input.idempotencyKey),
+      400,
+      'STOCK_ADJUSTMENT_REQUIRED',
+      'Stock metadata requires a stock value.',
+    );
+    if (
+      input.stock !== undefined &&
+      (input.stock !== old.stock || input.stockReason || input.idempotencyKey)
+    ) {
+      check(
+        input.stockReason && input.idempotencyKey,
+        400,
+        'STOCK_ADJUSTMENT_REQUIRED',
+        'Changing stock requires a reason and idempotency key.',
+      );
+      const { stockReason, idempotencyKey, ...fingerprintExtra } = input;
+      const result = await adjustLocked(db, actor, old.id, old.stock, {
+        target: input.stock,
+        reason: stockReason,
+        key: idempotencyKey,
+        fingerprintExtra,
+      });
+      if (result.replayed) return old;
+    }
+    const fields: Omit<Prisma.MenuItemUncheckedUpdateInput, 'stock'> = {};
+    for (const key of ['name', 'description', 'price', 'available', 'visible', 'image'])
       if (input[key as keyof typeof input] !== undefined)
         (fields as any)[key] = input[key as keyof typeof input];
     if (input.options !== undefined) fields.options = input.options as Prisma.InputJsonValue;
@@ -406,16 +420,6 @@ export async function updateItem(actor: User, itemId: string, raw: unknown): Pro
       categoryName = category.name;
     }
     const row = await menu.updatePartial(old.id, fields, db);
-    if (input.stock !== undefined && input.stock !== old.stock)
-      await recordStockMovement(db, {
-        itemId: old.id,
-        kind: 'ADJUSTMENT',
-        delta: input.stock - old.stock,
-        balance: input.stock,
-        actor: actor.id,
-        reason: 'Legacy stock edit',
-        operationKey: `legacy:${id()}`,
-      });
     await audits.audit(
       actor.id,
       'ITEM_UPDATED',
@@ -519,20 +523,18 @@ export async function priceCart(
     );
     check(item.visible, 409, 'UNAVAILABLE', `${item.name} is no longer available.`);
     check(item.available, 409, 'UNAVAILABLE', `${item.name} is no longer available.`);
-    check(
-      item.stock >= quantity,
-      409,
-      'OUT_OF_STOCK',
-      `${item.name} has only ${item.stock} servings left.`,
-    );
+    if (!reserve)
+      check(
+        item.stock >= quantity,
+        409,
+        'OUT_OF_STOCK',
+        `${item.name} has only ${item.stock} servings left.`,
+      );
     if (reserve) {
-      await ensureOpeningBalance(db, item.id);
-      await menu.reserve(item.id, quantity, db);
-      await recordStockMovement(db, {
+      await moveStock(db, {
         itemId: item.id,
         kind: 'RESERVE',
         delta: -quantity,
-        balance: item.stock - quantity,
         actor: reservation!.actorId,
         reason: 'Order reservation',
         operationKey: `reserve:${reservation!.orderId}`,
@@ -585,13 +587,10 @@ export async function releaseStock(
   for (const [itemId, quantity] of [...quantities.entries()].sort(([a], [b]) =>
     a.localeCompare(b),
   )) {
-    const stock = await ensureOpeningBalance(db, itemId);
-    await menu.release(itemId, quantity, db);
-    await recordStockMovement(db, {
+    await moveStock(db, {
       itemId,
       kind: 'RELEASE',
       delta: quantity,
-      balance: stock + quantity,
       actor: 'system',
       reason: 'Order reservation released',
       operationKey: `release:${orderId}`,

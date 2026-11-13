@@ -937,6 +937,11 @@ test('complete lifecycle: preparation, reassignment, authorized delivery and buy
         .status,
       200,
     );
+  const deliveredStock = await schemaPool.query(
+    'SELECT kind, delta FROM stock_movements WHERE order_id=$1 ORDER BY created_at,id',
+    [o.id],
+  );
+  assert.deepEqual(deliveredStock.rows, [{ kind: 'RESERVE', delta: -1 }]);
   const deliveredAssignment = await schemaPool.query(
     "SELECT active, end_reason FROM driver_assignments WHERE delivery_id=$1 AND driver_id=$2 AND end_reason='DELIVERED'",
     [o.delivery.id, 'driver2'],
