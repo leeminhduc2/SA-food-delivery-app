@@ -297,3 +297,74 @@ test('restaurant scope is enforced and Admin keeps global access', async () => {
     'INVALID_TIME_RANGE',
   );
 });
+
+test('admin KPIs separate online, ready, busy and searching and ignore notifications', async () => {
+  const drivers: Array<[string, boolean, boolean, boolean, number]> = [
+    // id, account active, online, ready, heartbeat age in seconds
+    ['kpi-a', true, true, true, 0],
+    ['kpi-b', true, true, false, 0],
+    ['kpi-c', true, true, true, 600],
+    ['kpi-d', false, true, true, 0],
+    ['kpi-e', true, false, false, 0],
+  ];
+  for (const [id, active, online, ready, age] of drivers) {
+    await pool.query(
+      "INSERT INTO users (id,email,name,password_hash,role,active) VALUES ($1,$2,$1,'x','DRIVER',$3)",
+      [id, `${id}@test.local`, active],
+    );
+    await pool.query(
+      "INSERT INTO driver_availability (driver_id,online,ready,heartbeat_at) VALUES ($1,$2,$3,clock_timestamp() - $4 * interval '1 second')",
+      [id, online, ready, age],
+    );
+    // Notifications are never business status.
+    await pool.query(
+      "INSERT INTO outbox (id,user_id,type,payload) VALUES ($1,$2,'DRIVER_OFFER_CREATED','{}')",
+      [randomUUID(), id],
+    );
+  }
+  const busy = await trip({
+    status: 'OUT_FOR_DELIVERY',
+    deliveryStatus: 'IN_TRANSIT',
+    total: 10000,
+    subtotal: 5000,
+    pickedUpAt: '2026-03-01T09:00:00Z',
+  });
+  await pool.query("UPDATE deliveries SET driver_id='kpi-e' WHERE id=$1", [busy.delivery]);
+  await pool.query(
+    "INSERT INTO driver_assignments (id,delivery_id,driver_id,active) VALUES ($1,$2,'kpi-e',true)",
+    [randomUUID(), busy.delivery],
+  );
+  const waiting = await trip({
+    status: 'ACCEPTED',
+    deliveryStatus: 'UNASSIGNED',
+    total: 10000,
+    subtotal: 5000,
+  });
+  await pool.query(
+    "INSERT INTO assignment_searches (id,delivery_id,generation,status,deadline_at) VALUES ($1,$2,1,'WAITING',now()+interval '10 minutes'), ($3,$2,2,'EXHAUSTED',now())",
+    [randomUUID(), waiting.delivery, randomUUID()],
+  );
+  const response = await get(
+    `/admin/reports?from=${encodeURIComponent(FROM)}&to=${encodeURIComponent(TO)}`,
+    'admin',
+  );
+  assert.equal(response.status, 200);
+  const r = response.data;
+  assert.deepEqual(r.live.drivers, { online: 2, ready: 1, busy: 1 });
+  assert.equal(r.live.searching, 1);
+  assert.equal(r.live.inTransit, 1);
+  // Terminal cohort across all restaurants for the local day.
+  assert.equal(r.delivered.count, 4);
+  assert.equal(r.failed.count, 1);
+  assert.equal(r.successRate, 0.8);
+  assert.equal(r.delivered.grossDeliveredValue, 1189000);
+  assert.equal(r.refunded.amount, 50000);
+  assert.ok(!/payout/i.test(JSON.stringify(r.live)));
+  for (const who of ['restaurant', 'customer', 'driver'])
+    assert.equal((await get('/admin/reports', who)).status, 403);
+  const empty = (
+    await get('/admin/reports?from=2019-01-01T00:00:00Z&to=2019-01-02T00:00:00Z', 'admin')
+  ).data;
+  assert.equal(empty.successRate, null);
+  assert.deepEqual(empty.placedOrders.byStatus, {});
+});

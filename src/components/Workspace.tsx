@@ -7,6 +7,7 @@ import { InventoryHistory } from './InventoryHistory';
 import { ModerationRequests } from './ReviewResponses';
 import { DeliveryIncidents } from './DeliveryIncidents';
 import { AdminRefundRequests } from './RefundRequests';
+import { AdminKpis } from './AdminKpis';
 type OpeningDay = { day: number; intervals: Array<{ start: string; end: string }> };
 const weekdays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const emptySchedule = (): OpeningDay[] => weekdays.map((_, day) => ({ day, intervals: [] }));
@@ -553,6 +554,7 @@ export function AdminPanels({
   const [reviewReasons, setReviewReasons] = useState<Record<string, string>>({});
   return (
     <>
+      <AdminKpis />
       <section className="panel">
         <h2>People & access</h2>
         <div className="table-wrap">

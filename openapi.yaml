@@ -1943,6 +1943,21 @@ paths:
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+  /api/admin/reports:
+    get:
+      tags: [Admin]
+      operationId: adminReport
+      summary: Platform KPIs for [from,to) plus live driver and search state
+      description: Online, ready and busy drivers are distinct current states; searching counts live assignment searches. Success rate uses the terminal cohort. Notifications are never counted as business status.
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - $ref: '#/components/parameters/ReportFrom'
+        - $ref: '#/components/parameters/ReportTo'
+      responses:
+        '200': { description: Admin report }
+        '400': { description: INVALID_TIME_RANGE }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /api/notifications:
     get:
       tags: [Support]

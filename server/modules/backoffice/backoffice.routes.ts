@@ -50,6 +50,11 @@ backofficeRoutes.get('/restaurants/:id/reports', async (req, res) => {
   );
 });
 
+backofficeRoutes.get('/admin/reports', async (req, res) => {
+  actor(req, 'ADMIN');
+  res.json(await reports.adminReport(req.query));
+});
+
 backofficeRoutes.get('/reports', async (req, res) => {
   res.json(await reports.report(actor(req, 'ADMIN', 'RESTAURANT')));
 });

@@ -122,3 +122,9 @@ export async function cohortMetrics(restaurantId: string | null, from: Date, to:
     GROUP BY status ORDER BY status`;
   return { delivered, other, placed };
 }
+
+export async function inTransitCount(): Promise<number> {
+  const [row] = await prisma.$queryRaw<Array<{ n: number }>>`
+    SELECT count(*)::int AS n FROM deliveries WHERE status IN ('PICKED_UP', 'IN_TRANSIT')`;
+  return row.n;
+}

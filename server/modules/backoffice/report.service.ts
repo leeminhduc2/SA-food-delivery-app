@@ -3,6 +3,7 @@ import { parseTimeRange, REPORT_TIMEZONE, type TimeRange } from '../../shared/ti
 import { assertMember, inventorySummary } from '../catalog/index.js';
 import * as reports from './report.repository.js';
 import { definitions, duration, successRate } from './domain/metrics.js';
+import { operationalSummary } from './operational-monitoring.projection.js';
 
 /** Legacy dashboard; field meanings unchanged (revenue = gross delivered value by creation date). */
 export async function report(actor: User): Promise<any> {
@@ -69,5 +70,36 @@ export async function restaurantReport(actor: User, restaurantId: string, query:
     definitions,
     ...(await cohortSection(restaurantId, range)),
     inventory: await inventorySummary(restaurantId),
+  };
+}
+
+/**
+ * Platform KPIs. `live` is the current state (not filtered by time); cohort
+ * sections use [from,to). Online means active account + online + fresh
+ * heartbeat; ready is a subset; busy is an active assignment. Notification
+ * counts are never used as business status.
+ */
+export async function adminReport(query: any) {
+  const range = parseTimeRange(query ?? {});
+  const [summary, inTransit] = await Promise.all([operationalSummary(), reports.inTransitCount()]);
+  return {
+    from: range.from.toISOString(),
+    to: range.to.toISOString(),
+    timezone: REPORT_TIMEZONE,
+    definitions: {
+      ...definitions,
+      online: 'Active account, online and heartbeat within the allowed age.',
+      ready: 'Online drivers who also accept new offers.',
+      busy: 'Drivers holding an active assignment (independent of online/ready).',
+      searching: 'Live assignment searches (waiting, searching or offered).',
+    },
+    live: {
+      asOf: new Date().toISOString(),
+      drivers: { online: summary.online, ready: summary.ready, busy: summary.busy },
+      searching: summary.pendingSearches,
+      inTransit,
+      awaitingPayment: summary.pendingPayments,
+    },
+    ...(await cohortSection(null, range)),
   };
 }
