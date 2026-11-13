@@ -80,13 +80,12 @@ export async function upsertMenu(
   restaurantId: string,
   name: string,
   db: DB = prisma,
-): Promise<{ id: string }> {
-  return db.menu.upsert({
-    where: { restaurant_id_name: { restaurant_id: restaurantId, name } },
-    update: { name },
-    create: { id: id(), restaurant_id: restaurantId, name },
-    select: { id: true },
-  });
+): Promise<{ id: string; name: string }> {
+  const rows = await db.$queryRaw<Array<{ id: string; name: string }>>`
+    INSERT INTO menus (id, restaurant_id, name) VALUES (${id()}, ${restaurantId}, ${name.trim()})
+    ON CONFLICT (restaurant_id, (lower(btrim(name)))) DO UPDATE SET name = menus.name
+    RETURNING id, name`;
+  return rows[0];
 }
 
 export type SeededMenuGroup = {

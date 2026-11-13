@@ -245,6 +245,128 @@ test('structured hours are scoped, validated and rechecked after quote before re
   assert.equal((await request('/checkout/quote', 'POST', { items: itemLines })).status, 200);
 });
 
+test('menu groups enforce ownership, normalized uniqueness, safe moves and snapshots', async () => {
+  const path = `/restaurants/${restaurantId}/menus`;
+  assert.equal((await request(path, 'POST', { name: ' Group A ' }, 'restaurant2')).status, 403);
+  assert.equal((await request(path, 'POST', { name: ' Group A ' }, 'admin')).status, 403);
+  assert.equal((await request(path, 'GET', undefined, 'restaurant2')).status, 403);
+  const first = await request(path, 'POST', { name: ' Group A ' }, 'restaurant');
+  assert.equal(first.status, 201, JSON.stringify(first.data));
+  assert.equal(first.data.name, 'Group A');
+  assert.equal((await request(path, 'POST', { name: 'group a' }, 'restaurant')).status, 409);
+  const concurrent = await Promise.all([
+    request(path, 'POST', { name: 'Concurrent group' }, 'restaurant'),
+    request(path, 'POST', { name: ' concurrent GROUP ' }, 'restaurant'),
+  ]);
+  assert.deepEqual(concurrent.map((entry) => entry.status).sort(), [201, 409]);
+  assert.equal(
+    await db.prisma.menu.count({
+      where: {
+        restaurant_id: restaurantId,
+        name: { equals: 'concurrent group', mode: 'insensitive' },
+      },
+    }),
+    1,
+  );
+  const second = await request(path, 'POST', { name: 'Group B' }, 'restaurant');
+  assert.equal(second.status, 201);
+  assert.equal(
+    (await request(`/menus/${second.data.id}`, 'PATCH', { name: 'GROUP A' }, 'restaurant')).status,
+    409,
+  );
+  assert.equal(
+    (await request(`/menus/${first.data.id}`, 'PATCH', { name: 'No access' }, 'restaurant2'))
+      .status,
+    403,
+  );
+  assert.equal(
+    (await request(`/menus/${first.data.id}`, 'DELETE', undefined, 'restaurant2')).status,
+    403,
+  );
+  const dish = await request(
+    `/restaurants/${restaurantId}/items`,
+    'POST',
+    {
+      name: 'Snapshot dish',
+      description: '',
+      price: 10000,
+      stock: 3,
+      available: true,
+      visible: false,
+      category: 'GROUP A',
+      options: [{ id: 'extra', name: 'Extra', extraPrice: 1000 }],
+    },
+    'restaurant',
+  );
+  assert.equal(dish.status, 201, JSON.stringify(dish.data));
+  assert.equal(dish.data.menu_id, first.data.id);
+  assert.equal(dish.data.category, 'Group A');
+  assert.equal(
+    (await request(path, 'GET', undefined, 'admin')).data.filter(
+      (row: any) => row.name.toLowerCase() === 'group a',
+    ).length,
+    1,
+  );
+  assert.equal(
+    (await request(`/menus/${first.data.id}`, 'DELETE', undefined, 'restaurant')).data.code,
+    'MENU_NOT_EMPTY',
+  );
+  const orderId = `snapshot-${randomUUID()}`;
+  await db.prisma.order.create({
+    data: {
+      id: orderId,
+      customer_id: 'customer',
+      restaurant_id: restaurantId,
+      status: 'CONFIRMED',
+      subtotal: 11000,
+      delivery_fee: 0,
+      total: 11000,
+      address: 'test',
+      idempotency_key: orderId,
+      fingerprint: 'test',
+      expires_at: new Date('2099-01-01Z'),
+    },
+  });
+  await db.prisma.orderItem.create({
+    data: {
+      id: `line-${orderId}`,
+      order_id: orderId,
+      menu_item_id: dish.data.id,
+      name: 'Snapshot dish',
+      price: 11000,
+      quantity: 1,
+      options: [{ id: 'extra', name: 'Extra', extraPrice: 1000 }],
+    },
+  });
+  assert.equal(
+    (await request(`/menus/${first.data.id}`, 'PATCH', { name: 'Renamed group' }, 'restaurant'))
+      .status,
+    200,
+  );
+  const moved = await request(
+    `/items/${dish.data.id}`,
+    'PATCH',
+    { category: ' group b ' },
+    'restaurant',
+  );
+  assert.equal(moved.status, 200, JSON.stringify(moved.data));
+  assert.equal(moved.data.menu_id, second.data.id);
+  assert.equal(moved.data.category, 'Group B');
+  const snapshot = await db.prisma.orderItem.findUniqueOrThrow({
+    where: { id: `line-${orderId}` },
+  });
+  assert.equal(snapshot.name, 'Snapshot dish');
+  assert.deepEqual(snapshot.options, [{ id: 'extra', name: 'Extra', extraPrice: 1000 }]);
+  assert.equal(
+    (await request(`/menus/${first.data.id}`, 'DELETE', undefined, 'restaurant')).status,
+    200,
+  );
+  assert.equal(
+    (await request(`/menus/${second.data.id}`, 'DELETE', undefined, 'restaurant')).data.code,
+    'MENU_NOT_EMPTY',
+  );
+});
+
 test('pausing orders keeps the kitchen public but blocks quote and checkout', async () => {
   const paused = await request(
     '/restaurants/' + restaurantId,

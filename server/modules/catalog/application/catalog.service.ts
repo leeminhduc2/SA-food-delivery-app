@@ -92,7 +92,7 @@ export const itemSchema = z.object({
   available: z.boolean(),
   visible: z.boolean().default(true),
   image: imageSchema.default(''),
-  category: z.string().min(1).max(60).default('Main dishes'),
+  category: z.string().trim().min(1).max(60).default('Main dishes'),
   options: optionsSchema.default([]),
 });
 
@@ -105,7 +105,7 @@ export const itemPatchSchema = z
     available: z.boolean(),
     visible: z.boolean(),
     image: imageSchema,
-    category: z.string().min(1).max(60),
+    category: z.string().trim().min(1).max(60),
     options: optionsSchema,
   })
   .partial()
@@ -380,7 +380,7 @@ export async function createItem(actor: User, restaurantId: string, raw: unknown
       db,
     );
     await audits.audit(actor.id, 'ITEM_CREATED', row.id, {}, db);
-    return { ...row, category: input.category };
+    return { ...row, category: category.name };
   });
 }
 
@@ -395,9 +395,11 @@ export async function updateItem(actor: User, itemId: string, raw: unknown): Pro
       if (input[key as keyof typeof input] !== undefined)
         (fields as any)[key] = input[key as keyof typeof input];
     if (input.options !== undefined) fields.options = input.options as Prisma.InputJsonValue;
+    let categoryName = old.category;
     if (input.category !== undefined) {
       const category = await menu.upsertMenu(old.restaurant_id, input.category, db);
       fields.menu_id = category.id;
+      categoryName = category.name;
     }
     const row = await menu.updatePartial(old.id, fields, db);
     await audits.audit(
@@ -410,7 +412,7 @@ export async function updateItem(actor: User, itemId: string, raw: unknown): Pro
       },
       db,
     );
-    return { ...row, category: input.category ?? old.category };
+    return { ...row, category: categoryName };
   });
 }
 

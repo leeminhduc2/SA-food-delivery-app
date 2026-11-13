@@ -37,6 +37,7 @@ import { DriverHistory } from './components/DriverHistory';
 import { DriverAvailability } from './components/DriverAvailability';
 import { DriverOffers } from './components/DriverOffers';
 import { AdminAssignments } from './components/AdminAssignments';
+import { MenuGroups } from './components/MenuGroups';
 import { Empty, Modal } from './components/Primitives';
 import { SmartImage } from './components/SmartImage';
 import { AdminPanels, ItemForm, RestaurantForm } from './components/Workspace';
@@ -1606,6 +1607,12 @@ export function App() {
       )}
       {modal === 'menu' && managedRestaurant && (
         <Modal title={managedRestaurant.name + ' · Menu'} close={() => setModal(null)}>
+          <MenuGroups
+            restaurantId={managedRestaurant.id}
+            changed={async () =>
+              setManagedRestaurant(await api('/restaurants/' + managedRestaurant.id))
+            }
+          />
           <button
             className="button"
             onClick={() => {

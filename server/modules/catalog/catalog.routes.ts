@@ -1,8 +1,25 @@
 import { Router } from 'express';
 import * as catalog from './application/catalog.service.js';
 import { actor } from '../../shared/http/actor.js';
+import * as groups from './application/menu-groups.service.js';
 
 export const catalogRoutes = Router();
+
+catalogRoutes.get('/restaurants/:id/menus', async (req, res) => {
+  res.json(await groups.listGroups(actor(req, 'RESTAURANT', 'ADMIN'), String(req.params.id)));
+});
+catalogRoutes.post('/restaurants/:id/menus', async (req, res) => {
+  res
+    .status(201)
+    .json(await groups.createGroup(actor(req, 'RESTAURANT'), String(req.params.id), req.body));
+});
+catalogRoutes.patch('/menus/:id', async (req, res) => {
+  res.json(await groups.renameGroup(actor(req, 'RESTAURANT'), String(req.params.id), req.body));
+});
+catalogRoutes.delete('/menus/:id', async (req, res) => {
+  await groups.deleteGroup(actor(req, 'RESTAURANT'), String(req.params.id));
+  res.json({ ok: true });
+});
 
 catalogRoutes.get('/restaurants', async (req, res) => {
   res.json(await catalog.listRestaurants(req.query, req.user));

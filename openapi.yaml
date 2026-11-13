@@ -1836,6 +1836,65 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+  /api/restaurants/{id}/menus:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Catalog]
+      operationId: listRestaurantMenus
+      summary: List menu groups for an owner or administrator
+      security: [{ sessionCookie: [] }]
+      responses:
+        '200': { description: Menu groups with total dish counts, including hidden dishes }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Catalog]
+      operationId: createRestaurantMenu
+      summary: Create a case-insensitively unique menu group
+      security: [{ sessionCookie: [], requestedWithHeader: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [name], properties: { name: { type: string, minLength: 1, maxLength: 60 } } }
+      responses:
+        '201': { description: Menu group created }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/menus/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    patch:
+      tags: [Catalog]
+      operationId: renameMenuGroup
+      summary: Rename an owned menu group
+      security: [{ sessionCookie: [], requestedWithHeader: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [name], properties: { name: { type: string, minLength: 1, maxLength: 60 } } }
+      responses:
+        '200': { description: Renamed menu group }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+    delete:
+      tags: [Catalog]
+      operationId: deleteMenuGroup
+      summary: Delete an empty owned group
+      security: [{ sessionCookie: [], requestedWithHeader: [] }]
+      responses:
+        '200': { description: Empty group deleted }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
   /api/admin/assignments:
     get:
       tags: [Admin]
