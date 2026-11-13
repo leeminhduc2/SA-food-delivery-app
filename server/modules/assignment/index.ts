@@ -14,3 +14,6 @@ export {
 } from './domain/assignment-strategy.js';
 export { setAssignmentOrderGateway, type AssignmentOrderGateway } from './assignment.ports.js';
 export { registerAssignmentHandlers, runAssignmentWorker } from './application/search.service.js';
+export { runOperationalInvalidation } from './application/operational-invalidation.service.js';
+export { overrideDriver } from './application/admin-override.service.js';
+export { bootstrapAssignmentSearches } from './application/bootstrap.service.js';

@@ -92,6 +92,85 @@ export async function assign(deliveryId: string, driverId: string, db: DB = pris
   });
 }
 
+export async function unassign(deliveryId: string, db: DB): Promise<void> {
+  await db.delivery.update({
+    where: { id: deliveryId },
+    data: { driver_id: null, status: 'UNASSIGNED', arrived_at: null, updated_at: new Date() },
+  });
+}
+
+export async function findActiveDeliveryForDriver(driverId: string, db: DB) {
+  return db.driverAssignment.findFirst({
+    where: { driver_id: driverId, active: true },
+    select: { delivery_id: true },
+  });
+}
+
+export async function listUnassignedForBootstrap(after: string | undefined, limit: number, db: DB) {
+  return db.delivery.findMany({
+    where: { status: 'UNASSIGNED', driver_id: null, ...(after ? { id: { gt: after } } : {}) },
+    select: { id: true, order_id: true },
+    orderBy: { id: 'asc' },
+    take: limit,
+  });
+}
+
+export async function listActiveAssignmentsForBootstrap(
+  after: string | undefined,
+  limit: number,
+  db: DB,
+) {
+  return db.driverAssignment.findMany({
+    where: { active: true, ...(after ? { id: { gt: after } } : {}) },
+    select: { id: true, driver_id: true },
+    orderBy: { id: 'asc' },
+    take: limit,
+  });
+}
+
+export async function insertOperationalIncident(
+  deliveryId: string,
+  orderId: string,
+  reason: string,
+  db: DB,
+) {
+  const result = await db.deliveryIncident.createMany({
+    data: [
+      { id: id(), delivery_id: deliveryId, order_id: orderId, type: 'DRIVER_UNAVAILABLE', reason },
+    ],
+    skipDuplicates: true,
+  });
+  return result.count === 1;
+}
+
+export async function insertFailureIncident(
+  deliveryId: string,
+  orderId: string,
+  reason: string,
+  db: DB,
+) {
+  await db.deliveryIncident.createMany({
+    data: [
+      { id: id(), delivery_id: deliveryId, order_id: orderId, type: 'DELIVERY_FAILED', reason },
+    ],
+    skipDuplicates: true,
+  });
+}
+
+export async function insertOverrideIncident(
+  deliveryId: string,
+  orderId: string,
+  reason: string,
+  db: DB,
+) {
+  await db.deliveryIncident.createMany({
+    data: [
+      { id: id(), delivery_id: deliveryId, order_id: orderId, type: 'ADMIN_OVERRIDE', reason },
+    ],
+    skipDuplicates: true,
+  });
+}
+
 export async function deactivateAssignments(
   deliveryId: string,
   reason: string,

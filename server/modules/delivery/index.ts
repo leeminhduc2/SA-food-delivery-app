@@ -8,14 +8,22 @@ export {
   setDeliveryOrderGateway,
   type DeliverableOrder,
   type DeliveryOrderGateway,
+  setDriverOverride,
 } from './delivery.ports.js';
 export {
   cancelDelivery,
   createDelivery,
   isDriverAssigned,
   hasActiveTrip,
+  activeDeliveryForDriver,
+  unassignedDeliveriesForBootstrap,
+  activeAssignmentsForBootstrap,
+  revokeUnavailableDriver,
+  recordOperationalIncident,
   busyDriverIds,
   deliveryForOrderLocked,
   deliveryForAssignmentLocked,
+  deliveryForAssignment,
+  applyAdminDriverOverride,
   confirmOfferAssignment,
 } from './application/delivery.service.js';

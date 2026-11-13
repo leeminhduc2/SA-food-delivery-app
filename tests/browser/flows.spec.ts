@@ -130,16 +130,43 @@ test('customer checkout through restaurant preparation, assignment, driver deliv
     await kitchenPage.getByRole('button', { name: state, exact: true }).click();
     await expect(kitchenPage.locator('.order-card > .between .status')).toHaveText(state);
   }
+  const driver = await browser.newContext();
+  await driver.addInitScript(() => {
+    Object.defineProperty(navigator, 'geolocation', {
+      configurable: true,
+      value: {
+        watchPosition: (ok: (position: unknown) => void) => {
+          setTimeout(
+            () => ok({ coords: { latitude: 21.0301, longitude: 105.8527 }, timestamp: Date.now() }),
+            0,
+          );
+          return 11;
+        },
+        clearWatch: () => {},
+      },
+    });
+  });
+  const driverPage = await driver.newPage();
+  await login(driverPage, 'driver');
+  await driverPage.getByRole('link', { name: 'My deliveries' }).click();
+  const availability = driverPage
+    .locator('section')
+    .filter({ has: driverPage.getByRole('heading', { name: 'Driver availability' }) });
+  await availability.getByRole('button', { name: 'Enable location' }).click();
+  await expect(availability).toContainText('Location is recent');
+  await availability.getByRole('button', { name: 'Go online' }).click();
+  await availability.getByRole('button', { name: 'Set ready', exact: true }).click();
+  await expect(availability).toContainText('Online · Ready');
   const admin = await browser.newContext();
   const adminPage = await admin.newPage();
   await login(adminPage, 'admin');
   await adminPage.getByRole('link', { name: 'Orders', exact: true }).click();
-  await adminPage.getByLabel('Assign a driver').selectOption('driver');
-  await adminPage.getByRole('button', { name: 'Assign', exact: true }).click();
+  await adminPage.getByLabel('Assign a driver for an exception').selectOption('driver');
+  await adminPage.getByLabel('Reason', { exact: true }).fill('Operational recovery');
+  await adminPage.getByRole('button', { name: 'Assign for exception', exact: true }).click();
   await expect(adminPage.getByText('Your driver: Đức Lê')).toBeVisible();
-  const driver = await browser.newContext();
-  const driverPage = await driver.newPage();
-  await login(driverPage, 'driver');
+  await driverPage.reload();
+  await driverPage.getByRole('link', { name: 'My deliveries' }).click();
   await expect(
     driverPage.getByText(
       'Finish your active delivery before going offline. You can still set yourself not ready.',
@@ -148,6 +175,10 @@ test('customer checkout through restaurant preparation, assignment, driver deliv
   for (const state of ['Picked up', 'In transit', 'Delivered'])
     await driverPage.getByRole('button', { name: state, exact: true }).click();
   await expect(driverPage.locator('.order-card > .between .status')).toHaveText('Delivered');
+  await driverPage.reload();
+  await driverPage.getByRole('link', { name: 'My deliveries' }).click();
+  await availability.getByRole('button', { name: 'Go offline' }).click();
+  await expect(availability).toContainText('Offline');
   await page.reload();
   await expect(page.locator('.order-card > .between .status')).toHaveText('Delivered');
   await page.getByText('How was your meal? Leave a review').click();
@@ -264,7 +295,7 @@ test('driver denied GPS remains offline and offers an accessible retry', async (
       },
     });
   });
-  await login(page, 'driver');
+  await login(page, 'driver2');
   await page.getByRole('link', { name: 'My deliveries' }).click();
   const panel = page
     .locator('section')

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import * as delivery from './application/delivery.service.js';
 import { actor } from '../../shared/http/actor.js';
 import { history } from './application/driver-history.service.js';
+import { getDriverOverride } from './delivery.ports.js';
 
 export const deliveryRoutes = Router();
 
@@ -14,8 +15,9 @@ deliveryRoutes.get('/driver/deliveries/history', async (req, res) => {
 });
 
 deliveryRoutes.post('/deliveries/:id/assign', async (req, res) => {
-  await delivery.assign(actor(req, 'ADMIN'), String(req.params.id), req.body);
-  res.json({ ok: true });
+  res.json(
+    await getDriverOverride()(actor(req, 'ADMIN'), String(req.params.id), req.body, req.requestId),
+  );
 });
 
 deliveryRoutes.post('/deliveries/:id/transition', async (req, res) => {

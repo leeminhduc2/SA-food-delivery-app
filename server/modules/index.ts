@@ -4,7 +4,7 @@
  * Delivery declare, and subscribes Ordering to their events.
  * Safe to call more than once.
  */
-import { setDeliveryOrderGateway, busyDriverIds } from './delivery/index.js';
+import { setDeliveryOrderGateway, busyDriverIds, setDriverOverride } from './delivery/index.js';
 import { prefetchDeliveryQuotes } from './catalog/index.js';
 import {
   setAddressSavedListener,
@@ -18,6 +18,7 @@ import {
   setCandidateSources,
   setAssignmentOrderGateway,
   registerAssignmentHandlers,
+  overrideDriver,
 } from './assignment/index.js';
 import {
   deliveryOrderGateway,
@@ -34,6 +35,7 @@ export function registerModules(): void {
   registered = true;
   setPaymentOrderGateway(paymentOrderGateway);
   setDeliveryOrderGateway(deliveryOrderGateway);
+  setDriverOverride(overrideDriver);
   setAssignmentOrderGateway(assignmentOrderGateway);
   registerOrderingHandlers();
   registerAssignmentHandlers();

@@ -3,7 +3,7 @@ const positive = z.coerce.number().int().positive();
 const configSchema = z.object({
   ASSIGNMENT_AUTOMATION_ENABLED: z
     .enum(['true', 'false'])
-    .default('false')
+    .default('true')
     .transform((value) => value === 'true'),
   ASSIGNMENT_STRATEGY: z.literal('NEAREST').default('NEAREST'),
   ASSIGNMENT_OFFER_TTL_SECONDS: positive.default(30),

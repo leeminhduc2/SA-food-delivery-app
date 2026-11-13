@@ -23,8 +23,11 @@ export function OrderCard({
     [rating, setRating] = useState(5),
     [content, setContent] = useState(''),
     [driver, setDriver] = useState(''),
+    [overrideReason, setOverrideReason] = useState(''),
+    [exceptionCode, setExceptionCode] = useState('NO_DRIVER'),
     [support, setSupport] = useState(false);
   const arrivalKey = useRef(crypto.randomUUID());
+  const overrideKeys = useRef<Record<string, string>>({});
   const stages = [
     'PENDING_PAYMENT',
     'CONFIRMED',
@@ -189,16 +192,23 @@ export function OrderCard({
       )}
       {actor.role === 'ADMIN' &&
         ['UNASSIGNED', 'ASSIGNED'].includes(o.delivery.status) &&
-        ['CONFIRMED', 'ACCEPTED', 'PREPARING', 'READY_FOR_PICKUP'].includes(o.status) && (
+        ['ACCEPTED', 'PREPARING', 'READY_FOR_PICKUP'].includes(o.status) && (
           <form
             className="assign"
             onSubmit={(e) => {
               e.preventDefault();
-              action(`/deliveries/${o.delivery.id}/assign`, { driverId: driver });
+              const signature = JSON.stringify([driver, overrideReason.trim(), exceptionCode]);
+              overrideKeys.current[signature] ||= crypto.randomUUID();
+              action(`/admin/deliveries/${o.delivery.id}/reassign`, {
+                driverId: driver,
+                reason: overrideReason,
+                exceptionCode,
+                idempotencyKey: overrideKeys.current[signature],
+              });
             }}
           >
             <label className="field">
-              Assign a driver
+              Assign a driver for an exception
               <select value={driver} required onChange={(e) => setDriver(e.target.value)}>
                 <option value="">Choose a driver</option>
                 {drivers.map((d) => (
@@ -208,8 +218,24 @@ export function OrderCard({
                 ))}
               </select>
             </label>
+            <label className="field">
+              Exception
+              <select value={exceptionCode} onChange={(e) => setExceptionCode(e.target.value)}>
+                <option value="NO_DRIVER">No driver available</option>
+                <option value="DRIVER_UNAVAILABLE">Driver unavailable</option>
+                <option value="OPERATIONAL_ERROR">Operational error</option>
+              </select>
+            </label>
+            <Field
+              label="Reason"
+              value={overrideReason}
+              onChange={(e) => setOverrideReason(e.target.value)}
+              required
+              minLength={3}
+              maxLength={300}
+            />
             <button className="button small" disabled={busy}>
-              Assign
+              Assign for exception
             </button>
           </form>
         )}

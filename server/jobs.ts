@@ -5,7 +5,7 @@ import { deliverNotifications } from './modules/notification/index.js';
 import { expireUnpaidOrders } from './modules/ordering/index.js';
 import { reconcilePayments } from './modules/payment/index.js';
 import { purgeStaleDriverLocations } from './modules/location/index.js';
-import { runAssignmentWorker } from './modules/assignment/index.js';
+import { runAssignmentWorker, runOperationalInvalidation } from './modules/assignment/index.js';
 
 /** Settle payments with the provider, then release orders whose window closed. */
 export async function runPaymentMaintenance(): Promise<void> {
@@ -21,6 +21,7 @@ export async function runBackgroundCycle(): Promise<void> {
     { name: 'payment reconciliation', run: reconcilePayments },
     { name: 'payment expiry', run: expireUnpaidOrders },
     { name: 'assignment', run: runAssignmentWorker },
+    { name: 'driver operational invalidation', run: runOperationalInvalidation },
     { name: 'notification', run: deliverNotifications },
     { name: 'session cleanup', run: purgeExpiredSessions },
     { name: 'location cleanup', run: purgeStaleDriverLocations },

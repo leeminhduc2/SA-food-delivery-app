@@ -508,9 +508,18 @@ components:
         hidden: { type: boolean }
     DeliveryAssignInput:
       type: object
-      required: [driverId]
+      required: [driverId, reason, exceptionCode, idempotencyKey]
       properties:
         driverId: { type: string }
+        reason: { type: string, minLength: 3, maxLength: 300 }
+        exceptionCode: { type: string, enum: [NO_DRIVER, DRIVER_UNAVAILABLE, OPERATIONAL_ERROR] }
+        idempotencyKey: { type: string, minLength: 8, maxLength: 120 }
+    DeliveryAssignResult:
+      type: object
+      required: [ok, assignmentId]
+      properties:
+        ok: { type: boolean, const: true }
+        assignmentId: { type: string }
     DeliveryTransitionInput:
       type: object
       required: [status]
@@ -1343,7 +1352,7 @@ paths:
     post:
       tags: [Delivery]
       operationId: assignDelivery
-      summary: Assign an active driver (admin)
+      summary: Legacy alias for the reason-gated administrative driver override
       security: [{ sessionCookie: [], requestedWithHeader: [] }]
       requestBody:
         required: true
@@ -1355,7 +1364,32 @@ paths:
           description: Driver assigned
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Ok' }
+              schema: { $ref: '#/components/schemas/DeliveryAssignResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /api/admin/deliveries/{id}/reassign:
+    parameters:
+      - $ref: '#/components/parameters/DeliveryId'
+    post:
+      tags: [Delivery]
+      operationId: adminReassignDelivery
+      summary: Assign an eligible driver for an operational exception
+      security: [{ sessionCookie: [], requestedWithHeader: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DeliveryAssignInput' }
+      responses:
+        '200':
+          description: Driver assigned or idempotent replay
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeliveryAssignResult' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }

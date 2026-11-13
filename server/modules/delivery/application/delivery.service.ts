@@ -1,11 +1,10 @@
 import { z } from 'zod';
 import { createHash } from 'node:crypto';
-import { prisma, transaction, uniqueViolation, type DB } from '../../../shared/db.js';
+import { prisma, transaction, type DB } from '../../../shared/db.js';
 import { check } from '../../../shared/errors.js';
 import { publish } from '../../../shared/events.js';
 import type { User } from '../../../shared/types.js';
 import * as audits from '../../../shared/audit.repository.js';
-import { lockActiveDriver } from '../../identity/index.js';
 import * as deliveries from '../infrastructure/delivery.repository.js';
 import { orderGateway } from '../delivery.ports.js';
 import { canDriverTransition, hasFailureReason, isOpen } from '../domain/delivery-status.js';
@@ -41,12 +40,113 @@ export async function hasActiveTrip(driverId: string, db: DB = prisma): Promise<
   return Boolean(await deliveries.findActiveForDriver(driverId, db));
 }
 
+/** Metadata only; the caller must lock Order and Delivery and revalidate before changing it. */
+export async function activeDeliveryForDriver(driverId: string, db: DB = prisma) {
+  return deliveries.findActiveDeliveryForDriver(driverId, db);
+}
+
+export async function unassignedDeliveriesForBootstrap(
+  after: string | undefined,
+  limit: number,
+  db: DB = prisma,
+) {
+  return deliveries.listUnassignedForBootstrap(after, limit, db);
+}
+
+export async function activeAssignmentsForBootstrap(
+  after: string | undefined,
+  limit: number,
+  db: DB = prisma,
+) {
+  return deliveries.listActiveAssignmentsForBootstrap(after, limit, db);
+}
+
+/** Caller holds Order, Delivery and Driver locks. */
+export async function revokeUnavailableDriver(
+  delivery: { id: string; order_id: string; driver_id: string | null; status: string },
+  driverId: string,
+  reason: string,
+  db: DB,
+): Promise<boolean> {
+  if (delivery.status !== 'ASSIGNED' || delivery.driver_id !== driverId) return false;
+  if (!(await deliveries.findActiveAssignment(delivery.id, driverId, db))) return false;
+  await deliveries.deactivateAssignments(delivery.id, reason, db);
+  await deliveries.unassign(delivery.id, db);
+  await audits.history(
+    delivery.order_id,
+    'DELIVERY',
+    'ASSIGNED',
+    'UNASSIGNED',
+    'system',
+    reason,
+    db,
+  );
+  await audits.audit('system', 'DRIVER_ASSIGNMENT_REVOKED', delivery.id, { driverId, reason }, db, {
+    resourceType: 'DELIVERY',
+    outcome: 'SUCCESS',
+  });
+  return true;
+}
+
+/** Record one open operational incident; keeps the active trip and occupancy intact. */
+export async function recordOperationalIncident(
+  delivery: { id: string; order_id: string; driver_id: string | null; status: string },
+  driverId: string,
+  reason: string,
+  db: DB,
+): Promise<boolean> {
+  if (delivery.driver_id !== driverId || !['PICKED_UP', 'IN_TRANSIT'].includes(delivery.status))
+    return false;
+  if (!(await deliveries.findActiveAssignment(delivery.id, driverId, db))) return false;
+  return deliveries.insertOperationalIncident(delivery.id, delivery.order_id, reason, db);
+}
+
 export async function deliveryForOrderLocked(orderId: string, db: DB) {
   return deliveries.findByOrderForUpdate(orderId, db);
 }
 
 export async function deliveryForAssignmentLocked(deliveryId: string, db: DB) {
   return deliveries.findForUpdate(deliveryId, db);
+}
+
+export async function deliveryForAssignment(deliveryId: string, db: DB = prisma) {
+  return deliveries.findById(deliveryId, db);
+}
+
+/** Caller holds Order, Delivery and both Driver locks and has checked eligibility. */
+export async function applyAdminDriverOverride(
+  delivery: { id: string; order_id: string; driver_id: string | null; status: string },
+  driverId: string,
+  actorId: string,
+  reason: string,
+  db: DB,
+): Promise<string> {
+  check(
+    ['UNASSIGNED', 'ASSIGNED'].includes(delivery.status),
+    409,
+    'INVALID_TRANSITION',
+    'Cannot reassign after pickup.',
+  );
+  check(
+    !(await deliveries.findActiveForDriver(driverId, db)),
+    409,
+    'DRIVER_BUSY',
+    'This driver already has an active trip.',
+  );
+  await deliveries.deactivateAssignments(delivery.id, 'REASSIGNED', db);
+  const assignmentId = await deliveries.insertAssignment(delivery.id, driverId, db);
+  await deliveries.assign(delivery.id, driverId, db);
+  await deliveries.insertOverrideIncident(delivery.id, delivery.order_id, reason, db);
+  await audits.history(
+    delivery.order_id,
+    'DELIVERY',
+    delivery.status,
+    'ASSIGNED',
+    actorId,
+    reason,
+    db,
+  );
+  return assignmentId;
 }
 
 export async function busyDriverIds(ids: readonly string[], db: DB = prisma): Promise<string[]> {
@@ -83,53 +183,6 @@ export async function confirmOfferAssignment(
     db,
   );
   return assignmentId;
-}
-
-export async function assign(actor: User, deliveryId: string, raw: unknown): Promise<void> {
-  const { driverId } = z.object({ driverId: z.string().min(1) }).parse(raw);
-  const orders = orderGateway();
-  try {
-    await transaction(async (db) => {
-      const found = await deliveries.findById(deliveryId, db);
-      check(found, 404, 'NOT_FOUND', 'Delivery not found.');
-      const order = await orders.lockOrder(db, found.order_id);
-      check(order, 404, 'NOT_FOUND', 'Order not found.');
-      const delivery = await deliveries.findForUpdate(deliveryId, db);
-      check(delivery, 404, 'NOT_FOUND', 'Delivery not found.');
-      check(
-        orders.acceptsDriverAssignment(order) && isOpen(delivery.status),
-        409,
-        'INVALID_TRANSITION',
-        'This delivery cannot be assigned.',
-      );
-      check(
-        await lockActiveDriver(driverId, db),
-        400,
-        'INVALID_DRIVER',
-        'Choose an active driver.',
-      );
-      if (
-        delivery.driver_id === driverId &&
-        (await deliveries.findActiveAssignment(delivery.id, driverId, db))
-      )
-        return;
-      check(
-        !(await deliveries.findActiveForDriver(driverId, db)),
-        409,
-        'DRIVER_BUSY',
-        'This driver already has an active trip.',
-      );
-      await deliveries.deactivateAssignments(delivery.id, 'REASSIGNED', db);
-      await deliveries.insertAssignment(delivery.id, driverId, db);
-      await deliveries.assign(delivery.id, driverId, db);
-      await audits.history(order.id, 'DELIVERY', delivery.status, 'ASSIGNED', actor.id, '', db);
-      await audits.audit(actor.id, 'DRIVER_ASSIGNED', delivery.id, { driverId }, db);
-    });
-  } catch (error) {
-    if (uniqueViolation(error))
-      check(false, 409, 'DRIVER_BUSY', 'This driver already has an active trip.');
-    throw error;
-  }
 }
 
 export async function arrive(
@@ -255,6 +308,7 @@ export async function transition(actor: User, deliveryId: string, raw: unknown):
     if (input.status === 'DELIVERED')
       await publish(db, 'DeliveryCompleted', { orderId: order.id, actor: actor.id });
     if (input.status === 'FAILED') {
+      await deliveries.insertFailureIncident(delivery.id, order.id, input.reason, db);
       await publish(db, 'DeliveryFailed', {
         orderId: order.id,
         actor: actor.id,

@@ -1,7 +1,8 @@
-# Handoff ? P05-T03 complete
+# Handoff ? P05 complete
 
-- P05-T03 adds role-specific deduplicated notifications, offer UI and server-authoritative expiry, idempotent arrival, minimal Admin visibility and staff refresh. See [run](runs/20261113-0227-P05-T03.md).
-- Next: P05-T04 operational invalidation, race tests, guarded Admin override and the core gate. Keep automation disabled until all activation criteria pass.
-- Completed commits: P04-T01 `47b472a`, P04-T02 `f1a9e84`, P04-T03 `0a22e2a`, P05-T01 `48c86e8`, P05-T02 `d836be4`; P05-T03 is committed separately.
-- Test PostgreSQL and Redis containers use ports 15433 and 16379; isolated schemas only. No application DB migration has been run. New arrival receipt index migration must be deployed using the normal migration process.
-- The user's existing dev process holds the Prisma Windows DLL: clean `prisma generate` and therefore the full build remain unverified until it is released. Do not terminate the user's process. Existing generated client, TypeScript, isolated DB integration and browser tests passed.
+- P05-T04 implements durable operational invalidation, exception-gated Admin override, default-enabled automation, startup bootstrap and real PostgreSQL race coverage. See [run](runs/20261113-1340-P05-T04.md) and [rollout](../ASSIGNMENT_ROLLOUT.md).
+- Next: P06-T01 typed Redis tracking transport and snapshot fallback; read its phase, contracts and module sources and checkpoint before edits.
+- P05 migrations `20261113030000_operational_invalidation` and `20261113031000_admin_override_receipt` were rehearsed only on isolated test schemas. No application DB migration was run; follow the rollout runbook for deployment.
+- PostgreSQL and Redis test containers use ports 15433 and 16379. The user's running dev process holds the Prisma Windows DLL; isolated build copy `.tmp/p05-build-check` passes `npm run build` without stopping it.
+- Repository-wide format check still reports the two untouched baseline documents named in the run; do not silently call that check a pass.
+- Previous commits: P04-T01 `47b472a`, P04-T02 `f1a9e84`, P04-T03 `0a22e2a`, P05-T01 `48c86e8`, P05-T02 `d836be4`, P05-T03 `eef5a89`; P05-T04 is committed separately.

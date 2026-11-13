@@ -98,6 +98,32 @@ async function request(
   });
   return { status: response.status, data: await response.json(), headers: response.headers };
 }
+function overrideInput(driverId: string, key = randomUUID()) {
+  return {
+    driverId,
+    reason: 'Operational recovery',
+    exceptionCode: 'OPERATIONAL_ERROR',
+    idempotencyKey: key,
+  };
+}
+async function prepareEligibleDrivers(...driverIds: string[]) {
+  await db.prisma.restaurant.update({
+    where: { id: 'saigon' },
+    data: { latitude: 21, longitude: 105 },
+  });
+  for (const driverId of driverIds) {
+    await schemaPool.query(
+      `INSERT INTO driver_locations (driver_id, latitude, longitude, captured_at, received_at)
+      VALUES ($1,21,105,now(),now()) ON CONFLICT (driver_id) DO UPDATE SET latitude=21,longitude=105,captured_at=now(),received_at=now()`,
+      [driverId],
+    );
+    await schemaPool.query(
+      `INSERT INTO driver_availability (driver_id,online,ready,heartbeat_at) VALUES ($1,true,true,now())
+      ON CONFLICT (driver_id) DO UPDATE SET online=true,ready=true,heartbeat_at=now()`,
+      [driverId],
+    );
+  }
+}
 const lines = [{ itemId: 'pho', quantity: 1, optionIds: [] }];
 async function checkout(items = lines, key = randomUUID(), actor = 'customer') {
   const q = await request('/checkout/quote', 'POST', { items }, actor);
@@ -250,6 +276,12 @@ test('authentication, CSRF, registration, profile, role and account suspension',
   assert.equal(statusAudit.outcome, 'SUCCESS');
   assert.ok(statusAudit.correlation_id);
   assert.equal(statusAudit.detail.reason, 'Safety review');
+  assert.equal(
+    await db.prisma.driverOperationalChange.count({
+      where: { driver_id: 'driver2', source: 'ACCOUNT', reason: 'ACCOUNT_LOCKED' },
+    }),
+    1,
+  );
   assert.equal((await request('/orders', 'GET', undefined, 'driver2')).status, 401);
   assert.equal(
     (await request('/driver/availability', 'PATCH', { ready: true }, 'driver2')).status,
@@ -271,6 +303,9 @@ test('authentication, CSRF, registration, profile, role and account suspension',
     .split(';')[0];
 });
 test('account status and its audit roll back together on audit failure', async () => {
+  const changesBefore = await db.prisma.driverOperationalChange.count({
+    where: { driver_id: 'driver2', source: 'ACCOUNT' },
+  });
   await schemaPool.query(
     `CREATE FUNCTION reject_test_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.action = 'ACCOUNT_STATUS' AND NEW.detail->>'reason' = 'force audit failure' THEN RAISE EXCEPTION 'test audit failure'; END IF; RETURN NEW; END $$`,
   );
@@ -286,6 +321,12 @@ test('account status and its audit roll back together on audit failure', async (
     );
     assert.equal(result.status, 500);
     assert.equal((await db.prisma.user.findUnique({ where: { id: 'driver2' } })).active, true);
+    assert.equal(
+      await db.prisma.driverOperationalChange.count({
+        where: { driver_id: 'driver2', source: 'ACCOUNT' },
+      }),
+      changesBefore,
+    );
     assert.equal(
       await db.prisma.auditLog.count({
         where: {
@@ -415,86 +456,131 @@ test('checkout replay survives catalog, address and router changes without reser
     ]);
   }
 });
-test('concurrent driver assignment enforces one active trip and cancellation releases it', async () => {
+test('concurrent exception assignments enforce one active trip and terminal failure releases it', async () => {
   const first = (await checkout()).data;
   const second = (await checkout()).data;
   await pay(first);
   await pay(second);
+  for (const order of [first, second])
+    assert.equal(
+      (
+        await request(
+          `/orders/${order.id}/transition`,
+          'POST',
+          { status: 'ACCEPTED' },
+          'restaurant',
+        )
+      ).status,
+      200,
+    );
+  await prepareEligibleDrivers('driver');
+  const keys = [randomUUID(), randomUUID()];
   const results = await Promise.all(
-    [first, second].map((order) =>
-      request(`/deliveries/${order.delivery.id}/assign`, 'POST', { driverId: 'driver' }, 'admin'),
+    [first, second].map((order, index) =>
+      request(
+        `/deliveries/${order.delivery.id}/assign`,
+        'POST',
+        overrideInput('driver', keys[index]),
+        'admin',
+      ),
     ),
   );
   assert.deepEqual(results.map((result) => result.status).sort(), [200, 409]);
   assert.equal(results.find((result) => result.status === 409)?.data.code, 'DRIVER_BUSY');
-  const winner = results[0].status === 200 ? first : second;
-  const loser = results[0].status === 200 ? second : first;
-  await schemaPool.query(
-    "INSERT INTO driver_locations (driver_id, latitude, longitude, captured_at, received_at) VALUES ('driver',21,105,now()-interval '20 minutes',now()-interval '20 minutes') ON CONFLICT (driver_id) DO UPDATE SET captured_at=excluded.captured_at,received_at=excluded.received_at",
-  );
-  await (await import('../server/modules/location/index.js')).purgeStaleDriverLocations();
-  assert.ok(await db.prisma.driverLocation.findUnique({ where: { driver_id: 'driver' } }));
-  await db.prisma.driverLocation.delete({ where: { driver_id: 'driver' } });
+  const winnerIndex = results[0].status === 200 ? 0 : 1;
+  const winner = [first, second][winnerIndex];
+  const loser = [second, first][winnerIndex];
   assert.equal(
-    (await request('/driver/availability', 'PATCH', { ready: false }, 'driver')).status,
+    (
+      await request(
+        `/deliveries/${winner.delivery.id}/assign`,
+        'POST',
+        overrideInput('driver', keys[winnerIndex]),
+        'admin',
+      )
+    ).status,
     200,
   );
   assert.equal(
     (await request('/driver/availability', 'PATCH', { online: false }, 'driver')).data.code,
     'ACTIVE_DELIVERY',
   );
+  for (const status of ['PREPARING', 'READY_FOR_PICKUP'])
+    assert.equal(
+      (await request(`/orders/${winner.id}/transition`, 'POST', { status }, 'restaurant')).status,
+      200,
+    );
   assert.equal(
     (
       await request(
-        `/deliveries/${winner.delivery.id}/assign`,
+        `/deliveries/${winner.delivery.id}/transition`,
         'POST',
-        { driverId: 'driver' },
-        'admin',
+        { status: 'PICKED_UP' },
+        'driver',
       )
     ).status,
     200,
   );
   assert.equal(
     (
-      await schemaPool.query(
-        "SELECT count(*)::int AS n FROM driver_assignments WHERE driver_id='driver' AND active",
+      await request(
+        `/deliveries/${winner.delivery.id}/transition`,
+        'POST',
+        { status: 'FAILED', reason: 'Driver unavailable' },
+        'driver',
       )
-    ).rows[0].n,
-    1,
-  );
-  await assert.rejects(
-    schemaPool.query(
-      'INSERT INTO driver_assignments (id, delivery_id, driver_id, active) VALUES ($1,$2,$3,true)',
-      [randomUUID(), loser.delivery.id, 'driver'],
-    ),
-    (error: any) => error.code === '23505',
-  );
-  assert.equal(
-    (await request(`/orders/${winner.id}/cancel`, 'POST', { reason: 'Changed plans' })).status,
+    ).status,
     200,
   );
-  const closed = await schemaPool.query(
-    'SELECT active, end_reason, ended_at FROM driver_assignments WHERE delivery_id=$1',
-    [winner.delivery.id],
+  assert.equal(
+    (
+      await db.prisma.driverAssignment.findFirstOrThrow({
+        where: { delivery_id: winner.delivery.id },
+      })
+    ).end_reason,
+    'FAILED',
   );
-  assert.equal(closed.rows[0].active, false);
-  assert.equal(closed.rows[0].end_reason, 'CANCELLED');
-  assert.ok(closed.rows[0].ended_at);
+  await prepareEligibleDrivers('driver');
   assert.equal(
     (
       await request(
         `/deliveries/${loser.delivery.id}/assign`,
         'POST',
-        { driverId: 'driver' },
+        overrideInput('driver'),
         'admin',
       )
     ).status,
     200,
   );
+  for (const status of ['PREPARING', 'READY_FOR_PICKUP'])
+    assert.equal(
+      (await request(`/orders/${loser.id}/transition`, 'POST', { status }, 'restaurant')).status,
+      200,
+    );
   assert.equal(
-    (await request(`/orders/${loser.id}/cancel`, 'POST', { reason: 'Changed plans' })).status,
+    (
+      await request(
+        `/deliveries/${loser.delivery.id}/transition`,
+        'POST',
+        { status: 'PICKED_UP' },
+        'driver',
+      )
+    ).status,
     200,
   );
+  assert.equal(
+    (
+      await request(
+        `/deliveries/${loser.delivery.id}/transition`,
+        'POST',
+        { status: 'FAILED', reason: 'Driver unavailable' },
+        'driver',
+      )
+    ).status,
+    200,
+  );
+  await db.prisma.driverLocation.deleteMany({ where: { driver_id: 'driver' } });
+  await db.prisma.driverAvailability.deleteMany({ where: { driver_id: 'driver' } });
 });
 test('driver availability requires fresh GPS and heartbeat does not refresh location', async () => {
   assert.equal((await request('/driver/availability', 'GET', undefined, 'customer')).status, 403);
@@ -557,6 +643,12 @@ test('driver GPS validates ownership, time and rate without overwriting latest p
     'STALE_LOCATION',
   );
   assert.equal((await request('/driver/location', 'POST', input, 'driver')).status, 200);
+  assert.equal(
+    await db.prisma.driverOperationalChange.count({
+      where: { driver_id: 'driver', source: 'LOCATION', reason: 'LOCATION_CHANGED' },
+    }),
+    1,
+  );
   assert.equal(
     (await request('/driver/location', 'POST', input, 'driver')).data.code,
     'LOCATION_OUT_OF_ORDER',
@@ -695,8 +787,14 @@ test('restaurant ownership and invalid transitions preserve state and history', 
 test('complete lifecycle: preparation, reassignment, authorized delivery and buyer review', async () => {
   const o = (await checkout()).data;
   await pay(o);
+  await prepareEligibleDrivers('driver', 'driver2');
   assert.equal(
-    (await request(`/deliveries/${o.delivery.id}/assign`, 'POST', { driverId: 'driver' }, 'admin'))
+    (await request(`/orders/${o.id}/transition`, 'POST', { status: 'ACCEPTED' }, 'restaurant'))
+      .status,
+    200,
+  );
+  assert.equal(
+    (await request(`/deliveries/${o.delivery.id}/assign`, 'POST', overrideInput('driver'), 'admin'))
       .status,
     200,
   );
@@ -718,7 +816,7 @@ test('complete lifecycle: preparation, reassignment, authorized delivery and buy
     ).data.code,
     'NOT_READY',
   );
-  await request(`/deliveries/${o.delivery.id}/assign`, 'POST', { driverId: 'driver2' }, 'admin');
+  await request(`/deliveries/${o.delivery.id}/assign`, 'POST', overrideInput('driver2'), 'admin');
   assert.equal(
     (await db.prisma.delivery.findUniqueOrThrow({ where: { id: o.delivery.id } })).arrived_at,
     null,
@@ -744,7 +842,7 @@ test('complete lifecycle: preparation, reassignment, authorized delivery and buy
     }),
     2,
   );
-  await request(`/deliveries/${o.delivery.id}/assign`, 'POST', { driverId: 'driver' }, 'admin');
+  await request(`/deliveries/${o.delivery.id}/assign`, 'POST', overrideInput('driver'), 'admin');
   assert.deepEqual(
     (
       await request(
@@ -771,7 +869,7 @@ test('complete lifecycle: preparation, reassignment, authorized delivery and buy
     ).status,
     200,
   );
-  await request(`/deliveries/${o.delivery.id}/assign`, 'POST', { driverId: 'driver2' }, 'admin');
+  await request(`/deliveries/${o.delivery.id}/assign`, 'POST', overrideInput('driver2'), 'admin');
   assert.equal(
     (
       await request(
@@ -823,7 +921,7 @@ test('complete lifecycle: preparation, reassignment, authorized delivery and buy
   );
   for (const field of ['address', 'note', 'payment', 'location', 'items'])
     assert.equal(field in revokedHistory.data.items[0], false);
-  for (const status of ['ACCEPTED', 'PREPARING', 'READY_FOR_PICKUP'])
+  for (const status of ['PREPARING', 'READY_FOR_PICKUP'])
     assert.equal(
       (await request(`/orders/${o.id}/transition`, 'POST', { status }, 'restaurant')).status,
       200,
@@ -999,8 +1097,14 @@ test('provider timeout keeps a recoverable pending order; outages do not hold st
 test('delivery failure requires a reason and stays distinct from successful delivery', async () => {
   const o = (await checkout()).data;
   await pay(o);
-  await request(`/deliveries/${o.delivery.id}/assign`, 'POST', { driverId: 'driver' }, 'admin');
-  for (const status of ['ACCEPTED', 'PREPARING', 'READY_FOR_PICKUP'])
+  await prepareEligibleDrivers('driver');
+  assert.equal(
+    (await request(`/orders/${o.id}/transition`, 'POST', { status: 'ACCEPTED' }, 'restaurant'))
+      .status,
+    200,
+  );
+  await request(`/deliveries/${o.delivery.id}/assign`, 'POST', overrideInput('driver'), 'admin');
+  for (const status of ['PREPARING', 'READY_FOR_PICKUP'])
     await request(`/orders/${o.id}/transition`, 'POST', { status }, 'restaurant');
   assert.equal(
     (await request(`/orders/${o.id}/cancel`, 'POST', { reason: 'Too late' })).data.code,
@@ -1122,7 +1226,7 @@ test('outbox retry is idempotent, complaints are owned, sensitive actions audite
     200,
   );
   const audit = await schemaPool.query(
-    "SELECT * FROM audit_logs WHERE action IN ('COMPLAINT_RESOLVED','INVALID_PAYMENT_SIGNATURE','DRIVER_ASSIGNED')",
+    "SELECT * FROM audit_logs WHERE action IN ('COMPLAINT_RESOLVED','INVALID_PAYMENT_SIGNATURE','ADMIN_DRIVER_OVERRIDE')",
   );
   assert(audit.rows.length >= 3);
 });

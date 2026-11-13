@@ -444,7 +444,24 @@ model DriverOperationalChange {
   observed_version Int?
   created_at DateTime @default(now()) @db.Timestamptz(6)
   processed_at DateTime? @db.Timestamptz(6)
+  lease_owner String?
+  lease_until DateTime? @db.Timestamptz(6)
+  attempts Int @default(0)
+  due_at DateTime @default(now()) @db.Timestamptz(6)
   @@map("driver_operational_changes")
+}
+
+model DeliveryIncident {
+  id String @id
+  delivery_id String
+  order_id String
+  type String
+  status String @default("OPEN")
+  reason String
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @default(now()) @db.Timestamptz(6)
+  @@index([delivery_id, status], map: "delivery_incidents_delivery_status")
+  @@map("delivery_incidents")
 }
 
 model DriverLocation {

@@ -16,6 +16,17 @@ import * as searches from '../infrastructure/assignment.repository.js';
 import { findEligibleCandidates } from './candidates.service.js';
 
 export function registerAssignmentHandlers(): void {
+  subscribe('DriverOperationalStateChanged', async (db, event) => {
+    await db.driverOperationalChange.create({
+      data: {
+        id: id(),
+        driver_id: event.driverId,
+        source: event.source,
+        reason: event.reason,
+        observed_version: event.observedVersion,
+      },
+    });
+  });
   subscribe('OrderAccepted', async (db, event) => {
     if (config.ASSIGNMENT_AUTOMATION_ENABLED)
       await searches.createInitialSearch(
@@ -131,6 +142,14 @@ async function applyClaim(
     const offerId = id();
     await db.driverOffer.create({
       data: { id: offerId, search_id: claim.id, driver_id: ranked.driverId, expires_at: expiresAt },
+    });
+    await db.driverOperationalChange.create({
+      data: {
+        id: id(),
+        driver_id: ranked.driverId,
+        source: 'OFFER',
+        reason: 'OFFER_CREATED',
+      },
     });
     await searches.recordAttempt(
       {

@@ -6,11 +6,15 @@ import { isEligibleForAssignment } from '../server/modules/assignment/domain/eli
 
 test('assignment configuration validates defaults, modes and strategy', () => {
   const defaults = parseAssignmentConfig({});
-  assert.equal(defaults.ASSIGNMENT_AUTOMATION_ENABLED, false);
+  assert.equal(defaults.ASSIGNMENT_AUTOMATION_ENABLED, true);
   assert.equal(defaults.DRIVER_LOCATION_MAX_AGE_SECONDS, 90);
   assert.equal(
     parseAssignmentConfig({ ASSIGNMENT_AUTOMATION_ENABLED: 'true' }).ASSIGNMENT_AUTOMATION_ENABLED,
     true,
+  );
+  assert.equal(
+    parseAssignmentConfig({ ASSIGNMENT_AUTOMATION_ENABLED: 'false' }).ASSIGNMENT_AUTOMATION_ENABLED,
+    false,
   );
   assert.throws(() => parseAssignmentConfig({ ASSIGNMENT_AUTOMATION_ENABLED: 'yes' }));
   assert.throws(() => parseAssignmentConfig({ ASSIGNMENT_STRATEGY: 'OTHER' }));

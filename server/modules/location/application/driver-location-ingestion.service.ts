@@ -1,6 +1,7 @@
 ﻿import { z } from 'zod';
 import { dbNow, prisma, transaction } from '../../../shared/db.js';
 import { check } from '../../../shared/errors.js';
+import { publish } from '../../../shared/events.js';
 import { lockActiveDriver, lockDriver } from '../../identity/index.js';
 import { locationDependencies } from '../driver-location.ports.js';
 import { validateLocationTime } from '../domain/driver-location-policy.js';
@@ -47,6 +48,12 @@ export async function recordDriverLocation(driverId: string, raw: unknown) {
         received_at: now,
         version: { increment: 1 },
       },
+    });
+    await publish(db, 'DriverOperationalStateChanged', {
+      driverId,
+      source: 'LOCATION',
+      reason: 'LOCATION_CHANGED',
+      observedVersion: row.version,
     });
     return { capturedAt: row.captured_at, receivedAt: row.received_at, version: row.version };
   });

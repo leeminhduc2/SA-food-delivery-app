@@ -395,14 +395,51 @@ test('smoke: checkout, payment, delivery and review lifecycle', async () => {
   assert.equal(payAgain.data.code, 'INVALID_TRANSITION');
 
   const deliveryId = confirmed.data.delivery.id;
+  assert.equal(
+    (
+      await request(
+        `/orders/${order.data.id}/transition`,
+        'POST',
+        { status: 'ACCEPTED' },
+        'restaurant',
+      )
+    ).status,
+    200,
+  );
+  await db.prisma.restaurant.update({
+    where: { id: order.data.restaurant_id },
+    data: { latitude: 21.03, longitude: 105.85 },
+  });
+  assert.equal(
+    (
+      await request(
+        '/driver/location',
+        'POST',
+        { latitude: 21.03, longitude: 105.85, capturedAt: new Date().toISOString() },
+        'driver',
+      )
+    ).status,
+    200,
+  );
+  assert.equal(
+    (await request('/driver/availability', 'PATCH', { online: true, ready: true }, 'driver'))
+      .status,
+    200,
+  );
   const assign = await request(
     `/deliveries/${deliveryId}/assign`,
     'POST',
-    { driverId: 'driver' },
+    {
+      driverId: 'driver',
+      reason: 'Operational recovery',
+      exceptionCode: 'NO_DRIVER',
+      idempotencyKey: 'smoke-override-key',
+    },
     'admin',
   );
   assert.equal(assign.status, 200);
-  assert.deepEqual(assign.data, { ok: true });
+  assert.equal(assign.data.ok, true);
+  assert.ok(assign.data.assignmentId);
 
   const asDriver = await request(`/orders/${order.data.id}`, 'GET', undefined, 'driver');
   assert.equal(asDriver.status, 200);
@@ -417,7 +454,7 @@ test('smoke: checkout, payment, delivery and review lifecycle', async () => {
   assert.equal(tooEarly.status, 409);
   assert.equal(tooEarly.data.code, 'NOT_READY');
 
-  for (const status of ['ACCEPTED', 'PREPARING', 'READY_FOR_PICKUP']) {
+  for (const status of ['PREPARING', 'READY_FOR_PICKUP']) {
     const moved = await request(
       `/orders/${order.data.id}/transition`,
       'POST',

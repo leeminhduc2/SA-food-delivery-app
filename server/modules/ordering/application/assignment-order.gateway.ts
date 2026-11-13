@@ -15,4 +15,11 @@ export const assignmentOrderGateway: AssignmentOrderGateway = {
     for (const memberId of await restaurantRecipients(order.restaurant_id, db))
       await notifyOnce(db, memberId, 'RESTAURANT_DRIVER_ASSIGNED', { orderId }, assignmentId);
   },
+  async notifyRevoked(orderId, workId, db) {
+    const order = await orders.findById(orderId, db);
+    if (!order) throw new Error('Order missing during assignment revocation');
+    await notifyOnce(db, order.customer_id, 'ORDER_DRIVER_REVOKED', { orderId }, workId);
+    for (const memberId of await restaurantRecipients(order.restaurant_id, db))
+      await notifyOnce(db, memberId, 'RESTAURANT_DRIVER_REVOKED', { orderId }, workId);
+  },
 };

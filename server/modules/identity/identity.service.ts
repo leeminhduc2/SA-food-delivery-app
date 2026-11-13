@@ -3,6 +3,7 @@ import { promisify } from 'node:util';
 import { z } from 'zod';
 import type { DB } from '../../shared/db.js';
 import { check } from '../../shared/errors.js';
+import { publish } from '../../shared/events.js';
 import type { Role, User } from '../../shared/types.js';
 import * as sessions from './session.repository.js';
 import * as users from './user.repository.js';
@@ -146,9 +147,17 @@ export async function listUsers(): Promise<User[]> {
 export async function setAccountActive(
   userId: string,
   active: boolean,
-  db?: DB,
+  db: DB,
 ): Promise<{ id: string } | undefined> {
+  const prior = await db.$queryRaw<Array<{ role: string; active: boolean }>>`
+    SELECT role, active FROM users WHERE id = ${userId} FOR UPDATE`;
   const target = await users.setActive(userId, active, db);
   if (target && !active) await sessions.deleteByUser(target.id, db);
+  if (target && prior[0]?.role === 'DRIVER' && prior[0].active !== active)
+    await publish(db, 'DriverOperationalStateChanged', {
+      driverId: userId,
+      source: 'ACCOUNT',
+      reason: active ? 'ACCOUNT_ACTIVATED' : 'ACCOUNT_LOCKED',
+    });
   return target;
 }

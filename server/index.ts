@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { createApp } from './app.js';
 import { runBackgroundCycle } from './jobs.js';
 import { prisma } from './shared/db.js';
+import { assignmentConfig, bootstrapAssignmentSearches } from './modules/assignment/index.js';
 import {
   closeAllStreams,
   closeNotificationBus,
@@ -24,7 +25,14 @@ await prisma.$queryRaw`SELECT 1`;
 const port = Number(process.env.PORT || 3001);
 const host = process.env.HOST || '127.0.0.1';
 initNotificationBus(dispatchPush);
-const server = createApp().listen(port, host, () =>
+const app = createApp();
+if (assignmentConfig.ASSIGNMENT_AUTOMATION_ENABLED) {
+  const bootstrap = await bootstrapAssignmentSearches();
+  console.log(
+    `Assignment bootstrap: inspected=${bootstrap.inspected}, created=${bootstrap.created}`,
+  );
+}
+const server = app.listen(port, host, () =>
   console.log('Bếp API: http://' + (host === '0.0.0.0' ? 'localhost' : host) + ':' + port),
 );
 let running = false;

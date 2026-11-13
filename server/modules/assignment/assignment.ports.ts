@@ -9,6 +9,7 @@ export interface AssignmentOrderGateway {
   context(deliveryId: string, db: DB): Promise<AssignmentOrderContext | null>;
   lockOrder(orderId: string, db: DB): Promise<{ id: string; status: string } | undefined>;
   notifyAssigned(orderId: string, assignmentId: string, db: DB): Promise<void>;
+  notifyRevoked(orderId: string, workId: string, db: DB): Promise<void>;
 }
 let gateway: AssignmentOrderGateway | undefined;
 export function setAssignmentOrderGateway(value: AssignmentOrderGateway): void {

@@ -140,8 +140,8 @@ const owners: Record<string, { tables: string[]; models: string[] }> = {
     tables: ['payments', 'payment_events', 'simulated_transactions'],
   },
   delivery: {
-    models: ['delivery', 'driverAssignment'],
-    tables: ['deliveries', 'driver_assignments'],
+    models: ['delivery', 'driverAssignment', 'deliveryIncident'],
+    tables: ['deliveries', 'driver_assignments', 'delivery_incidents'],
   },
   notification: { models: ['notification', 'outbox'], tables: ['notifications', 'outbox'] },
   review: { models: ['review'], tables: ['reviews'] },

@@ -63,6 +63,8 @@ Các mục G01–G20 gom đúng phạm vi partial của audit; tracking Restaura
 
 Mỗi Axx phải được ghi PASS với run/test assertion tại P05-T04, không chỉ link file test tồn tại. P14 kiểm lại sau khi proof/refund/report được thêm.
 
+P05-T04: **A01?A12 PASS**, each with its assertion and run evidence in [the core gate run](state/runs/20261113-1340-P05-T04.md).
+
 ## Ngoài phạm vi có chủ đích
 
 EXT01–EXT06 trong [DEFERRED_EXTERNALS](DEFERRED_EXTERNALS.md) giữ DEFERRED. Source audit không được sửa để xóa gap chưa làm; chỉ cập nhật matrix với evidence hoặc decision mới.

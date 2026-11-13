@@ -13,9 +13,9 @@ const patchSchema = z
     'Supply online or ready.',
   );
 function heartbeatFresh(at: Date | null, now: Date) {
-  return (
-    at !== null && now.getTime() - at.getTime() <= config.DRIVER_HEARTBEAT_MAX_AGE_SECONDS * 1000
-  );
+  if (!at) return false;
+  const age = now.getTime() - at.getTime();
+  return age >= 0 && age <= config.DRIVER_HEARTBEAT_MAX_AGE_SECONDS * 1000;
 }
 async function snapshot(driverId: string, db: DB = prisma) {
   const [row, busy, location, now] = await Promise.all([

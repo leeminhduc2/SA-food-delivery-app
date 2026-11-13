@@ -6,12 +6,18 @@ import {
   updateAvailability,
 } from './application/availability.service.js';
 import { respondToOffer } from './application/offer-response.service.js';
+import { overrideDriver } from './application/admin-override.service.js';
 import {
   listDriverOffers,
   listAdminSearches,
   adminSearchDetail,
 } from './application/offer-queries.service.js';
 export const assignmentRoutes = Router();
+assignmentRoutes.post('/admin/deliveries/:id/reassign', async (req, res) =>
+  res.json(
+    await overrideDriver(actor(req, 'ADMIN'), String(req.params.id), req.body, req.requestId),
+  ),
+);
 assignmentRoutes.get('/driver/offers', async (req, res) =>
   res.json(await listDriverOffers(actor(req, 'DRIVER').id)),
 );
