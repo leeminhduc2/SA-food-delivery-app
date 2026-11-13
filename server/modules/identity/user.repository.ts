@@ -66,6 +66,16 @@ export async function findActiveDriver(
   );
 }
 
+export async function activeDriverDisplay(
+  userId: string,
+  db: DB = prisma,
+): Promise<{ id: string; name: string } | null> {
+  return db.user.findFirst({
+    where: { id: userId, role: 'DRIVER', active: true },
+    select: { id: true, name: true },
+  });
+}
+
 export async function lockActiveDriver(
   userId: string,
   db: DB,

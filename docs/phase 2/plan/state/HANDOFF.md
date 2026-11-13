@@ -1,6 +1,6 @@
-# Handoff ? P06-T01 complete
+# Handoff ? P06-T02 complete
 
-- P06-T01 adds schema-namespaced Redis tracking and notification topics, post-commit ephemeral GPS publication, a DB-fenced snapshot with bounded Redis fallback and reconnect handling. See [run](runs/20261113-1354-P06-T01.md). D18 records the notification channel compatibility change and rollout drain.
-- Next: P06-T02 authorized tracking snapshot/SSE, scoped gateway, revalidation on every push and at most five-second heartbeat, lifecycle cleanup and real Redis/PostgreSQL tests. No tracking HTTP endpoint exists yet.
-- P05-T04 commit `1e0ad8b`; P06-T01 is committed separately. No application DB migration was performed. Test PostgreSQL/Redis containers use ports 15433/16379; `.tmp/p05-build-check` provides an isolated build without stopping the user dev process.
-- Repository-wide format check still reports the two untouched baseline documents described in the P05 run.
+- P06-T02 adds authorized GET tracking snapshot and SSE, an Ordering-owned access gateway, current-assignment/session revalidation before push and every 3 seconds, fail-closed timeouts and cleanup. See [run](runs/20261113-1417-P06-T02.md).
+- Next: P06-T03 tracking map/navigation UI and reconnect fallback. Read the phase and UI skill, then test empty/stale/outage states, accessibility, stream cleanup and responsive widths.
+- P05-T04 commit `1e0ad8b`; P06-T01 `63e2224`; P06-T02 is committed separately. Test PostgreSQL/Redis containers use ports 15433/16379; isolated build copy `.tmp/p05-build-check` avoids the user-held Prisma DLL. No application DB migrations were run.
+- Repository-wide format check still reports two untouched baseline documents described in the P05 run.

@@ -11,7 +11,7 @@ import { catalogRoutes, importRoutes } from './modules/catalog/index.js';
 import { deliveryRoutes } from './modules/delivery/index.js';
 import { authenticate, identityRoutes } from './modules/identity/index.js';
 import { registerModules } from './modules/index.js';
-import { addressRoutes } from './modules/location/index.js';
+import { addressRoutes, trackingRoutes } from './modules/location/index.js';
 import { notificationRoutes } from './modules/notification/index.js';
 import { orderRoutes } from './modules/ordering/index.js';
 import { paymentRoutes } from './modules/payment/index.js';
@@ -118,6 +118,7 @@ export function createApp() {
   app.use(
     '/api',
     addressRoutes,
+    trackingRoutes,
     assignmentRoutes,
     catalogRoutes,
     orderRoutes,

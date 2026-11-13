@@ -520,6 +520,34 @@ components:
       properties:
         ok: { type: boolean, const: true }
         assignmentId: { type: string }
+    TrackingSnapshot:
+      type: object
+      required:
+        [orderId, deliveryId, status, driver, location, routeMode, capturedAt, stale, reason]
+      properties:
+        orderId: { type: string }
+        deliveryId: { type: [string, 'null'] }
+        status: { type: string }
+        driver:
+          oneOf:
+            - type: object
+              required: [id, name]
+              properties:
+                id: { type: string }
+                name: { type: string }
+            - type: 'null'
+        location:
+          oneOf:
+            - type: object
+              required: [latitude, longitude]
+              properties:
+                latitude: { type: number }
+                longitude: { type: number }
+            - type: 'null'
+        routeMode: { type: string, const: WALKING }
+        capturedAt: { type: [string, 'null'], format: date-time }
+        stale: { type: boolean }
+        reason: { type: [string, 'null'] }
     DeliveryTransitionInput:
       type: object
       required: [status]
@@ -1621,6 +1649,44 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
         '429': { description: Driver location update rate exceeded }
+
+  /api/orders/{id}/tracking:
+    parameters:
+      - $ref: '#/components/parameters/OrderId'
+    get:
+      tags: [Delivery]
+      operationId: getOrderTracking
+      summary: Read the authorized current tracking snapshot
+      security: [{ sessionCookie: [] }]
+      responses:
+        '200':
+          description: Current authorized tracking state
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TrackingSnapshot' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/orders/{id}/tracking/stream:
+    parameters:
+      - $ref: '#/components/parameters/OrderId'
+    get:
+      tags: [Delivery]
+      operationId: streamOrderTracking
+      summary: Stream authorized current location and status without history replay
+      security: [{ sessionCookie: [] }]
+      responses:
+        '200':
+          description: SSE location, tracking_status and revoked events
+          content:
+            text/event-stream:
+              schema: { type: string }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { description: Tracking stream limit reached }
+        '503': { description: Live tracking transport unavailable }
 
   /api/driver/availability:
     get:

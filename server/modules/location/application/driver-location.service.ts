@@ -4,8 +4,9 @@ export async function latestDriverLocation(driverId: string, db: DB = prisma) {
   return db.driverLocation.findUnique({ where: { driver_id: driverId } });
 }
 /** DB identity fences stale cache entries, including rows deleted and recreated at version 1. */
-export async function trackingLocationSnapshot(driverId: string) {
+export async function trackingLocationSnapshot(driverId: string, signal?: AbortSignal) {
   const current = await latestDriverLocation(driverId);
+  signal?.throwIfAborted();
   if (!current) return null;
   const transport = trackingTransport();
   if (!transport) return current;
@@ -18,6 +19,7 @@ export async function trackingLocationSnapshot(driverId: string) {
   ]).finally(() => {
     if (timeout) clearTimeout(timeout);
   });
+  signal?.throwIfAborted();
   if (
     !cached ||
     cached.version !== current.version ||

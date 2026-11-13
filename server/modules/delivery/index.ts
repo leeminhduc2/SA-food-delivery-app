@@ -22,6 +22,7 @@ export {
   recordOperationalIncident,
   busyDriverIds,
   deliveryForOrderLocked,
+  trackingDeliveryForOrder,
   deliveryForAssignmentLocked,
   deliveryForAssignment,
   applyAdminDriverOverride,

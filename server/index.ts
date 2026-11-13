@@ -3,6 +3,7 @@ import { createApp } from './app.js';
 import { runBackgroundCycle } from './jobs.js';
 import { prisma } from './shared/db.js';
 import { assignmentConfig, bootstrapAssignmentSearches } from './modules/assignment/index.js';
+import { closeAllTrackingStreams } from './modules/location/index.js';
 import {
   closeAllStreams,
   closeNotificationBus,
@@ -52,6 +53,7 @@ for (const signal of ['SIGINT', 'SIGTERM'])
     clearInterval(worker);
     // Open SSE responses never end on their own; close them so server.close() can finish.
     closeAllStreams();
+    closeAllTrackingStreams();
     server.close(async () => {
       while (running) await new Promise((resolve) => setTimeout(resolve, 50));
       await closeNotificationBus();

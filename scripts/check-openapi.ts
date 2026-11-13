@@ -16,6 +16,7 @@ const routeFiles: Array<{ file: string; router: string; prefix: string }> = [
     prefix: '/api/auth',
   },
   { file: 'server/modules/location/address.routes.ts', router: 'addressRoutes', prefix: '/api' },
+  { file: 'server/modules/location/tracking.routes.ts', router: 'trackingRoutes', prefix: '/api' },
   { file: 'server/modules/catalog/catalog.routes.ts', router: 'catalogRoutes', prefix: '/api' },
   { file: 'server/modules/ordering/ordering.routes.ts', router: 'orderRoutes', prefix: '/api' },
   {

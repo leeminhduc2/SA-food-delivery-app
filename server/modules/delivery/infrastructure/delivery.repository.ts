@@ -24,6 +24,18 @@ export async function findByOrderForUpdate(
   );
 }
 
+export async function trackingDeliveryForOrder(orderId: string, db: DB = prisma) {
+  return db.delivery.findUnique({
+    where: { order_id: orderId },
+    select: {
+      id: true,
+      status: true,
+      driver_id: true,
+      assignments: { where: { active: true }, select: { id: true, driver_id: true }, take: 1 },
+    },
+  });
+}
+
 export async function findById(
   deliveryId: string,
   db: DB = prisma,

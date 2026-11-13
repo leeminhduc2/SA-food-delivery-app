@@ -126,6 +126,10 @@ export async function activeDriverIds(ids: readonly string[], db?: DB): Promise<
   return users.activeDriverIds(ids, db);
 }
 
+export async function activeDriverDisplay(userId: string, db?: DB) {
+  return users.activeDriverDisplay(userId, db);
+}
+
 export async function activeAdministratorIds(db?: DB): Promise<string[]> {
   return users.activeAdministratorIds(db);
 }

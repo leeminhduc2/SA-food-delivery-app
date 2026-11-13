@@ -105,6 +105,11 @@ export async function deliveryForOrderLocked(orderId: string, db: DB) {
   return deliveries.findByOrderForUpdate(orderId, db);
 }
 
+/** Minimal assignment metadata for the tracking authorization gateway. */
+export async function trackingDeliveryForOrder(orderId: string, db: DB = prisma) {
+  return deliveries.trackingDeliveryForOrder(orderId, db);
+}
+
 export async function deliveryForAssignmentLocked(deliveryId: string, db: DB) {
   return deliveries.findForUpdate(deliveryId, db);
 }

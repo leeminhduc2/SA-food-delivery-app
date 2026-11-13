@@ -5,3 +5,4 @@ export { accessOrder } from './application/order-queries.js';
 export { expireUnpaidOrders } from './application/expire-orders.js';
 export { deliveryOrderGateway, paymentOrderGateway } from './application/order-gateways.js';
 export { assignmentOrderGateway } from './application/assignment-order.gateway.js';
+export { trackingAccessGateway } from './application/tracking-access.gateway.js';

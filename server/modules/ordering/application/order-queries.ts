@@ -13,8 +13,10 @@ export async function accessOrder(
   actor: User,
   orderId: string,
   lock = false,
+  signal?: AbortSignal,
 ): Promise<orders.OrderRow> {
   const order = await orders.findById(orderId, db, lock);
+  signal?.throwIfAborted();
   check(order, 404, 'NOT_FOUND', 'Order not found.');
   if (actor.role === 'CUSTOMER')
     check(order.customer_id === actor.id, 403, 'FORBIDDEN', 'You cannot access this order.');

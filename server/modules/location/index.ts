@@ -4,6 +4,13 @@
  * destination's coordinates (see catalog/application/restaurant-location.ts).
  */
 export { addressRoutes } from './address.routes.js';
+export { trackingRoutes } from './tracking.routes.js';
+export { closeAllTrackingStreams } from './application/tracking-stream.service.js';
+export {
+  setTrackingAccessGateway,
+  type TrackingAccessGateway,
+  type TrackingAccess,
+} from './tracking.ports.js';
 export {
   latestDriverLocation,
   trackingLocationSnapshot,
