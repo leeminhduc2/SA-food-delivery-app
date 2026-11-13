@@ -8,7 +8,9 @@ export { trackingRoutes } from './tracking.routes.js';
 export { closeAllTrackingStreams } from './application/tracking-stream.service.js';
 export {
   setTrackingAccessGateway,
+  setTrackingRouteGateway,
   type TrackingAccessGateway,
+  type TrackingRouteGateway,
   type TrackingAccess,
 } from './tracking.ports.js';
 export {

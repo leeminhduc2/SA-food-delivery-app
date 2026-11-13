@@ -3,6 +3,7 @@ import { useRef, useState } from 'react';
 import { label, money } from '../api';
 import type { Actor } from '../types';
 import { Field } from './Primitives';
+import { DeliveryTracking } from './DeliveryTracking';
 export function OrderCard({
   order: o,
   actor,
@@ -25,6 +26,7 @@ export function OrderCard({
     [driver, setDriver] = useState(''),
     [overrideReason, setOverrideReason] = useState(''),
     [exceptionCode, setExceptionCode] = useState('NO_DRIVER'),
+    [trackingOpen, setTrackingOpen] = useState(false),
     [support, setSupport] = useState(false);
   const arrivalKey = useRef(crypto.randomUUID());
   const overrideKeys = useRef<Record<string, string>>({});
@@ -105,6 +107,20 @@ export function OrderCard({
           Driver arrived at pickup: {new Date(o.delivery.arrived_at).toLocaleTimeString()}
         </p>
       )}
+      <details
+        className="tracking-disclosure"
+        onToggle={(event) => setTrackingOpen(event.currentTarget.open)}
+      >
+        <summary>Track delivery</summary>
+        {trackingOpen && (
+          <DeliveryTracking
+            key={`${actor.id}:${o.id}`}
+            orderId={o.id}
+            actor={actor}
+            pickup={o.pickup ?? null}
+          />
+        )}
+      </details>
       {actor.role === 'DRIVER' && o.delivery.status === 'ASSIGNED' && !o.delivery.arrived_at && (
         <button
           className="button secondary full"

@@ -747,3 +747,220 @@ test(
     }
   },
 );
+
+test(
+  'walking navigation uses the provider only for the current driver and rechecks reassignment',
+  { skip: redisUrl ? false : 'REDIS_URL is required', timeout: 12000 },
+  async () => {
+    const f = await fixture('navigation');
+    const routing = await import('../server/modules/location/infrastructure/routing.client.js');
+    const { clearRoutingCache } =
+      await import('../server/modules/location/application/routing.service.js');
+    let calls = 0;
+    try {
+      await db.prisma.restaurant.update({
+        where: { id: 'saigon' },
+        data: { latitude: 21.02, longitude: 105.02 },
+      });
+      await db.prisma.order.update({
+        where: { id: f.order },
+        data: { delivery_latitude: 21.03, delivery_longitude: 105.03 },
+      });
+      clearRoutingCache();
+      routing.setRoutingProvider({
+        name: 'tracking-test',
+        async walkingRoute(from, to) {
+          calls++;
+          return {
+            distanceMeters: 1234,
+            durationSeconds: 890,
+            provider: 'tracking-test',
+            routeGeometry: {
+              type: 'LineString',
+              coordinates: [
+                [from.longitude, from.latitude],
+                [to.longitude, to.latitude],
+              ],
+            },
+          };
+        },
+      });
+      for (const actor of ['customer', 'restaurant', 'driver2', 'admin'])
+        assert.equal(
+          (await request(`/orders/${f.order}/tracking/route?destination=pickup`, actor)).status,
+          403,
+        );
+      assert.equal(calls, 0);
+      for (const destination of ['pickup', 'dropoff']) {
+        const result = await request(
+          `/orders/${f.order}/tracking/route?destination=${destination}`,
+          'driver',
+        );
+        assert.equal(result.status, 200);
+        assert.equal(result.data.routeMode, 'WALKING');
+        assert.equal(result.data.destination, destination);
+        assert.equal(result.data.distanceMeters, 1234);
+        assert.equal(result.data.routeGeometry.type, 'LineString');
+      }
+      assert.equal(calls, 2);
+      assert.equal(
+        (await request(`/orders/${f.order}/tracking/route?destination=pickup`, 'driver')).status,
+        200,
+      );
+      assert.equal(calls, 3, 'live driver routes must not accumulate in the shared route cache');
+      assert.equal(
+        (await request(`/orders/${f.order}/tracking/route?destination=invalid`, 'driver')).status,
+        400,
+      );
+      await db.prisma
+        .$executeRaw`UPDATE driver_locations SET captured_at = now() - interval '2 minutes', received_at = now() - interval '2 minutes' WHERE driver_id = 'driver'`;
+      assert.equal(
+        (await request(`/orders/${f.order}/tracking/route?destination=pickup`, 'driver')).data.code,
+        'STALE_LOCATION',
+      );
+      const now = new Date();
+      await db.prisma.driverLocation.update({
+        where: { driver_id: 'driver' },
+        data: { captured_at: now, received_at: now },
+      });
+      clearRoutingCache();
+      routing.setRoutingProvider({
+        name: 'offline',
+        async walkingRoute() {
+          throw new routing.RoutingProviderError('TIMEOUT', 'offline');
+        },
+      });
+      const unavailable = await request(
+        `/orders/${f.order}/tracking/route?destination=pickup`,
+        'driver',
+      );
+      assert.equal(unavailable.status, 503);
+      assert.equal(unavailable.data.code, 'ROUTE_UNAVAILABLE');
+      routing.setRoutingProvider({
+        name: 'invalid-geometry',
+        async walkingRoute() {
+          return {
+            provider: 'invalid-geometry',
+            distanceMeters: 100,
+            durationSeconds: 60,
+            routeGeometry: {
+              type: 'LineString',
+              coordinates: [
+                [105, 21],
+                [999, 21],
+              ],
+            },
+          };
+        },
+      });
+      const invalid = await request(
+        `/orders/${f.order}/tracking/route?destination=pickup`,
+        'driver',
+      );
+      assert.equal(invalid.status, 503);
+      assert.equal('routeGeometry' in invalid.data, false);
+      let started!: () => void, releaseRoute!: () => void;
+      const ready = new Promise<void>((resolve) => {
+        started = resolve;
+      });
+      const barrier = new Promise<void>((resolve) => {
+        releaseRoute = resolve;
+      });
+      clearRoutingCache();
+      routing.setRoutingProvider({
+        name: 'barrier',
+        async walkingRoute(from, to) {
+          started();
+          await barrier;
+          return {
+            distanceMeters: 1234,
+            durationSeconds: 890,
+            provider: 'barrier',
+            routeGeometry: {
+              type: 'LineString',
+              coordinates: [
+                [from.longitude, from.latitude],
+                [to.longitude, to.latitude],
+              ],
+            },
+          };
+        },
+      });
+      const pending = request(`/orders/${f.order}/tracking/route?destination=pickup`, 'driver');
+      await ready;
+      await db.prisma.$transaction(async (tx) => {
+        await tx.driverAssignment.updateMany({
+          where: { delivery_id: f.delivery, active: true },
+          data: { active: false, end_reason: 'REASSIGNED', ended_at: new Date() },
+        });
+        await tx.driverAssignment.create({
+          data: {
+            id: 'tracking-assignment-navigation-new',
+            delivery_id: f.delivery,
+            driver_id: 'driver2',
+          },
+        });
+        await tx.delivery.update({ where: { id: f.delivery }, data: { driver_id: 'driver2' } });
+      });
+      releaseRoute();
+      assert.equal((await pending).status, 403);
+    } finally {
+      routing.resetRoutingProvider();
+      clearRoutingCache();
+      await release(f.delivery);
+    }
+  },
+);
+
+test(
+  'walking navigation discards a provider result if the driver session ends in flight',
+  { skip: redisUrl ? false : 'REDIS_URL is required', timeout: 12000 },
+  async () => {
+    const f = await fixture('navigation-session');
+    const routing = await import('../server/modules/location/infrastructure/routing.client.js');
+    let started!: () => void, releaseRoute!: () => void;
+    const ready = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const barrier = new Promise<void>((resolve) => {
+      releaseRoute = resolve;
+    });
+    try {
+      await db.prisma.restaurant.update({
+        where: { id: 'saigon' },
+        data: { latitude: 21.02, longitude: 105.02 },
+      });
+      routing.setRoutingProvider({
+        name: 'barrier-session',
+        async walkingRoute(from, to) {
+          started();
+          await barrier;
+          return {
+            provider: 'barrier-session',
+            distanceMeters: 1234,
+            durationSeconds: 890,
+            routeGeometry: {
+              type: 'LineString',
+              coordinates: [
+                [from.longitude, from.latitude],
+                [to.longitude, to.latitude],
+              ],
+            },
+          };
+        },
+      });
+      const pending = request(`/orders/${f.order}/tracking/route?destination=pickup`, 'driver');
+      await ready;
+      assert.equal((await request('/auth/logout', 'driver', 'POST', {})).status, 200);
+      releaseRoute();
+      const result = await pending;
+      assert.equal(result.status, 401);
+      assert.equal('routeGeometry' in result.data, false);
+      await login('driver');
+    } finally {
+      releaseRoute();
+      routing.resetRoutingProvider();
+      await release(f.delivery);
+    }
+  },
+);

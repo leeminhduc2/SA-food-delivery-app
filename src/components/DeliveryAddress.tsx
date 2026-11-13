@@ -52,7 +52,9 @@ export function AddressMap({
   const markerRef = useRef<L.Marker | null>(null);
   const restaurantRef = useRef<L.Marker | null>(null);
   const lineRef = useRef<L.Polyline | null>(null);
+  const tilesRef = useRef<L.TileLayer | null>(null);
   const onPickRef = useRef(onPick);
+  const [tileError, setTileError] = useState(false);
   onPickRef.current = onPick;
   const [centerLat, centerLon] = center;
   const [markerLat, markerLon] = marker || [0, 0];
@@ -60,19 +62,30 @@ export function AddressMap({
   useEffect(() => {
     if (!container.current || mapRef.current) return;
     const map = L.map(container.current, { scrollWheelZoom: false }).setView(center, 15);
-    L.tileLayer(tileUrl, { attribution: tileAttribution, maxZoom: 19 }).addTo(map);
+    let active = true;
+    const tiles = L.tileLayer(tileUrl, { attribution: tileAttribution, maxZoom: 19 });
+    tiles.on('tileerror', () => {
+      if (active) setTileError(true);
+    });
+    tiles.on('tileload', () => {
+      if (active) setTileError(false);
+    });
+    tiles.addTo(map);
+    tilesRef.current = tiles;
     map.on('click', (event: L.LeafletMouseEvent) =>
       onPickRef.current?.(event.latlng.lat, event.latlng.lng),
     );
     mapRef.current = map;
     const timer = setTimeout(() => map.invalidateSize(), 80);
     return () => {
+      active = false;
       clearTimeout(timer);
       map.remove();
       mapRef.current = null;
       markerRef.current = null;
       restaurantRef.current = null;
       lineRef.current = null;
+      tilesRef.current = null;
     };
     // The map is created once; later prop changes are applied below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -146,6 +159,21 @@ export function AddressMap({
   return (
     <div className="map-shell" style={{ height }}>
       <div ref={container} className="map-canvas" aria-label="Delivery map" />
+      {tileError && (
+        <div className="map-status" role="status">
+          <span>Map tiles are unavailable. Text details are still available.</span>
+          <button
+            type="button"
+            className="text-button"
+            onClick={() => {
+              setTileError(false);
+              tilesRef.current?.redraw();
+            }}
+          >
+            Retry map
+          </button>
+        </div>
+      )}
       <p className="map-attribution-note">
         Walking routes use the OpenStreetMap pedestrian network via Valhalla. Map data ©
         OpenStreetMap contributors.

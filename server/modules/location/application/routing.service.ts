@@ -46,15 +46,16 @@ function release(): void {
 
 async function callProvider(from: LatLng, to: LatLng): Promise<WalkingRoute> {
   await acquire();
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     const route = await Promise.race([
       activeRoutingProvider.walkingRoute(from, to),
-      new Promise<never>((_, reject) =>
-        setTimeout(
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
           () => reject(new RoutingProviderError('TIMEOUT', 'The walking router took too long.')),
           timeoutMs() + 500,
-        ),
-      ),
+        );
+      }),
     ]);
     if (
       !Number.isFinite(route.distanceMeters) ||
@@ -63,7 +64,12 @@ async function callProvider(from: LatLng, to: LatLng): Promise<WalkingRoute> {
       route.durationSeconds < 0 ||
       !route.routeGeometry ||
       route.routeGeometry.type !== 'LineString' ||
-      route.routeGeometry.coordinates.length < 2
+      !Array.isArray(route.routeGeometry.coordinates) ||
+      route.routeGeometry.coordinates.length < 2 ||
+      !route.routeGeometry.coordinates.every(
+        (point) =>
+          Array.isArray(point) && point.length === 2 && isValidCoordinate(point[1], point[0]),
+      )
     )
       throw new RoutingProviderError(
         'INVALID_RESPONSE',
@@ -71,11 +77,12 @@ async function callProvider(from: LatLng, to: LatLng): Promise<WalkingRoute> {
       );
     return route;
   } finally {
+    if (timer) clearTimeout(timer);
     release();
   }
 }
 
-export async function walkingRoute(from: LatLng, to: LatLng): Promise<WalkingRoute> {
+function validateEndpoints(from: LatLng, to: LatLng): void {
   if (!isValidCoordinate(from.latitude, from.longitude))
     throw new RoutingProviderError('INVALID_COORDINATES', 'The delivery address is invalid.');
   if (!isValidCoordinate(to.latitude, to.longitude))
@@ -83,6 +90,16 @@ export async function walkingRoute(from: LatLng, to: LatLng): Promise<WalkingRou
       'INVALID_COORDINATES',
       'The restaurant does not have a valid walking location.',
     );
+}
+
+/** A live-driver route is never cached, so changing positions do not form a trajectory. */
+export async function liveWalkingRoute(from: LatLng, to: LatLng): Promise<WalkingRoute> {
+  validateEndpoints(from, to);
+  return callProvider(from, to);
+}
+
+export async function walkingRoute(from: LatLng, to: LatLng): Promise<WalkingRoute> {
+  validateEndpoints(from, to);
   const key = keyFor(from, to);
   const hit = cache.get(key);
   if (hit) {

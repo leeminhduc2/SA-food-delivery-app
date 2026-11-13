@@ -76,6 +76,8 @@ GPS error: STALE_LOCATION, LOCATION_OUT_OF_ORDER, LOCATION_RATE_LIMITED; eligibi
 - POST `/deliveries/:id/arrive`: DRIVER current `{idempotencyKey}`, ghi arrivedAt một lần khi ASSIGNED; pickup vẫn cần ready. Customer/Restaurant xem mốc đến quán.
 - GET `/orders/:id/tracking`: `{orderId,deliveryId,status,driver,location,routeMode:'WALKING',capturedAt,stale}`; chưa assigned/terminal location=null + reason.
 - GET `/orders/:id/tracking/stream`: SSE location/tracking_status/revoked/heartbeat. Authorize actor/order/current assignment lúc subscribe và trước push; revalidate session/account. Terminal/reassign/revocation dừng stream; heartbeat tối đa 5s phát hiện mất quyền khi invalidation push mất. Không replay trajectory.
+- GET `/orders/:id/tracking/route?destination=pickup|dropoff`: current assigned Driver only; fresh GPS required. Return provider walking geometry, distance, duration, destination and source capture time. Recheck assignment and session after routing; return explicit error on missing coordinates or provider failure. Do not cache live-driver routes or synthesize a straight-line route.
+
 - Nối TrackingAccessGateway do Ordering/composition root implement; Location không import Ordering gây cycle. Tái sử dụng Redis lifecycle với typed tracking topic; không broadcast GPS cho tất cả client. Redis lỗi fallback GET DB snapshot 15s vẫn kiểm quyền.
 
 | Admin API                                      | Input                                             | Quy tắc                                                                                                                                                                 |

@@ -1165,6 +1165,23 @@ dialog::backdrop {
   line-height: 1.35;
   color: #4d5b51;
 }
+.map-status {
+  position: absolute;
+  top: 8px;
+  left: 50px;
+  right: 8px;
+  z-index: 500;
+  margin: 0;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: rgba(255, 254, 250, 0.96);
+  color: #20382e;
+  font-size: 12px;
+  line-height: 1.35;
+}
+.map-status button {
+  min-height: 44px;
+}
 .map-pin {
   background: transparent;
   border: 0;
@@ -2093,4 +2110,54 @@ td small {
   .card-bottom {
     font-size: 13px;
   }
+}
+
+.tracking-disclosure {
+  margin: 16px 0;
+  border-top: 1px solid var(--line);
+}
+.tracking-disclosure > summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-weight: 700;
+}
+.tracking-disclosure > summary::before {
+  content: '+';
+  font-size: 1.15rem;
+}
+.tracking-disclosure[open] > summary::before {
+  content: '−';
+}
+.delivery-tracking {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface, #fffefa);
+  overflow-wrap: anywhere;
+}
+.tracking-heading {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.tracking-heading h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+.tracking-connection {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+.delivery-tracking .map-attribution-note {
+  font-size: 11px;
+  bottom: 22px;
+}
+.navigation-controls .button {
+  min-height: 44px;
+}
+.navigation-controls .field select {
+  width: 100%;
 }

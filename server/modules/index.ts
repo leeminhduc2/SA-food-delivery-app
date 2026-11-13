@@ -11,6 +11,7 @@ import {
   configureDriverLocation,
   listCandidateLocations,
   setTrackingAccessGateway,
+  setTrackingRouteGateway,
 } from './location/index.js';
 import { activeDriverIds } from './identity/index.js';
 import {
@@ -27,6 +28,7 @@ import {
   registerOrderingHandlers,
   assignmentOrderGateway,
   trackingAccessGateway,
+  trackingRouteGateway,
 } from './ordering/index.js';
 import { setPaymentOrderGateway } from './payment/index.js';
 
@@ -40,6 +42,7 @@ export function registerModules(): void {
   setDriverOverride(overrideDriver);
   setAssignmentOrderGateway(assignmentOrderGateway);
   setTrackingAccessGateway(trackingAccessGateway);
+  setTrackingRouteGateway(trackingRouteGateway);
   registerOrderingHandlers();
   registerAssignmentHandlers();
   // Saving a delivery address prefetches one persisted quote per visible

@@ -1668,6 +1668,64 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /api/orders/{id}/tracking/route:
+    parameters:
+      - $ref: '#/components/parameters/OrderId'
+    get:
+      tags: [Delivery]
+      operationId: getDriverWalkingRoute
+      summary: Obtain walking directions for the currently assigned driver
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - in: query
+          name: destination
+          required: true
+          schema: { type: string, enum: [pickup, dropoff] }
+      responses:
+        '200':
+          description: Walking directions from the driver's fresh location
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  [
+                    routeMode,
+                    destination,
+                    target,
+                    sourceCapturedAt,
+                    distanceMeters,
+                    durationSeconds,
+                    routeGeometry,
+                  ]
+                properties:
+                  routeMode: { type: string, const: WALKING }
+                  destination: { type: string, enum: [pickup, dropoff] }
+                  sourceCapturedAt: { type: string, format: date-time }
+                  target:
+                    type: object
+                    required: [name, latitude, longitude]
+                    properties:
+                      name: { type: string }
+                      latitude: { type: number }
+                      longitude: { type: number }
+                  distanceMeters: { type: number }
+                  durationSeconds: { type: number }
+                  routeGeometry:
+                    type: object
+                    required: [type, coordinates]
+                    properties:
+                      type: { type: string, const: LineString }
+                      coordinates:
+                        type: array
+                        items: { type: array, items: { type: number }, minItems: 2, maxItems: 2 }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { description: Walking routing provider unavailable }
+
   /api/orders/{id}/tracking/stream:
     parameters:
       - $ref: '#/components/parameters/OrderId'

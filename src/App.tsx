@@ -1041,7 +1041,7 @@ export function App() {
               <div className="order-grid">
                 {orderList.map((o) => (
                   <OrderCard
-                    key={o.id}
+                    key={`${actor.id}:${o.id}`}
                     order={o}
                     actor={actor}
                     simulated={config.simulatedPayments}
