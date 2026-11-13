@@ -495,6 +495,27 @@ model AssignmentSearch {
   @@map("assignment_searches")
 }
 
+model AssignmentSearchEvent {
+  id String @id
+  search_id String
+  round Int
+  event String
+  reason String?
+  next_run_at DateTime? @db.Timestamptz(6)
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  @@index([search_id, created_at, id], map: "assignment_search_events_search_created")
+  @@map("assignment_search_events")
+}
+
+model OperationalAlertAcknowledgement {
+  kind String
+  resource_id String
+  actor_id String
+  acknowledged_at DateTime @default(now()) @db.Timestamptz(6)
+  @@id([kind, resource_id])
+  @@map("operational_alert_acknowledgements")
+}
+
 model DriverOffer {
   id String @id
   search_id String

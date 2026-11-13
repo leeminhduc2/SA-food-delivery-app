@@ -114,7 +114,7 @@ test('accepted order is offered, assigned and picked up without admin interventi
   await admin.getByRole('link', { name: 'Operations', exact: true }).click();
   const searches = admin
     .locator('section')
-    .filter({ has: admin.getByRole('heading', { name: 'Driver assignment searches' }) });
+    .filter({ has: admin.getByRole('heading', { name: 'Assignment monitoring' }) });
   await expect(searches).toContainText('Assigned');
   await expect(kitchen.getByText('Your driver: Đức Lê')).toBeVisible({ timeout: 15000 });
   await driver.getByRole('button', { name: 'Mark arrived at pickup' }).click();

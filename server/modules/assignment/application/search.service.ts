@@ -39,6 +39,8 @@ export function registerAssignmentHandlers(): void {
 const orderEligible = (status: string) =>
   ['ACCEPTED', 'PREPARING', 'READY_FOR_PICKUP'].includes(status);
 async function notifyExhausted(claim: searches.SearchClaim, reason: string, db: DB): Promise<void> {
+  await db.$executeRaw`INSERT INTO assignment_search_events (id, search_id, round, event, reason)
+    SELECT ${id()}, id, round, 'EXHAUSTED', ${reason} FROM assignment_searches WHERE id = ${claim.id}`;
   for (const adminId of await activeAdministratorIds(db))
     await notifyOnce(
       db,
@@ -109,8 +111,18 @@ async function applyClaim(
       if (decision.kind === 'EXHAUSTED') {
         const finished = await searches.finishClaim(claim, 'EXHAUSTED', 0, db);
         if (finished) await notifyExhausted(claim, decision.reason, db);
-      } else
-        await searches.finishClaim(claim, 'WAITING', decision.delaySeconds, db, decision.nextRound);
+      } else {
+        const nextRun = await searches.finishClaim(
+          claim,
+          'WAITING',
+          decision.delaySeconds,
+          db,
+          decision.nextRound,
+        );
+        if (nextRun)
+          await db.$executeRaw`INSERT INTO assignment_search_events (id, search_id, round, event, reason, next_run_at)
+          VALUES (${id()}, ${claim.id}, ${search.round}, 'RETRY_SCHEDULED', ${context?.pickup ? 'NO_CANDIDATE' : 'PICKUP_UNAVAILABLE'}, ${nextRun})`;
+      }
       return;
     }
     const eligible = await findEligibleCandidates(claim.id, context.pickup, db);

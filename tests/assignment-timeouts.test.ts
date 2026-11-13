@@ -103,7 +103,21 @@ test('no candidate follows 30/60-second rounds and emits one exhaustion alert', 
     await db.prisma.outbox.count({ where: { user_id: 'admin', type: 'ASSIGNMENT_EXHAUSTED' } }),
     1,
   );
+  const administrator = await db.prisma.user.findUniqueOrThrow({ where: { id: 'admin' } });
+  const { acknowledgeAlert } =
+    await import('../server/modules/backoffice/operational-alert.service.js');
+  await acknowledgeAlert(administrator as User, 'EXHAUSTED', search.id);
   assert.equal(await assignment.runAssignmentWorker(true, 5), 0);
+  const events = await db.prisma.$queryRaw<Array<{ event: string; reason: string; round: number }>>`
+    SELECT event, reason, round FROM assignment_search_events WHERE search_id = ${search.id} ORDER BY created_at, id`;
+  assert.deepEqual(
+    events.map(({ event, reason, round }) => ({ event, reason, round })),
+    [
+      { event: 'RETRY_SCHEDULED', reason: 'NO_CANDIDATE', round: 1 },
+      { event: 'RETRY_SCHEDULED', reason: 'NO_CANDIDATE', round: 2 },
+      { event: 'EXHAUSTED', reason: 'ROUNDS_EXHAUSTED', round: 3 },
+    ],
+  );
   assert.equal(
     await db.prisma.outbox.count({ where: { user_id: 'admin', type: 'ASSIGNMENT_EXHAUSTED' } }),
     1,

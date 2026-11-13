@@ -54,6 +54,18 @@ export async function adminSearchDetail(searchId: string) {
       created_at: true,
     },
   });
+  const events = await prisma.$queryRaw<
+    Array<{
+      id: string;
+      round: number;
+      event: string;
+      reason: string | null;
+      nextRunAt: Date | null;
+      createdAt: Date;
+    }>
+  >`
+    SELECT id, round, event, reason, next_run_at AS "nextRunAt", created_at AS "createdAt"
+    FROM assignment_search_events WHERE search_id = ${searchId} ORDER BY created_at, id`;
   return {
     searchId: row.id,
     deliveryId: row.delivery_id,
@@ -63,6 +75,7 @@ export async function adminSearchDetail(searchId: string) {
     offersCreated: row.offers_created,
     deadlineAt: row.deadline_at,
     nextRunAt: row.next_run_at,
+    events,
     attempts: attempts.map((entry) => ({
       attemptId: entry.id,
       driverId: entry.driver_id,

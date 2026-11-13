@@ -2161,3 +2161,30 @@ td small {
 .navigation-controls .field select {
   width: 100%;
 }
+.assignment-monitoring {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.assignment-metrics,
+.assignment-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+  gap: 0.75rem;
+  align-items: end;
+}
+.assignment-metrics p {
+  margin: 0;
+}
+.assignment-metrics small {
+  grid-column: 1 / -1;
+}
+.assignment-filters label {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+}
+.assignment-filters input,
+.assignment-filters select {
+  width: 100%;
+  min-width: 0;
+}

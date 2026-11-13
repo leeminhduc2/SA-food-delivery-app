@@ -49,6 +49,7 @@ const querySchema = z
       .optional(),
     status: z.string().min(1).max(40).optional(),
     restaurantId: z.string().min(1).max(128).optional(),
+    orderId: z.string().min(1).max(128).optional(),
     driverId: z.string().min(1).max(128).optional(),
     from: iso.optional(),
     to: iso.optional(),
@@ -125,6 +126,7 @@ export async function monitoringPage(kind: Kind, raw: unknown) {
     WHERE TRUE
       ${query.status ? Prisma.sql`AND ${status} = ${query.status}` : Prisma.empty}
       ${query.restaurantId ? Prisma.sql`AND o.restaurant_id = ${query.restaurantId}` : Prisma.empty}
+      ${query.orderId ? Prisma.sql`AND o.id = ${query.orderId}` : Prisma.empty}
       ${query.driverId ? Prisma.sql`AND ${driverFilter}` : Prisma.empty}
       ${query.from ? Prisma.sql`AND ${time} >= ${query.from}::timestamptz` : Prisma.empty}
       ${query.to ? Prisma.sql`AND ${time} < ${query.to}::timestamptz` : Prisma.empty}

@@ -1825,6 +1825,7 @@ paths:
         - { in: query, name: cursor, schema: { type: string }, description: Opaque page cursor }
         - { in: query, name: status, schema: { type: string }, description: Search status }
         - { in: query, name: restaurantId, schema: { type: string } }
+        - { in: query, name: orderId, schema: { type: string } }
         - { in: query, name: driverId, schema: { type: string }, description: Current driver or a driver with an attempt }
         - { in: query, name: from, schema: { type: string, format: date-time }, description: Inclusive UTC creation time }
         - { in: query, name: to, schema: { type: string, format: date-time }, description: Exclusive UTC creation time }
@@ -1882,6 +1883,42 @@ paths:
       security: [{ sessionCookie: [] }]
       responses:
         '200': { description: Search and attempt metadata }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/admin/monitoring/summary:
+    get:
+      tags: [Admin]
+      operationId: getAdminMonitoringSummary
+      summary: Driver availability and pending work counts
+      security: [{ sessionCookie: [] }]
+      responses:
+        '200': { description: Online, ready, busy, pending search and pending payment counts }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/admin/alerts:
+    get:
+      tags: [Admin]
+      operationId: listOperationalAlerts
+      summary: Open delivery incidents and exhausted searches with acknowledgement state
+      security: [{ sessionCookie: [] }]
+      responses:
+        '200': { description: Up to 100 open alerts }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/admin/alerts/{kind}/{id}/acknowledge:
+    parameters:
+      - { in: path, name: kind, required: true, schema: { type: string, enum: [EXHAUSTED, INCIDENT] } }
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Admin]
+      operationId: acknowledgeOperationalAlert
+      summary: Acknowledge an alert without changing its business state
+      security: [{ sessionCookie: [], requestedWithHeader: [] }]
+      responses:
+        '200': { description: Original acknowledgement timestamp and administrator ID }
+        '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }

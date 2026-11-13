@@ -167,3 +167,94 @@ test('monitoring validates filters and keeps role isolation and legacy orders', 
   }
   assert.equal((await get('/admin/orders', '')).status, 401);
 });
+
+test('alerts are acknowledged once without changing searches or incidents', async () => {
+  await db.prisma.deliveryIncident.create({
+    data: {
+      id: 'monitor-incident',
+      delivery_id: 'monitor-delivery-a',
+      order_id: 'monitor-order-a',
+      type: 'OPERATIONAL',
+      reason: 'DRIVER_UNAVAILABLE',
+    },
+  });
+  const alerts = await get('/admin/alerts');
+  assert.equal(alerts.status, 200);
+  assert.ok(
+    alerts.data.items.some(
+      (a: any) => a.kind === 'INCIDENT' && a.resourceId === 'monitor-incident',
+    ),
+  );
+  assert.ok(
+    alerts.data.items.some(
+      (a: any) => a.kind === 'EXHAUSTED' && a.resourceId === 'monitor-search-a',
+    ),
+  );
+  for (const who of ['customer', 'restaurant', 'driver']) {
+    assert.equal((await get('/admin/alerts', who)).status, 403);
+    assert.equal((await get('/admin/monitoring/summary', who)).status, 403);
+  }
+  const acknowledge = async (kind: string, id: string, who = 'admin') => {
+    const response = await fetch(`${base}/api/admin/alerts/${kind}/${id}/acknowledge`, {
+      method: 'POST',
+      headers: { cookie: cookies[who], 'X-Requested-With': 'Bep' },
+    });
+    return { status: response.status, data: await response.json() };
+  };
+  assert.equal((await acknowledge('EXHAUSTED', 'monitor-search-a', 'customer')).status, 403);
+  assert.equal((await acknowledge('EXHAUSTED', 'missing')).status, 404);
+  assert.equal((await acknowledge('INVALID', 'monitor-search-a')).status, 400);
+  const [first, repeated] = await Promise.all([
+    acknowledge('EXHAUSTED', 'monitor-search-a'),
+    acknowledge('EXHAUSTED', 'monitor-search-a'),
+  ]);
+  assert.equal(first.status, 200);
+  assert.deepEqual(first.data, repeated.data);
+  assert.equal((await acknowledge('INCIDENT', 'monitor-incident')).status, 200);
+  assert.equal(
+    (await db.prisma.assignmentSearch.findUniqueOrThrow({ where: { id: 'monitor-search-a' } }))
+      .status,
+    'EXHAUSTED',
+  );
+  assert.equal(
+    (await db.prisma.deliveryIncident.findUniqueOrThrow({ where: { id: 'monitor-incident' } }))
+      .status,
+    'OPEN',
+  );
+  assert.equal(
+    await db.prisma.auditLog.count({
+      where: { action: 'ALERT_ACKNOWLEDGED', resource_id: 'monitor-search-a' },
+    }),
+    1,
+  );
+  const updated = await get('/admin/alerts');
+  assert.ok(
+    updated.data.items.find((a: any) => a.resourceId === 'monitor-search-a').acknowledgedAt,
+  );
+  assert.ok(
+    updated.data.items.find((a: any) => a.resourceId === 'monitor-incident').acknowledgedAt,
+  );
+  const summary = await get('/admin/monitoring/summary');
+  assert.equal(summary.status, 200);
+  for (const field of ['online', 'ready', 'busy', 'pendingSearches', 'pendingPayments'])
+    assert.equal(typeof summary.data[field], 'number');
+  await db.prisma.driverAssignment.create({
+    data: {
+      id: 'monitor-busy',
+      delivery_id: 'monitor-delivery-a',
+      driver_id: 'driver',
+      active: true,
+    },
+  });
+  await db.prisma.driverAvailability.upsert({
+    where: { driver_id: 'driver' },
+    create: { driver_id: 'driver', online: true, ready: true, heartbeat_at: new Date() },
+    update: { online: true, ready: true, heartbeat_at: new Date() },
+  });
+  const available = (await get('/admin/monitoring/summary')).data;
+  await db.prisma.user.update({ where: { id: 'driver' }, data: { active: false } });
+  const locked = (await get('/admin/monitoring/summary')).data;
+  assert.equal(locked.busy, available.busy);
+  assert.equal(locked.online, available.online - 1);
+  assert.equal(locked.ready, available.ready - 1);
+});

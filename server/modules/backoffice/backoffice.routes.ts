@@ -3,8 +3,29 @@ import { actor } from '../../shared/http/actor.js';
 import * as admin from './admin.service.js';
 import * as reports from './report.service.js';
 import { monitoringPage } from './assignment-monitoring.projection.js';
+import { operationalAlerts, operationalSummary } from './operational-monitoring.projection.js';
+import { acknowledgeAlert } from './operational-alert.service.js';
 
 export const backofficeRoutes = Router();
+
+backofficeRoutes.get('/admin/monitoring/summary', async (req, res) => {
+  actor(req, 'ADMIN');
+  res.json(await operationalSummary());
+});
+backofficeRoutes.get('/admin/alerts', async (req, res) => {
+  actor(req, 'ADMIN');
+  res.json({ items: await operationalAlerts() });
+});
+backofficeRoutes.post('/admin/alerts/:kind/:id/acknowledge', async (req, res) => {
+  res.json(
+    await acknowledgeAlert(
+      actor(req, 'ADMIN'),
+      String(req.params.kind),
+      String(req.params.id),
+      req.requestId,
+    ),
+  );
+});
 
 backofficeRoutes.get('/admin/orders', async (req, res) => {
   actor(req, 'ADMIN');
