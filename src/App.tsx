@@ -43,6 +43,7 @@ import { SmartImage } from './components/SmartImage';
 import { AdminPanels, ItemForm, RestaurantForm } from './components/Workspace';
 import { RestaurantReviews } from './components/ReviewResponses';
 import { RestaurantDashboard } from './components/RestaurantDashboard';
+import { DriverPerformance } from './components/DriverPerformance';
 import type { Actor, Basket, Line } from './types';
 import { errorText } from './types';
 
@@ -1059,6 +1060,7 @@ export function App() {
                 ))}
               </div>
             )}
+            {actor.role === 'DRIVER' && <DriverPerformance key={`perf-${actor.id}`} />}
             {actor.role === 'DRIVER' && <DriverHistory key={actor.id} />}
           </>
         ) : page === 'workspace' && actor && ['ADMIN', 'RESTAURANT'].includes(actor.role) ? (

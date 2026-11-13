@@ -1908,6 +1908,41 @@ paths:
         '400': { description: INVALID_TIME_RANGE }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+  /api/driver/reports:
+    get:
+      tags: [Delivery]
+      operationId: driverReport
+      summary: The driver's own performance and simulated earning estimate for [from,to)
+      description: Estimated earnings are 100% of each delivered trip's delivery fee snapshot; not a payout. Customer refunds do not change them.
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - $ref: '#/components/parameters/ReportFrom'
+        - $ref: '#/components/parameters/ReportTo'
+      responses:
+        '200': { description: Driver report }
+        '400': { description: INVALID_TIME_RANGE }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/driver/earnings:
+    get:
+      tags: [Delivery]
+      operationId: driverEarnings
+      summary: The driver's earning estimates, newest first, with cursor pagination
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - $ref: '#/components/parameters/ReportFrom'
+        - $ref: '#/components/parameters/ReportTo'
+        - {
+            in: query,
+            name: limit,
+            schema: { type: integer, minimum: 1, maximum: 100, default: 25 },
+          }
+        - { in: query, name: cursor, schema: { type: string } }
+      responses:
+        '200': { description: '{items,nextCursor}' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /api/notifications:
     get:
       tags: [Support]

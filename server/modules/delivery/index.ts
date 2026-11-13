@@ -11,6 +11,10 @@ export { createLocalProofStorage } from './infrastructure/proof-storage.js';
 export { deliveryConfig } from './config.js';
 export { incidentForOrder } from './application/incident.service.js';
 export {
+  registerDeliveryHandlers,
+  backfillEarningEstimates,
+} from './application/driver-report.service.js';
+export {
   setDeliveryOrderGateway,
   type DeliverableOrder,
   type DeliveryOrderGateway,

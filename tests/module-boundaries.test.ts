@@ -175,6 +175,7 @@ const owners: Record<string, { tables: string[]; models: string[] }> = {
       'deliveryOtpAttempt',
       'deliveryProof',
       'deliveryProofUpload',
+      'driverEarningEstimate',
     ],
     tables: [
       'deliveries',
@@ -185,6 +186,7 @@ const owners: Record<string, { tables: string[]; models: string[] }> = {
       'delivery_otp_attempts',
       'delivery_proofs',
       'delivery_proof_uploads',
+      'driver_earning_estimates',
     ],
   },
   notification: { models: ['notification', 'outbox'], tables: ['notifications', 'outbox'] },

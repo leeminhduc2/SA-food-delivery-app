@@ -6,6 +6,7 @@ import { getDriverOverride } from './delivery.ports.js';
 import { verifyOtpProof } from './application/delivery-proof.service.js';
 import { photoTypes, readPhotoProof, uploadPhotoProof } from './application/photo-proof.service.js';
 import { deliveryConfig } from './config.js';
+import { driverEarnings, driverReport } from './application/driver-report.service.js';
 import {
   adminFailDelivery,
   listIncidents,
@@ -57,6 +58,14 @@ deliveryRoutes.post('/admin/incidents/:id/resolve', async (req, res) => {
 
 deliveryRoutes.post('/deliveries/:id/arrive', async (req, res) => {
   res.json(await delivery.arrive(actor(req, 'DRIVER'), String(req.params.id), req.body));
+});
+
+deliveryRoutes.get('/driver/reports', async (req, res) => {
+  res.json(await driverReport(actor(req, 'DRIVER'), req.query));
+});
+
+deliveryRoutes.get('/driver/earnings', async (req, res) => {
+  res.json(await driverEarnings(actor(req, 'DRIVER'), req.query));
 });
 
 deliveryRoutes.get('/driver/deliveries/history', async (req, res) => {

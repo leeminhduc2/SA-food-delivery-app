@@ -13,6 +13,7 @@ import {
   createLocalProofStorage,
   deliveryConfig,
   incidentForOrder,
+  registerDeliveryHandlers,
 } from './delivery/index.js';
 import { findComplaintForOrder, hasOpenComplaint } from './support/index.js';
 import { prefetchDeliveryQuotes } from './catalog/index.js';
@@ -66,6 +67,7 @@ export function registerModules(): void {
   setTrackingRouteGateway(trackingRouteGateway);
   registerOrderingHandlers();
   registerAssignmentHandlers();
+  registerDeliveryHandlers();
   // Saving a delivery address prefetches one persisted quote per visible
   // restaurant; the catalog owns restaurant knowledge, location owns the event.
   setAddressSavedListener(prefetchDeliveryQuotes);

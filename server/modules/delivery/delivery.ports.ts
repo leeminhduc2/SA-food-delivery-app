@@ -2,7 +2,13 @@ import type { DB } from '../../shared/db.js';
 import type { User } from '../../shared/types.js';
 
 /** What Delivery needs to know about an order. Owned by Delivery, implemented by Ordering. */
-export type DeliverableOrder = { id: string; status: string; customerId: string };
+export type DeliverableOrder = {
+  id: string;
+  status: string;
+  customerId: string;
+  /** Snapshot taken at checkout; never recomputed from current pricing. */
+  deliveryFee: number;
+};
 
 export interface DeliveryOrderGateway {
   /** Locks the order row before any delivery row, matching Ordering's cancel flow. */
