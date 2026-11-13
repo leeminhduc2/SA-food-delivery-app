@@ -61,6 +61,34 @@ Supply a real provider implementation, production database credentials and an ex
 
 Confirm the demo address/service-area policy and fee formula with the business, select production geocoding/routing and map-tile providers, configure actual notifications as needed, agree on retention/refund policies, and wire alerting and backup automation. Neither the example credentials nor the simulator should be exposed publicly. The source specification intentionally leaves these deployment decisions open.
 
+## Phase 2 upgrade and recovery
+
+This is a **local, single-instance demo** with **simulated money**, **private local photo storage** and **walking routes**. Nothing below makes it production-ready; real payment/refund providers, payouts, object storage, motorbike routing and SLOs remain deferred (see `docs/phase 2/plan/DEFERRED_EXTERNALS.md`).
+
+### Upgrading an existing database
+
+1. Back up the database (see above) and stop the API and worker. Pause every stock writer: the inventory ledger cutover (D19) must not see writes from an older release.
+2. Run the preflights against the target schema and resolve every reported conflict:
+   `npx tsx scripts/preflight-driver-assignments.ts` (one open trip per driver) and `npx tsx scripts/preflight-menu-groups.ts` (case-insensitive menu names).
+3. `npm run db:migrate`. Each phase 2 migration is additive. If a migration fails (for example an unresolved double trip), it rolls back; fix the data, mark it with `npx prisma migrate resolve --rolled-back <migration>` and deploy again. Never reset, drop or edit an applied migration.
+4. Backfills, then start the new release: `npx tsx scripts/backfill-stock-openings.ts` (opening balance per item, idempotent) and `npx tsx scripts/backfill-earnings.ts` (estimates only where the final driver, delivery time and fee are known; the JSON report counts the rest). Deliveries created before the upgrade keep `proof_required=false`; payments already refund-pending or refunded get a `LEGACY` refund operation and are never refunded twice.
+
+`tests/phase2-migration-rehearsal.test.ts` rehearses exactly this on throwaway schemas: a conflicting legacy database stops safely and resumes after the fix; a clean legacy database keeps orders, items, payments, reviews and history, and both backfills are idempotent.
+
+### Configuration added in phase 2
+
+`ASSIGNMENT_STRATEGY` (`NEAREST` default, `LOWEST_ETA`, `BALANCED_LOAD`; an unknown value stops startup), `DELIVERY_PROOF_*` (proof requirement for new deliveries, OTP limits, photo size, 30-day retention and the private storage directory `.data/delivery-proofs`, which must not be served statically or shared between instances), `REFUND_MAX_ATTEMPTS` (5) and `EXTERNAL_BREAKER_FAILURES` / `EXTERNAL_BREAKER_OPEN_SECONDS` (5 / 30). All have safe defaults in `.env.example`.
+
+### Watching and recovering background work
+
+- **System health** in the Admin workspace (`GET /api/admin/health/backlog`) lists each durable queue — notifications, refunds, assignment searches, driver invalidation, payment reconciliation, proof upload cleanup — with waiting/failed counts, next run and last error, plus provider breaker state and the last result of each worker stage. Admins receive at most one `BACKLOG_ATTENTION` notification per queue per hour while a queue is overdue or has failures. Breaker and stage state are per process.
+- **Payment and routing outages**: after five consecutive failures a provider breaker opens for 30 seconds; calls fail fast and one probe tests recovery. Business answers (validation, "no route") never open it. Status reads retry at most twice inside a two-second budget; money movement is never retried blindly.
+- **Refunds**: one operation per payment drives cancellations, late payments and Admin-approved refunds. A refund is marked refunded only after the provider confirms. After five failed attempts (30/60/120/240 s apart) it is FAILED, the payment stays refund-pending and flagged for reconciliation; an Admin retries it with a reason. A worker that dies mid-refund leaves a lease that expires; the next worker queries the provider by the stable reference before calling refund again.
+- **Assignment searches and invalidation** use leases; a dead worker's claim is resumed after its lease expires without duplicating offers. Ranking and route lookups never hold Order or Driver locks.
+- **Delivery failure after pickup**: if a driver becomes unavailable after pickup, an operational incident opens; an Admin closes the trip as FAILED (`POST /api/admin/deliveries/:id/fail`), which releases the driver. Items are never restocked after pickup and nothing is redelivered.
+- **Photo proofs**: files are written before their database row; a failed or interrupted upload leaves a staging row that the cleanup stage removes with retries. Bytes are purged 30 days after the trip ends unless a complaint or incident is open; metadata and audit stay.
+- **Redis**: losing Redis never blocks a database commit. Clients poll snapshots (also while an EventSource is still connecting) until the stream returns.
+
 ### Isolated integration tests
 
-Database integration tests require an explicit `TEST_DATABASE_URL` pointing to a disposable test database. They never fall back to `DATABASE_URL`. Each test process creates a randomly named schema, verifies that both pg and Prisma connect to that schema before migrations, and removes only the schema it created. Set `DOTENV_CONFIG_PATH` to a non-existent path when invoking tests so the developer's `.env` is not loaded. Use `REDIS_URL` for a disposable Redis; the Redis test uses a unique channel and closes connections on failure. CI starts both services. `scripts/ci-local.sh` starts temporary services or accepts `CI_DATABASE_URL` and `CI_REDIS_URL`; it does not modify `.env`.
+Database integration tests require an explicit `TEST_DATABASE_URL` pointing to a disposable test database. They never fall back to `DATABASE_URL`. Each test process creates a randomly named schema, verifies that both pg and Prisma connect to that schema before migrations, and removes only the schema it created. Set `DOTENV_CONFIG_PATH` to a non-existent path when invoking tests so the developer's `.env` is not loaded. Use `REDIS_URL` for a disposable Redis; the Redis test uses a unique channel and closes connections on failure. CI starts both services. `scripts/ci-local.sh` starts temporary services or accepts `CI_DATABASE_URL` and `CI_REDIS_URL`; it does not modify `.env`. With `CI=true` or `REQUIRE_REDIS=1`, `tests/ci-environment.test.ts` fails instead of letting Redis tests skip. Both CI and `ci-local.sh` (unless `SKIP_E2E=1`) run the Playwright suites against an isolated E2E schema with deterministic geocoding/routing, once normally and once with `ASSIGNMENT_AUTOMATION_ENABLED=true` for the automatic offer flow; traces and screenshots are kept on failure.
