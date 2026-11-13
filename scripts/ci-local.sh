@@ -44,13 +44,14 @@ if [ -z "${CI_DATABASE_URL:-}" ]; then
     postgres:17-alpine >/dev/null
   started_container=1
 
+  # TCP check: the image's init-time server listens on the socket only, then restarts.
   for _ in $(seq 1 30); do
-    if docker exec "$CONTAINER" pg_isready -U ci -d food_delivery_test >/dev/null 2>&1; then
+    if docker exec "$CONTAINER" pg_isready -h 127.0.0.1 -U ci -d food_delivery_test >/dev/null 2>&1; then
       break
     fi
     sleep 1
   done
-  docker exec "$CONTAINER" pg_isready -U ci -d food_delivery_test >/dev/null ||
+  docker exec "$CONTAINER" pg_isready -h 127.0.0.1 -U ci -d food_delivery_test >/dev/null ||
     fail 'PostgreSQL did not become ready.'
   CI_DATABASE_URL="postgresql://ci:ci_local_only@127.0.0.1:$PG_PORT/food_delivery_test"
 fi
