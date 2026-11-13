@@ -2,8 +2,22 @@ import { Router } from 'express';
 import { actor } from '../../shared/http/actor.js';
 import * as admin from './admin.service.js';
 import * as reports from './report.service.js';
+import { monitoringPage } from './assignment-monitoring.projection.js';
 
 export const backofficeRoutes = Router();
+
+backofficeRoutes.get('/admin/orders', async (req, res) => {
+  actor(req, 'ADMIN');
+  res.json(await monitoringPage('orders', req.query));
+});
+backofficeRoutes.get('/admin/deliveries', async (req, res) => {
+  actor(req, 'ADMIN');
+  res.json(await monitoringPage('deliveries', req.query));
+});
+backofficeRoutes.get('/admin/assignments', async (req, res) => {
+  actor(req, 'ADMIN');
+  res.json(await monitoringPage('assignments', req.query));
+});
 
 backofficeRoutes.get('/reports', async (req, res) => {
   res.json(await reports.report(actor(req, 'ADMIN', 'RESTAURANT')));

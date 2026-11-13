@@ -7,11 +7,7 @@ import {
 } from './application/availability.service.js';
 import { respondToOffer } from './application/offer-response.service.js';
 import { overrideDriver } from './application/admin-override.service.js';
-import {
-  listDriverOffers,
-  listAdminSearches,
-  adminSearchDetail,
-} from './application/offer-queries.service.js';
+import { listDriverOffers, adminSearchDetail } from './application/offer-queries.service.js';
 export const assignmentRoutes = Router();
 assignmentRoutes.post('/admin/deliveries/:id/reassign', async (req, res) =>
   res.json(
@@ -21,10 +17,6 @@ assignmentRoutes.post('/admin/deliveries/:id/reassign', async (req, res) =>
 assignmentRoutes.get('/driver/offers', async (req, res) =>
   res.json(await listDriverOffers(actor(req, 'DRIVER').id)),
 );
-assignmentRoutes.get('/admin/assignments', async (req, res) => {
-  actor(req, 'ADMIN');
-  res.json(await listAdminSearches(req.query));
-});
 assignmentRoutes.get('/admin/assignments/:id', async (req, res) => {
   actor(req, 'ADMIN');
   res.json(await adminSearchDetail(String(req.params.id)));

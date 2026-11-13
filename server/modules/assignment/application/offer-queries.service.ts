@@ -1,5 +1,4 @@
-﻿import { z } from 'zod';
-import { prisma } from '../../../shared/db.js';
+﻿import { prisma } from '../../../shared/db.js';
 import { check } from '../../../shared/errors.js';
 import { assignmentOrderGateway } from '../assignment.ports.js';
 
@@ -27,65 +26,6 @@ export async function listDriverOffers(driverId: string) {
   return { items, serverTime: now };
 }
 
-const listSchema = z.object({
-  limit: z.coerce.number().int().min(1).max(100).default(25),
-  cursor: z
-    .string()
-    .min(1)
-    .max(256)
-    .regex(/^[A-Za-z0-9_-]+$/)
-    .optional(),
-});
-export async function listAdminSearches(raw: unknown) {
-  const { limit, cursor } = listSchema.parse(raw);
-  let cursorId: string | undefined;
-  if (cursor) {
-    cursorId = Buffer.from(cursor, 'base64url').toString('utf8');
-    check(
-      Boolean(cursorId) &&
-        Buffer.from(cursorId).toString('base64url') === cursor &&
-        (await prisma.assignmentSearch.findUnique({
-          where: { id: cursorId },
-          select: { id: true },
-        })),
-      400,
-      'INVALID_CURSOR',
-      'Invalid search cursor.',
-    );
-  }
-  const rows = await prisma.assignmentSearch.findMany({
-    orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
-    take: limit + 1,
-    ...(cursorId ? { cursor: { id: cursorId }, skip: 1 } : {}),
-    select: {
-      id: true,
-      delivery_id: true,
-      generation: true,
-      status: true,
-      round: true,
-      offers_created: true,
-      deadline_at: true,
-      next_run_at: true,
-      created_at: true,
-    },
-  });
-  const page = rows.slice(0, limit);
-  return {
-    items: page.map((row) => ({
-      searchId: row.id,
-      deliveryId: row.delivery_id,
-      generation: row.generation,
-      status: row.status,
-      round: row.round,
-      offersCreated: row.offers_created,
-      deadlineAt: row.deadline_at,
-      nextRunAt: row.next_run_at,
-      createdAt: row.created_at,
-    })),
-    nextCursor:
-      rows.length > limit ? Buffer.from(page[page.length - 1].id).toString('base64url') : null,
-  };
-}
 export async function adminSearchDetail(searchId: string) {
   const row = await prisma.assignmentSearch.findUnique({
     where: { id: searchId },
