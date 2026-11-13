@@ -306,6 +306,12 @@ test('catalog API exposes imported records, search and cuisine filtering', async
 
 test('a second import is idempotent and does not duplicate rows or items', async () => {
   const beforeCounts = await counts();
+  const missing = await schemaPool.query(
+    `SELECT count(*)::int AS n FROM menu_items i JOIN restaurants r ON r.id=i.restaurant_id WHERE r.osm_id IN ('3678370944', '3514125539') AND NOT EXISTS (SELECT 1 FROM stock_movements m WHERE m.item_id=i.id AND m.operation_key='opening')`,
+  );
+  assert.equal(missing.rows[0].n, 0);
+  const movementsBefore = (await schemaPool.query('SELECT count(*)::int AS n FROM stock_movements'))
+    .rows[0].n;
   const { fetchImpl } = overpassFetch(FIXTURES);
   const report = await hanoi.runHanoiDemoImport({ ids: [CAFE, BANH_MI] }, { fetchImpl });
   assert.equal(report.created, 0);
@@ -314,6 +320,10 @@ test('a second import is idempotent and does not duplicate rows or items', async
   assert.equal(report.itemsCreated, 0);
   assert.equal(report.menusEnsured, 6);
   assert.deepEqual(await counts(), { ...beforeCounts, jobs: beforeCounts.jobs + 1 });
+  assert.equal(
+    (await schemaPool.query('SELECT count(*)::int AS n FROM stock_movements')).rows[0].n,
+    movementsBefore,
+  );
 });
 
 test('verified or owner-managed rows are never overwritten', async () => {

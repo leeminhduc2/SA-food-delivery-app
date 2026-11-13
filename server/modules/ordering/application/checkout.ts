@@ -82,7 +82,11 @@ export async function checkout(actor: User, raw: unknown): Promise<any> {
       assertSameCheckout(old, input);
       return { orderId: old.id, created: false };
     }
-    const quote = await priceCart(db, input.items, true);
+    const newOrderId = id();
+    const quote = await priceCart(db, input.items, true, {
+      orderId: newOrderId,
+      actorId: actor.id,
+    });
     const deliveryFee = routed.info.shippingFee as number;
     const total = quote.subtotal + deliveryFee;
     check(
@@ -91,7 +95,6 @@ export async function checkout(actor: User, raw: unknown): Promise<any> {
       'PRICE_CHANGED',
       'Prices or the delivery fee changed. Review a fresh quote before ordering.',
     );
-    const newOrderId = id();
     const expiry = new Date(Date.now() + Number(process.env.PAYMENT_WINDOW_MINUTES || 15) * 60000);
     await orders.insert(
       {

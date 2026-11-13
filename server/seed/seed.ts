@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import { prisma, transaction } from '../shared/db.js';
 import { hashPassword } from '../modules/identity/index.js';
+import { ensureOpeningBalances } from '../modules/catalog/index.js';
 import type { Prisma } from '@prisma/client';
 
 export async function seed() {
@@ -185,6 +186,10 @@ export async function seed() {
       })),
       skipDuplicates: true,
     });
+    await ensureOpeningBalances(
+      db,
+      items.map(([itemId]) => itemId),
+    );
   });
 }
 if (process.argv[1]?.endsWith('seed.ts')) {

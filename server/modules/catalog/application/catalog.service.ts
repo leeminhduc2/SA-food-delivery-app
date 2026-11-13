@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { createHash } from 'node:crypto';
 import type { Prisma } from '@prisma/client';
-import { transaction, type DB } from '../../../shared/db.js';
+import { id, transaction, type DB } from '../../../shared/db.js';
 import { requireActor } from '../../../shared/authz.js';
 import { check } from '../../../shared/errors.js';
 import { imageSchema, linesSchema } from '../domain/catalog.schemas.js';
@@ -18,6 +18,7 @@ import {
 } from '../../location/index.js';
 import { deliveryInfoForRestaurant } from './restaurant-location.js';
 import * as listing from '../infrastructure/restaurant-listing.projection.js';
+import { ensureOpeningBalance, recordStockMovement } from './inventory.service.js';
 
 /**
  * Hide retired provider columns from public responses. The columns stay in the
@@ -379,6 +380,7 @@ export async function createItem(actor: User, restaurantId: string, raw: unknown
       },
       db,
     );
+    await ensureOpeningBalance(db, row.id);
     await audits.audit(actor.id, 'ITEM_CREATED', row.id, {}, db);
     return { ...row, category: category.name };
   });
@@ -390,6 +392,8 @@ export async function updateItem(actor: User, itemId: string, raw: unknown): Pro
     const old = await menu.findForUpdate(itemId, db);
     check(old, 404, 'NOT_FOUND', 'Item not found.');
     await assertMember(db, actor, old.restaurant_id);
+    if (input.stock !== undefined && input.stock !== old.stock)
+      await ensureOpeningBalance(db, old.id);
     const fields: Prisma.MenuItemUncheckedUpdateInput = {};
     for (const key of ['name', 'description', 'price', 'stock', 'available', 'visible', 'image'])
       if (input[key as keyof typeof input] !== undefined)
@@ -402,6 +406,16 @@ export async function updateItem(actor: User, itemId: string, raw: unknown): Pro
       categoryName = category.name;
     }
     const row = await menu.updatePartial(old.id, fields, db);
+    if (input.stock !== undefined && input.stock !== old.stock)
+      await recordStockMovement(db, {
+        itemId: old.id,
+        kind: 'ADJUSTMENT',
+        delta: input.stock - old.stock,
+        balance: input.stock,
+        actor: actor.id,
+        reason: 'Legacy stock edit',
+        operationKey: `legacy:${id()}`,
+      });
     await audits.audit(
       actor.id,
       'ITEM_UPDATED',
@@ -452,7 +466,18 @@ export async function setApproval(
   });
 }
 
-export async function priceCart(db: DB, raw: unknown, reserve = false): Promise<any> {
+export async function priceCart(
+  db: DB,
+  raw: unknown,
+  reserve = false,
+  reservation?: { orderId: string; actorId: string },
+): Promise<any> {
+  check(
+    !reserve || reservation,
+    500,
+    'INVENTORY_CONTEXT_REQUIRED',
+    'Reservation context is required.',
+  );
   const lines = linesSchema
     .parse(raw)
     .map((line) => ({ ...line, optionIds: [...new Set(line.optionIds)].sort() }))
@@ -500,7 +525,20 @@ export async function priceCart(db: DB, raw: unknown, reserve = false): Promise<
       'OUT_OF_STOCK',
       `${item.name} has only ${item.stock} servings left.`,
     );
-    if (reserve) await menu.reserve(item.id, quantity, db);
+    if (reserve) {
+      await ensureOpeningBalance(db, item.id);
+      await menu.reserve(item.id, quantity, db);
+      await recordStockMovement(db, {
+        itemId: item.id,
+        kind: 'RESERVE',
+        delta: -quantity,
+        balance: item.stock - quantity,
+        actor: reservation!.actorId,
+        reason: 'Order reservation',
+        operationKey: `reserve:${reservation!.orderId}`,
+        orderId: reservation!.orderId,
+      });
+    }
     for (const line of lines.filter((candidate) => candidate.itemId === itemId)) {
       const options = line.optionIds.map((optionId) => {
         const option = item.options.find((candidate) => candidate.id === optionId);
@@ -539,8 +577,27 @@ export async function priceCart(db: DB, raw: unknown, reserve = false): Promise<
 export async function releaseStock(
   db: DB,
   items: { menu_item_id: string; quantity: number }[],
+  orderId: string,
 ): Promise<void> {
-  for (const item of items) await menu.release(item.menu_item_id, item.quantity, db);
+  const quantities = new Map<string, number>();
+  for (const item of items)
+    quantities.set(item.menu_item_id, (quantities.get(item.menu_item_id) ?? 0) + item.quantity);
+  for (const [itemId, quantity] of [...quantities.entries()].sort(([a], [b]) =>
+    a.localeCompare(b),
+  )) {
+    const stock = await ensureOpeningBalance(db, itemId);
+    await menu.release(itemId, quantity, db);
+    await recordStockMovement(db, {
+      itemId,
+      kind: 'RELEASE',
+      delta: quantity,
+      balance: stock + quantity,
+      actor: 'system',
+      reason: 'Order reservation released',
+      operationKey: `release:${orderId}`,
+      orderId,
+    });
+  }
 }
 
 /** Back-office view of every restaurant, whatever its approval status. */

@@ -18,6 +18,7 @@ import {
   type NormalizedRestaurant,
 } from './osm.js';
 import * as menuRepository from '../infrastructure/menu.repository.js';
+import { ensureOpeningBalances } from '../application/inventory.service.js';
 import * as importRepository from './restaurant-import.repository.js';
 import {
   fetchOsmRestaurants,
@@ -332,6 +333,10 @@ export async function runHanoiDemoImport(
           );
           if (!affected) return { approved: false, menus: 0, items: 0 };
           const seeded = await menuRepository.ensureSeededMenus(row.id, menu.categories, db);
+          await ensureOpeningBalances(
+            db,
+            menu.categories.flatMap((category) => category.items.map((item) => item.id)),
+          );
           return { approved: true, menus: seeded.menus, items: seeded.itemsCreated };
         });
         if (!outcome.approved) {

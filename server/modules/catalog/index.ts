@@ -14,3 +14,5 @@ export {
 } from './application/restaurant-location.js';
 export { prefetchDeliveryQuotes } from './application/quote-prefetch.js';
 export { lineSchema, linesSchema } from './domain/catalog.schemas.js';
+export { ensureOpeningBalances } from './application/inventory.service.js';
+export { backfillOpeningBatch } from './application/inventory-backfill.service.js';

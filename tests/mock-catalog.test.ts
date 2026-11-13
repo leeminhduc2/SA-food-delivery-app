@@ -184,6 +184,12 @@ test('re-running the seed creates no duplicates and preserves edits and flags', 
   const marker = await db.prisma.seedRun.findUnique({ where: { name: 'mock-catalog' } });
   assert.ok(marker, 'the first seed must record its one-time initialization marker');
   assert.equal(marker.version, 1);
+  const restaurantActor = await db.prisma.user.findUniqueOrThrow({ where: { id: 'restaurant' } });
+  await (
+    await import('../server/modules/catalog/application/catalog.service.js')
+  ).updateItem(restaurantActor, 'mock-item-001', { stock: 31 });
+  const movementsBefore = await db.prisma
+    .$queryRaw`SELECT id,kind,delta,balance_after FROM stock_movements WHERE item_id = 'mock-item-001' ORDER BY created_at,id`;
   await db.prisma.menuItem.update({
     where: { id: 'mock-item-001' },
     data: { price: 61000 },
@@ -203,6 +209,12 @@ test('re-running the seed creates no duplicates and preserves edits and flags', 
   assert.equal(await db.prisma.menuItem.count({ where: { mock: true } }), 60);
   const item = await db.prisma.menuItem.findUnique({ where: { id: 'mock-item-001' } });
   assert.equal(item.price, 61000, 'seed overwrote an edited price');
+  assert.equal(item.stock, 31, 'seed overwrote edited stock');
+  assert.deepEqual(
+    await db.prisma
+      .$queryRaw`SELECT id,kind,delta,balance_after FROM stock_movements WHERE item_id = 'mock-item-001' ORDER BY created_at,id`,
+    movementsBefore,
+  );
   const restaurant = await db.prisma.restaurant.findUnique({
     where: { id: 'mock-restaurant-01' },
   });

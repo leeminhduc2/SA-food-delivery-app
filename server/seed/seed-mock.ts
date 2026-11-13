@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import type { Prisma } from '@prisma/client';
 import { prisma, transaction } from '../shared/db.js';
+import { ensureOpeningBalances } from '../modules/catalog/index.js';
 import {
   LEGACY_DEMO_RESTAURANT_IDS,
   MOCK_MENU_NOTE,
@@ -35,6 +36,7 @@ export async function seedMockCatalog(): Promise<{
   let initialized = false;
 
   await transaction(async (db) => {
+    const seededItemIds: string[] = [];
     // The marker makes initialization one-time. Later runs may fill in missing
     // demo rows, but they must never overwrite an operator's edits or flags.
     const marker = await db.seedRun.findUnique({ where: { name: 'mock-catalog' } });
@@ -81,6 +83,7 @@ export async function seedMockCatalog(): Promise<{
       });
 
       for (const menu of restaurant.menus) {
+        seededItemIds.push(...menu.items.map((item) => item.id));
         await db.menu.upsert({
           where: { id: `${restaurant.id}-${menu.key}` },
           update: {},
@@ -110,6 +113,7 @@ export async function seedMockCatalog(): Promise<{
         itemsCreated += created.count;
       }
     }
+    await ensureOpeningBalances(db, seededItemIds);
 
     // Retire the earlier OSM/demo catalog from the public list without deleting
     // anything. Only the one-time initialization does this: a row an operator

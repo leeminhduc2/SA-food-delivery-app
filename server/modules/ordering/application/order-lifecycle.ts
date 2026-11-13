@@ -44,7 +44,7 @@ export async function changeOrder(
 export async function releaseOrderStock(db: DB, orderId: string): Promise<void> {
   if (!(await orders.markStockReleased(orderId, db))) return;
   const items = await orders.itemsForStockRelease(orderId, db);
-  await releaseStock(db, items);
+  await releaseStock(db, items, orderId);
 }
 
 /**
