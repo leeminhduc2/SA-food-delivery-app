@@ -4,6 +4,7 @@
  * and announces progress as DeliveryPickedUp / DeliveryCompleted / DeliveryFailed.
  */
 export { deliveryRoutes } from './delivery.routes.js';
+export { createOtpChallenge } from './application/delivery-proof.service.js';
 export {
   setDeliveryOrderGateway,
   type DeliverableOrder,

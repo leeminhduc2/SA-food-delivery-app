@@ -35,8 +35,8 @@ Trạng thái này là triển khai **ứng dụng**, không phải soạn tài 
 | [P09-T01](../phases/P09-inventory-ledger-and-alerts.md#p09-t01)       | Opening balance và StockMovement                 | DONE        | [run](runs/20261113-1651-P09-T01.md) | —        |
 | [P09-T02](../phases/P09-inventory-ledger-and-alerts.md#p09-t02)       | Hợp nhất đường ghi tồn và stock adjustment       | DONE        | [run](runs/20261113-1700-P09-T02.md) | —        |
 | [P09-T03](../phases/P09-inventory-ledger-and-alerts.md#p09-t03)       | Low-stock alert và effective sellability         | DONE        | [run](runs/20261113-1713-P09-T03.md) | —        |
-| [P10-T01](../phases/P10-delivery-proof.md#p10-t01)                    | OTP challenge và verification                    | NOT_STARTED | —                                    | —        |
-| [P10-T02](../phases/P10-delivery-proof.md#p10-t02)                    | Private photo storage và authorization           | NOT_STARTED | —                                    | —        |
+| [P10-T01](../phases/P10-delivery-proof.md#p10-t01)                    | OTP challenge và verification                    | DONE        | [run](runs/20261113-1840-P10-T01.md) | —        |
+| [P10-T02](../phases/P10-delivery-proof.md#p10-t02)                    | Private photo storage và authorization           | IN_PROGRESS | —                                    | —        |
 | [P10-T03](../phases/P10-delivery-proof.md#p10-t03)                    | Proof requirement và completion UI               | NOT_STARTED | —                                    | —        |
 | [P11-T01](../phases/P11-support-review-failure-refund.md#p11-t01)     | Complaint đa role và review response             | NOT_STARTED | —                                    | —        |
 | [P11-T02](../phases/P11-support-review-failure-refund.md#p11-t02)     | Failure incident và quyết định có evidence       | NOT_STARTED | —                                    | —        |

@@ -1841,6 +1841,55 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+  /api/orders/{id}/delivery-proof/otp:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Delivery]
+      operationId: createDeliveryOtp
+      summary: Create a delivery code for the order owner
+      description: The plaintext code is returned only on first creation; replay returns otp null. At most three challenges per order in ten minutes.
+      security: [{ sessionCookie: [], requestedWithHeader: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [idempotencyKey], properties: { idempotencyKey: { type: string, minLength: 8, maxLength: 120 } } }
+      responses:
+        '200': { description: Challenge ID, one-time OTP or null, and expiry }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { description: Too many OTP challenges }
+  /api/deliveries/{id}/proofs/otp:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Delivery]
+      operationId: verifyDeliveryOtp
+      summary: Verify the customer's code for the current driver assignment
+      description: Failed attempts are committed once per idempotency key; replaying a key returns its original outcome without consuming another attempt.
+      security: [{ sessionCookie: [], requestedWithHeader: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [challengeId, otp, idempotencyKey]
+              properties:
+                challengeId: { type: string }
+                otp: { type: string, pattern: '^\d{6}$' }
+                idempotencyKey: { type: string, minLength: 8, maxLength: 120 }
+      responses:
+        '200': { description: Verified proof ID and method }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
   /api/items/{id}/stock-adjustments:
     parameters:
       - $ref: '#/components/parameters/Id'

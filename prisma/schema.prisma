@@ -298,6 +298,9 @@ model Delivery {
   driver      User?              @relation(fields: [driver_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   order       Order              @relation(fields: [order_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   assignments DriverAssignment[]
+  otp_challenges DeliveryOtpChallenge[]
+  otp_attempts DeliveryOtpAttempt[]
+  proofs DeliveryProof[]
 
   @@index([driver_id, status], map: "deliveries_driver")
   @@map("deliveries")
@@ -314,7 +317,64 @@ model DriverAssignment {
   delivery    Delivery @relation(fields: [delivery_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   driver      User     @relation(fields: [driver_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
+  otp_challenges DeliveryOtpChallenge[]
+  proofs DeliveryProof[]
+
   @@map("driver_assignments")
+}
+
+model DeliveryOtpChallenge {
+  id String @id
+  order_id String
+  delivery_id String
+  assignment_id String
+  customer_id String
+  salt String
+  otp_hash String
+  status String @default("ACTIVE")
+  attempts Int @default(0)
+  expires_at DateTime @db.Timestamptz(6)
+  key_hash String
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  delivery Delivery @relation(fields: [delivery_id], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  assignment DriverAssignment @relation(fields: [assignment_id], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  attempts_log DeliveryOtpAttempt[]
+  proof DeliveryProof?
+  @@unique([order_id, customer_id, key_hash])
+  @@index([order_id, created_at(sort: Desc)], map: "delivery_otp_challenges_order_created")
+  @@map("delivery_otp_challenges")
+}
+
+model DeliveryProof {
+  id String @id
+  delivery_id String
+  assignment_id String
+  challenge_id String? @unique
+  method String
+  status String
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  delivery Delivery @relation(fields: [delivery_id], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  assignment DriverAssignment @relation(fields: [assignment_id], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  challenge DeliveryOtpChallenge? @relation(fields: [challenge_id], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  attempts DeliveryOtpAttempt[]
+  @@index([delivery_id, assignment_id, status], map: "delivery_proofs_assignment")
+  @@map("delivery_proofs")
+}
+
+model DeliveryOtpAttempt {
+  id String @id
+  delivery_id String
+  challenge_id String
+  driver_id String
+  key_hash String
+  outcome String
+  proof_id String?
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  delivery Delivery @relation(fields: [delivery_id], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  challenge DeliveryOtpChallenge @relation(fields: [challenge_id], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  proof DeliveryProof? @relation(fields: [proof_id], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  @@unique([delivery_id, driver_id, key_hash])
+  @@map("delivery_otp_attempts")
 }
 
 model StateHistory {

@@ -25,7 +25,7 @@ export const paymentOrderGateway: PaymentOrderGateway = {
 export const deliveryOrderGateway: DeliveryOrderGateway = {
   lockOrder: async (db, orderId) => {
     const row = await orders.findById(orderId, db, true);
-    return row && { id: row.id, status: row.status };
+    return row && { id: row.id, status: row.status, customerId: row.customer_id };
   },
   acceptsDriverAssignment: (order) => acceptsDriverAssignment(order.status),
   isReadyForPickup: (order) => isReadyForPickup(order.status),

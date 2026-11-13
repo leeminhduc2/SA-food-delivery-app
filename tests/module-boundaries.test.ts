@@ -114,8 +114,22 @@ test('the module dependency graph has no cycles', () => {
 const owners: Record<string, { tables: string[]; models: string[] }> = {
   identity: { models: ['user', 'session'], tables: ['users', 'sessions'] },
   catalog: {
-    models: ['restaurant', 'restaurantMember', 'menu', 'menuItem', 'restaurantImportJob'],
-    tables: ['restaurants', 'restaurant_members', 'menus', 'menu_items', 'restaurant_import_jobs'],
+    models: [
+      'restaurant',
+      'restaurantMember',
+      'menu',
+      'menuItem',
+      'restaurantImportJob',
+      'stockMovement',
+    ],
+    tables: [
+      'restaurants',
+      'restaurant_members',
+      'menus',
+      'menu_items',
+      'restaurant_import_jobs',
+      'stock_movements',
+    ],
   },
   location: { models: ['address', 'driverLocation'], tables: ['addresses', 'driver_locations'] },
   assignment: {
@@ -140,8 +154,22 @@ const owners: Record<string, { tables: string[]; models: string[] }> = {
     tables: ['payments', 'payment_events', 'simulated_transactions'],
   },
   delivery: {
-    models: ['delivery', 'driverAssignment', 'deliveryIncident'],
-    tables: ['deliveries', 'driver_assignments', 'delivery_incidents'],
+    models: [
+      'delivery',
+      'driverAssignment',
+      'deliveryIncident',
+      'deliveryOtpChallenge',
+      'deliveryOtpAttempt',
+      'deliveryProof',
+    ],
+    tables: [
+      'deliveries',
+      'driver_assignments',
+      'delivery_incidents',
+      'delivery_otp_challenges',
+      'delivery_otp_attempts',
+      'delivery_proofs',
+    ],
   },
   notification: { models: ['notification', 'outbox'], tables: ['notifications', 'outbox'] },
   review: { models: ['review'], tables: ['reviews'] },

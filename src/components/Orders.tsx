@@ -4,6 +4,7 @@ import { label, money } from '../api';
 import type { Actor } from '../types';
 import { Field } from './Primitives';
 import { DeliveryTracking } from './DeliveryTracking';
+import { CustomerDeliveryOtp } from './CustomerDeliveryOtp';
 export function OrderCard({
   order: o,
   actor,
@@ -108,6 +109,9 @@ export function OrderCard({
         <p className="info">
           Driver arrived at pickup: {new Date(o.delivery.arrived_at).toLocaleTimeString()}
         </p>
+      )}
+      {actor.role === 'CUSTOMER' && ['PICKED_UP', 'IN_TRANSIT'].includes(o.delivery.status) && (
+        <CustomerDeliveryOtp key={`${actor.id}:${o.id}`} orderId={o.id} />
       )}
       <details
         className="tracking-disclosure"

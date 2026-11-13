@@ -4,8 +4,14 @@ import * as cart from './application/cart.js';
 import { checkout } from './application/checkout.js';
 import { cancel, rejectOrder, simulatePayment, transition } from './application/order-lifecycle.js';
 import { detail, list, quote } from './application/order-queries.js';
+import { createOtpChallenge } from '../delivery/index.js';
 
 export const orderRoutes = Router();
+
+orderRoutes.post('/orders/:id/delivery-proof/otp', async (req, res) => {
+  res.setHeader('Cache-Control', 'private, no-store');
+  res.json(await createOtpChallenge(actor(req, 'CUSTOMER'), String(req.params.id), req.body));
+});
 
 orderRoutes.get('/cart', async (req, res) => {
   res.json(await cart.get(actor(req, 'CUSTOMER')));
