@@ -116,6 +116,12 @@ fi
 
 step 'Validate Compose configuration'
 if docker info >/dev/null 2>&1; then
+  # compose.yaml reads .env. Like CI, use .env.example in a fresh checkout,
+  # but never create or overwrite a developer's existing .env.
+  if [ ! -e .env ]; then
+    cp .env.example .env
+    trap 'rm -f .env; cleanup' EXIT
+  fi
   docker compose --env-file .env.example config --quiet
 else
   echo 'Skipped: Docker daemon is not running.'

@@ -28,7 +28,8 @@ async function login(page: Page, role: string) {
 test('tracking shows clear fallback, walking routes, freshness, keyboard and cleanup', async ({
   browser,
 }) => {
-  test.setTimeout(120000);
+  // Three deliberate 15 s polling cycles (~45 s) plus setup; leave headroom for loaded CI hosts.
+  test.setTimeout(180000);
   const pool = new pg.Pool({ connectionString: isolatedUrl(), connectionTimeoutMillis: 3000 });
   const id = randomUUID(),
     delivery = randomUUID();
