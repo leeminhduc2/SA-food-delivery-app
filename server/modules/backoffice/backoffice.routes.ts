@@ -5,12 +5,17 @@ import * as reports from './report.service.js';
 import { monitoringPage } from './assignment-monitoring.projection.js';
 import { operationalAlerts, operationalSummary } from './operational-monitoring.projection.js';
 import { acknowledgeAlert } from './operational-alert.service.js';
+import { backlogHealth } from './backlog-health.service.js';
 
 export const backofficeRoutes = Router();
 
 backofficeRoutes.get('/admin/monitoring/summary', async (req, res) => {
   actor(req, 'ADMIN');
   res.json(await operationalSummary());
+});
+backofficeRoutes.get('/admin/health/backlog', async (req, res) => {
+  actor(req, 'ADMIN');
+  res.json(await backlogHealth());
 });
 backofficeRoutes.get('/admin/alerts', async (req, res) => {
   actor(req, 'ADMIN');

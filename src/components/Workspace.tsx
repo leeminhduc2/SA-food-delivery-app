@@ -8,6 +8,7 @@ import { ModerationRequests } from './ReviewResponses';
 import { DeliveryIncidents } from './DeliveryIncidents';
 import { AdminRefundRequests } from './RefundRequests';
 import { AdminKpis } from './AdminKpis';
+import { SystemHealth } from './SystemHealth';
 type OpeningDay = { day: number; intervals: Array<{ start: string; end: string }> };
 const weekdays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const emptySchedule = (): OpeningDay[] => weekdays.map((_, day) => ({ day, intervals: [] }));
@@ -690,6 +691,7 @@ export function AdminPanels({
       <DeliveryIncidents onChanged={refresh} />
       <AdminRefundRequests onChanged={refresh} />
       <ModerationRequests onDecided={refresh} />
+      <SystemHealth />
       <section className="panel">
         <h2>Recovery & reconciliation</h2>
         <p>

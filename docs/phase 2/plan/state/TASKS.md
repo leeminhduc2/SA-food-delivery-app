@@ -47,8 +47,8 @@ Trạng thái này là triển khai **ứng dụng**, không phải soạn tài 
 | [P13-T01](../phases/P13-assignment-strategies.md#p13-t01)             | Lowest ETA và fallback có nhãn                   | DONE        | [run](runs/20261113-2310-P13-T01.md) | —        |
 | [P13-T02](../phases/P13-assignment-strategies.md#p13-t02)             | Balanced Load trong cửa sổ 24 giờ                | DONE        | [run](runs/20261113-2312-P13-T02.md) | —        |
 | [P13-T03](../phases/P13-assignment-strategies.md#p13-t03)             | Strategy configuration và contract tests         | DONE        | [run](runs/20261113-2314-P13-T03.md) | —        |
-| [P14-T01](../phases/P14-resilience-and-final-acceptance.md#p14-t01)   | External resilience và backlog recovery          | IN_PROGRESS | —                                    | —        |
-| [P14-T02](../phases/P14-resilience-and-final-acceptance.md#p14-t02)   | CI PostgreSQL/Redis và role E2E                  | NOT_STARTED | —                                    | —        |
+| [P14-T01](../phases/P14-resilience-and-final-acceptance.md#p14-t01)   | External resilience và backlog recovery          | DONE        | [run](runs/20261113-2350-P14-T01.md) | —        |
+| [P14-T02](../phases/P14-resilience-and-final-acceptance.md#p14-t02)   | CI PostgreSQL/Redis và role E2E                  | IN_PROGRESS | —                                    | —        |
 | [P14-T03](../phases/P14-resilience-and-final-acceptance.md#p14-t03)   | Migration rehearsal và đóng coverage             | NOT_STARTED | —                                    | —        |
 
 Prerequisite nằm trong ROADMAP và file phase. DONE cần mọi AC có evidence và kiểm chứng phù hợp. Test chưa chạy là NOT_RUN/BLOCKED; P05-T04 phải chứng minh đủ 12 core criteria.

@@ -1,3 +1,4 @@
+import { resetBreaker } from '../../../shared/resilience.js';
 import {
   isValidCoordinate,
   type LatLng,
@@ -168,10 +169,14 @@ export function routingProviderFromEnv(env = process.env): RoutingProvider {
 /** Test seam: integration tests replace the network provider with a deterministic one. */
 export let activeRoutingProvider: RoutingProvider = routingProviderFromEnv();
 
+export const ROUTING_BREAKER = 'routing-provider';
+
 export function setRoutingProvider(provider: RoutingProvider): void {
   activeRoutingProvider = provider;
+  resetBreaker(ROUTING_BREAKER);
 }
 
 export function resetRoutingProvider(): void {
   activeRoutingProvider = routingProviderFromEnv();
+  resetBreaker(ROUTING_BREAKER);
 }

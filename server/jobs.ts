@@ -1,5 +1,7 @@
 /** Background work run by the worker loop in index.ts (and directly by tests). */
 import { registerModules } from './modules/index.js';
+import { recordStage } from './shared/job-status.js';
+import { alertBacklog } from './modules/backoffice/index.js';
 import { purgeExpiredSessions } from './modules/identity/index.js';
 import { deliverNotifications } from './modules/notification/index.js';
 import { expireUnpaidOrders } from './modules/ordering/index.js';
@@ -28,6 +30,7 @@ export async function runBackgroundCycle(): Promise<void> {
     { name: 'location cleanup', run: purgeStaleDriverLocations },
     { name: 'proof upload cleanup', run: () => cleanupStagedUploads() },
     { name: 'proof retention', run: () => purgeExpiredProofPhotos() },
+    { name: 'backlog alerts', run: () => alertBacklog() },
   ]);
 }
 
@@ -38,8 +41,10 @@ export async function runIsolatedStages(
   for (const stage of stages) {
     try {
       await stage.run();
-    } catch {
+      recordStage(stage.name);
+    } catch (error) {
       failed.push(stage.name);
+      recordStage(stage.name, error);
       console.error(`Background stage failed: ${stage.name}`);
     }
   }

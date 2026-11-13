@@ -9,7 +9,7 @@ import { notifyOnce } from '../../notification/index.js';
 import { paymentConfig, refundBackoffSeconds } from '../config.js';
 import * as payments from '../infrastructure/payment.repository.js';
 import * as refunds from '../infrastructure/refund.repository.js';
-import { paymentAdapter, providerCall } from '../infrastructure/payment-provider.js';
+import { paymentAdapter, providerCall, providerRead } from '../infrastructure/payment-provider.js';
 import { orderGateway, refundContextGateway } from '../payment.ports.js';
 
 const key = z.string().min(8).max(120);
@@ -371,11 +371,11 @@ export async function processRefunds(
       error = 'The provider did not confirm the refund.';
     try {
       if (claim.attempts > 1) {
-        const known = await providerCall(paymentAdapter.query(payment!.reference));
+        const known = await providerRead(() => paymentAdapter.query(payment!.reference));
         refunded = known?.status === 'REFUNDED';
       }
       if (!refunded) {
-        const outcome = await providerCall(paymentAdapter.refund(payment!.reference));
+        const outcome = await providerCall(() => paymentAdapter.refund(payment!.reference));
         refunded = outcome?.status === 'REFUNDED';
       }
     } catch (failure) {

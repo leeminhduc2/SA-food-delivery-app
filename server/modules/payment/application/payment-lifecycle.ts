@@ -14,7 +14,7 @@ export async function createPayment(db: DB, orderId: string, amount: number): Pr
 export async function ensurePayment(orderId: string): Promise<void> {
   const payment = await payments.findByOrder(orderId);
   if (payment?.status === 'PENDING' && !payment.provider_created) {
-    await providerCall(paymentAdapter.create(payment.reference, payment.amount));
+    await providerCall(() => paymentAdapter.create(payment.reference, payment.amount));
     await payments.setProviderCreated(payment.id);
   }
 }

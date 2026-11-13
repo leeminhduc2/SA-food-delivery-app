@@ -1,7 +1,7 @@
 import { transaction } from '../../../shared/db.js';
 import { publish } from '../../../shared/events.js';
 import * as payments from '../infrastructure/payment.repository.js';
-import { paymentAdapter, providerCall } from '../infrastructure/payment-provider.js';
+import { paymentAdapter, providerRead } from '../infrastructure/payment-provider.js';
 import { orderGateway } from '../payment.ports.js';
 import { cancelPayment, ensurePayment } from './payment-lifecycle.js';
 import { applyPayment } from './webhook.js';
@@ -24,7 +24,7 @@ export async function reconcilePayments(): Promise<void> {
         continue;
       }
       if (payment.status === 'PENDING') await ensurePayment(payment.order_id);
-      const result = await providerCall(paymentAdapter.query(payment.reference));
+      const result = await providerRead(() => paymentAdapter.query(payment.reference));
       if (result && ['SUCCEEDED', 'FAILED'].includes(result.status)) {
         await applyPayment({
           eventId: 'query_' + payment.reference + '_' + result.status,

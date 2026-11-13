@@ -1958,6 +1958,17 @@ paths:
         '400': { description: INVALID_TIME_RANGE }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+  /api/admin/health/backlog:
+    get:
+      tags: [Admin]
+      operationId: backlogHealth
+      summary: Durable queue backlog, last errors, next runs, provider breakers and stage status
+      description: Queue counts come from the database; breaker and stage state are per server process. Not a production SLO.
+      security: [{ sessionCookie: [] }]
+      responses:
+        '200': { description: Backlog health }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /api/notifications:
     get:
       tags: [Support]

@@ -1,5 +1,17 @@
 import { isValidCoordinate, type LatLng, type WalkingRoute } from '../domain/geo.js';
-import { RoutingProviderError, activeRoutingProvider } from '../infrastructure/routing.client.js';
+import {
+  ROUTING_BREAKER,
+  RoutingProviderError,
+  activeRoutingProvider,
+} from '../infrastructure/routing.client.js';
+import { CircuitOpenError, breaker } from '../../../shared/resilience.js';
+
+/** "No route" and bad coordinates are answers, not outages. */
+const countsAsOutage = (error: unknown) =>
+  !(
+    error instanceof RoutingProviderError &&
+    ['NO_ROUTE', 'INVALID_COORDINATES'].includes(error.code)
+  );
 
 export { RoutingProviderError };
 
@@ -45,6 +57,19 @@ function release(): void {
 }
 
 async function callProvider(from: LatLng, to: LatLng): Promise<WalkingRoute> {
+  try {
+    return await breaker(ROUTING_BREAKER, countsAsOutage).run(() => guardedCall(from, to));
+  } catch (error) {
+    if (error instanceof CircuitOpenError)
+      throw new RoutingProviderError(
+        'PROVIDER_ERROR',
+        'Walking routes are temporarily unavailable.',
+      );
+    throw error;
+  }
+}
+
+async function guardedCall(from: LatLng, to: LatLng): Promise<WalkingRoute> {
   await acquire();
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
