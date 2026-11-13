@@ -42,6 +42,7 @@ import { Empty, Modal } from './components/Primitives';
 import { SmartImage } from './components/SmartImage';
 import { AdminPanels, ItemForm, RestaurantForm } from './components/Workspace';
 import { RestaurantReviews } from './components/ReviewResponses';
+import { RestaurantDashboard } from './components/RestaurantDashboard';
 import type { Actor, Basket, Line } from './types';
 import { errorText } from './types';
 
@@ -1208,6 +1209,7 @@ export function App() {
                 </Empty>
               )}
             </div>
+            {actor.role === 'RESTAURANT' && <RestaurantDashboard restaurants={managed} />}
             {actor.role === 'RESTAURANT' && <RestaurantReviews restaurants={managed} />}
             {actor.role === 'ADMIN' && overview && (
               <AdminPanels

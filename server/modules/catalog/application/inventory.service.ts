@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { id, transaction, type DB } from '../../../shared/db.js';
+import { id, prisma, transaction, type DB } from '../../../shared/db.js';
 import { check } from '../../../shared/errors.js';
 import type { User } from '../../../shared/types.js';
 import * as audits from '../../../shared/audit.repository.js';
@@ -227,4 +227,21 @@ export async function setStockThreshold(actor: User, itemId: string, raw: unknow
     );
     return { threshold: input.threshold, stock: item.stock };
   });
+}
+
+/** Owner read API for dashboards: visible items at or below their threshold. */
+export async function inventorySummary(restaurantId: string) {
+  const rows = await prisma.$queryRaw<
+    Array<{ id: string; name: string; stock: number; threshold: number }>
+  >`
+    SELECT id, name, stock,
+      COALESCE(low_stock_threshold, ${inventoryConfig.LOW_STOCK_THRESHOLD}::integer) AS threshold
+    FROM menu_items
+    WHERE restaurant_id = ${restaurantId} AND visible
+      AND stock <= COALESCE(low_stock_threshold, ${inventoryConfig.LOW_STOCK_THRESHOLD}::integer)
+    ORDER BY stock ASC, name ASC, id ASC LIMIT 50`;
+  return {
+    lowStock: rows,
+    soldOut: rows.filter((row) => row.stock === 0).length,
+  };
 }

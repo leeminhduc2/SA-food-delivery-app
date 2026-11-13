@@ -42,6 +42,16 @@ components:
       description: Hex HMAC-SHA256 of the exact raw request bytes using PAYMENT_WEBHOOK_SECRET.
 
   parameters:
+    ReportFrom:
+      name: from
+      in: query
+      description: Inclusive start, ISO 8601 with zone. UI sends local midnight as +07:00.
+      schema: { type: string, format: date-time }
+    ReportTo:
+      name: to
+      in: query
+      description: Exclusive end, ISO 8601 with zone.
+      schema: { type: string, format: date-time }
     Id:
       name: id
       in: path
@@ -1881,6 +1891,23 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+  /api/restaurants/{id}/reports:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Operations]
+      operationId: restaurantReport
+      summary: Restaurant metrics for [from,to) with definitions, cohorts and coverage
+      description: Members see only their restaurant; Admin may read any. Gross delivered value includes delivery fees and is not a payout; refunds are a separate confirmation-time cohort. Missing milestones are reported as null averages with coverage counts. `revenue` keeps the legacy gross meaning.
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - $ref: '#/components/parameters/ReportFrom'
+        - $ref: '#/components/parameters/ReportTo'
+      responses:
+        '200': { description: Restaurant report }
+        '400': { description: INVALID_TIME_RANGE }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /api/notifications:
     get:
       tags: [Support]

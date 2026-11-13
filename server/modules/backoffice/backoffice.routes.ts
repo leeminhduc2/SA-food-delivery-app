@@ -40,6 +40,16 @@ backofficeRoutes.get('/admin/assignments', async (req, res) => {
   res.json(await monitoringPage('assignments', req.query));
 });
 
+backofficeRoutes.get('/restaurants/:id/reports', async (req, res) => {
+  res.json(
+    await reports.restaurantReport(
+      actor(req, 'RESTAURANT', 'ADMIN'),
+      String(req.params.id),
+      req.query,
+    ),
+  );
+});
+
 backofficeRoutes.get('/reports', async (req, res) => {
   res.json(await reports.report(actor(req, 'ADMIN', 'RESTAURANT')));
 });

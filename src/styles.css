@@ -1490,6 +1490,22 @@ summary {
   display: block;
   margin-top: 12px;
 }
+.stats small {
+  display: block;
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.report-range {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.report-range .field {
+  min-width: 0;
+}
 .manage-list {
   display: grid;
   gap: 13px;
