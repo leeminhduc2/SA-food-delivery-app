@@ -1,5 +1,6 @@
 import { id, lockRow, prisma, type DB } from '../../../shared/db.js';
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
+import type { OpeningSchedule } from '../domain/opening-schedule.js';
 
 export type RestaurantRow = {
   id: string;
@@ -23,6 +24,7 @@ export type RestaurantRow = {
   phone: string | null;
   website: string | null;
   opening_hours: string | null;
+  opening_schedule: Prisma.JsonValue | null;
   address_tags: Prisma.JsonValue;
   osm_tags: Prisma.JsonValue;
   imported_at: Date | string | null;
@@ -50,10 +52,12 @@ export async function findById(
   restaurantId: string,
   db: DB = prisma,
 ): Promise<RestaurantRow | undefined> {
-  return (
-    ((await db.restaurant.findUnique({ where: { id: restaurantId } })) as RestaurantRow | null) ??
-    undefined
-  );
+  const row = await db.restaurant.findUnique({ where: { id: restaurantId } });
+  if (!row) return undefined;
+  const schedule = await db.$queryRaw<
+    Array<{ opening_schedule: Prisma.JsonValue | null }>
+  >`SELECT opening_schedule FROM restaurants WHERE id = ${restaurantId}`;
+  return { ...row, opening_schedule: schedule[0].opening_schedule } as RestaurantRow;
 }
 
 export async function findForShare(
@@ -73,7 +77,17 @@ export async function listForManager(
     where: role === 'ADMIN' ? {} : { members: { some: { user_id: userId } } },
     orderBy: { name: 'asc' },
   });
-  return rows as RestaurantRow[];
+  if (!rows.length) return [];
+  const schedules = await db.$queryRaw<
+    Array<{ id: string; opening_schedule: Prisma.JsonValue | null }>
+  >(
+    Prisma.sql`SELECT id, opening_schedule FROM restaurants WHERE id IN (${Prisma.join(rows.map((row) => row.id))})`,
+  );
+  const byId = new Map(schedules.map((row) => [row.id, row.opening_schedule]));
+  return rows.map((row) => ({
+    ...row,
+    opening_schedule: byId.get(row.id) ?? null,
+  })) as RestaurantRow[];
 }
 
 export async function listAll(db: DB = prisma): Promise<RestaurantRow[]> {
@@ -101,6 +115,8 @@ export async function insert(
     address: string;
     cuisine: string;
     image: string;
+    phone?: string | null;
+    opening_schedule?: OpeningSchedule | null;
   },
   db: DB = prisma,
 ): Promise<RestaurantRow> {
@@ -112,9 +128,12 @@ export async function insert(
       address: input.address,
       cuisine: input.cuisine,
       image: input.image,
+      phone: input.phone ?? null,
     },
   });
-  return row as RestaurantRow;
+  if (input.opening_schedule != null)
+    await db.$executeRaw`UPDATE restaurants SET opening_schedule = ${JSON.stringify(input.opening_schedule)}::jsonb WHERE id = ${row.id}`;
+  return (await findById(row.id, db))!;
 }
 
 export async function update(
@@ -158,6 +177,8 @@ export type RestaurantPatch = {
   catalog_visible?: boolean;
   latitude?: number;
   longitude?: number;
+  phone?: string | null;
+  opening_schedule?: OpeningSchedule | null;
 };
 
 export async function updatePartial(
@@ -167,7 +188,7 @@ export async function updatePartial(
 ): Promise<RestaurantRow | undefined> {
   const existing = await findById(restaurantId, db);
   if (!existing) return undefined;
-  const { latitude, longitude, ...fields } = input;
+  const { latitude, longitude, opening_schedule, ...fields } = input;
   const addressChanged =
     fields.address !== undefined && existing.address.trim() !== fields.address.trim();
   const coordinatesGiven = latitude !== undefined || longitude !== undefined;
@@ -189,6 +210,8 @@ export async function updatePartial(
     },
   });
   if (!updated.count) return undefined;
+  if (opening_schedule !== undefined)
+    await db.$executeRaw`UPDATE restaurants SET opening_schedule = ${opening_schedule === null ? null : JSON.stringify(opening_schedule)}::jsonb WHERE id = ${restaurantId}`;
   return findById(restaurantId, db);
 }
 

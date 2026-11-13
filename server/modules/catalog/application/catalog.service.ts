@@ -5,6 +5,7 @@ import { transaction, type DB } from '../../../shared/db.js';
 import { requireActor } from '../../../shared/authz.js';
 import { check } from '../../../shared/errors.js';
 import { imageSchema, linesSchema } from '../domain/catalog.schemas.js';
+import { isOpenAt, openingScheduleSchema } from '../domain/opening-schedule.js';
 import type { User } from '../../../shared/types.js';
 import * as audits from '../../../shared/audit.repository.js';
 import * as menu from '../infrastructure/menu.repository.js';
@@ -43,6 +44,8 @@ export const restaurantSchema = z.object({
   address: z.string().trim().min(8).max(300),
   cuisine: z.string().min(2).max(60),
   image: imageSchema.default(''),
+  phone: z.string().trim().min(3).max(40).nullable().optional(),
+  opening_schedule: openingScheduleSchema.nullable().optional(),
 });
 
 /** PATCH accepts any subset; coordinates must be supplied together. */
@@ -53,6 +56,8 @@ export const restaurantPatchSchema = z
     address: z.string().trim().min(8).max(300),
     cuisine: z.string().min(2).max(60),
     image: imageSchema,
+    phone: z.string().trim().min(3).max(40).nullable(),
+    opening_schedule: openingScheduleSchema.nullable(),
     accepting_orders: z.boolean(),
     catalog_visible: z.boolean(),
     latitude: z.number().min(-90).max(90),
@@ -466,6 +471,13 @@ export async function priceCart(db: DB, raw: unknown, reserve = false): Promise<
     409,
     'UNAVAILABLE',
     'This restaurant is not accepting orders.',
+  );
+  const [{ now }] = await db.$queryRaw<Array<{ now: Date }>>`SELECT clock_timestamp() AS now`;
+  check(
+    isOpenAt(restaurant.opening_schedule, now),
+    409,
+    'RESTAURANT_CLOSED',
+    'This restaurant is closed at this time.',
   );
   const quantities = new Map<string, number>();
   for (const line of lines)

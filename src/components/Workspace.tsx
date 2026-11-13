@@ -3,6 +3,9 @@ import { useState } from 'react';
 import { api, label, money } from '../api';
 import { errorText } from '../types';
 import { Field } from './Primitives';
+type OpeningDay = { day: number; intervals: Array<{ start: string; end: string }> };
+const weekdays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const emptySchedule = (): OpeningDay[] => weekdays.map((_, day) => ({ day, intervals: [] }));
 export function RestaurantForm({
   restaurant: r,
   saved,
@@ -16,13 +19,15 @@ export function RestaurantForm({
       address: r?.address || '',
       cuisine: r?.cuisine || 'Vietnamese',
       image: r?.image || '',
+      phone: r?.phone || '',
     }),
     [flags, setFlags] = useState({
       catalog_visible: r?.catalog_visible ?? true,
       accepting_orders: r?.accepting_orders ?? true,
     }),
     [error, setError] = useState(''),
-    [busy, setBusy] = useState(false);
+    [busy, setBusy] = useState(false),
+    [schedule, setSchedule] = useState<OpeningDay[] | null>(r?.opening_schedule ?? null);
   return (
     <form
       onSubmit={async (e) => {
@@ -31,6 +36,8 @@ export function RestaurantForm({
         try {
           await api('/restaurants' + (r ? '/' + r.id : ''), r ? 'PATCH' : 'POST', {
             ...form,
+            phone: form.phone.trim() || null,
+            opening_schedule: schedule,
             ...(r ? flags : {}),
           });
           await saved();
@@ -51,10 +58,111 @@ export function RestaurantForm({
           key={k}
           label={label(k)}
           value={v}
-          required={k !== 'image'}
+          required={k !== 'image' && k !== 'phone'}
           onChange={(e) => setForm({ ...form, [k]: e.target.value })}
         />
       ))}
+      <fieldset className="opening-schedule">
+        <legend>Structured opening hours</legend>
+        <label className="option">
+          <input
+            type="checkbox"
+            checked={schedule !== null}
+            onChange={(event) => setSchedule(event.target.checked ? emptySchedule() : null)}
+          />{' '}
+          Use an opening schedule
+        </label>
+        {schedule === null ? (
+          <p className="small-text muted">
+            No structured schedule is enforced. Existing opening-hours text is kept for reference.
+          </p>
+        ) : (
+          <>
+            <p className="small-text muted">
+              Days without intervals are closed. Split overnight hours across two days; an end time
+              may be 24:00.
+            </p>
+            {weekdays.map((name, day) => {
+              const entry = schedule.find((value) => value.day === day)!;
+              return (
+                <div className="opening-day" key={name}>
+                  <strong>{name}</strong>
+                  {entry.intervals.map((interval, index) => (
+                    <div className="opening-interval" key={index}>
+                      {(['start', 'end'] as const).map((part) => (
+                        <label key={part}>
+                          {part === 'start' ? 'Start' : 'End'}
+                          <input
+                            aria-label={`${name} interval ${index + 1} ${part}`}
+                            value={interval[part]}
+                            placeholder="HH:MM"
+                            pattern={
+                              part === 'start'
+                                ? '(?:[01][0-9]|2[0-3]):[0-5][0-9]'
+                                : '(?:(?:[01][0-9]|2[0-3]):[0-5][0-9]|24:00)'
+                            }
+                            required
+                            onChange={(event) =>
+                              setSchedule(
+                                schedule.map((value) =>
+                                  value.day === day
+                                    ? {
+                                        ...value,
+                                        intervals: value.intervals.map((slot, i) =>
+                                          i === index
+                                            ? { ...slot, [part]: event.target.value }
+                                            : slot,
+                                        ),
+                                      }
+                                    : value,
+                                ),
+                              )
+                            }
+                          />
+                        </label>
+                      ))}
+                      <button
+                        type="button"
+                        className="text-button"
+                        onClick={() =>
+                          setSchedule(
+                            schedule.map((value) =>
+                              value.day === day
+                                ? {
+                                    ...value,
+                                    intervals: value.intervals.filter((_, i) => i !== index),
+                                  }
+                                : value,
+                            ),
+                          )
+                        }
+                      >
+                        Remove interval
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    className="text-button"
+                    disabled={entry.intervals.length >= 4}
+                    onClick={() =>
+                      setSchedule(
+                        schedule.map((value) =>
+                          value.day === day
+                            ? { ...value, intervals: [...value.intervals, { start: '', end: '' }] }
+                            : value,
+                        ),
+                      )
+                    }
+                  >
+                    Add {name} interval
+                  </button>
+                </div>
+              );
+            })}
+          </>
+        )}
+      </fieldset>
       {r && (
         <>
           <label className="option">

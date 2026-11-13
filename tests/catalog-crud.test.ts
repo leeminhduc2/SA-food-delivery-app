@@ -18,6 +18,7 @@ import {
   setRoutingProvider,
   type RoutingProvider,
 } from '../server/modules/location/infrastructure/routing.client.js';
+import { clearRoutingCache } from '../server/modules/location/application/routing.service.js';
 
 /**
  * End-to-end catalog management semantics: partial restaurant updates,
@@ -150,6 +151,98 @@ after(async () => {
   if (db) await db.prisma.$disconnect();
   await dropTestSchema(admin, schema, schemaCreated);
   await admin.end();
+});
+
+test('structured hours are scoped, validated and rechecked after quote before reservation', async () => {
+  const open = Array.from({ length: 7 }, (_, day) => ({
+    day,
+    intervals: [{ start: '00:00', end: '24:00' }],
+  }));
+  const closed = Array.from({ length: 7 }, (_, day) => ({ day, intervals: [] }));
+  const path = '/restaurants/' + restaurantId;
+  assert.equal(
+    (await request(path, 'PATCH', { phone: '0901234567', opening_schedule: open }, 'restaurant2'))
+      .status,
+    403,
+  );
+  assert.equal(
+    (await request(path, 'PATCH', { phone: '0901234567', opening_schedule: open }, 'admin')).status,
+    403,
+  );
+  const invalid = structuredClone(open);
+  invalid[0].intervals = [{ start: '23:00', end: '02:00' }];
+  assert.equal(
+    (await request(path, 'PATCH', { opening_schedule: invalid }, 'restaurant')).status,
+    400,
+  );
+  const updated = await request(
+    path,
+    'PATCH',
+    { phone: '0901234567', opening_schedule: open },
+    'restaurant',
+  );
+  assert.equal(updated.status, 200);
+  assert.equal(updated.data.phone, '0901234567');
+  assert.deepEqual(updated.data.opening_schedule, open);
+  const created = await request(
+    '/restaurants',
+    'POST',
+    {
+      name: 'Hours Test Kitchen',
+      description: '',
+      address: '123 Example Street',
+      cuisine: 'Vietnamese',
+      phone: '0901112222',
+      opening_schedule: open,
+    },
+    'restaurant',
+  );
+  assert.equal(created.status, 201, JSON.stringify(created.data));
+  assert.equal(created.data.phone, '0901112222');
+  assert.deepEqual(created.data.opening_schedule, open);
+  const managed = await request('/manage/restaurants', 'GET', undefined, 'restaurant');
+  assert.deepEqual(managed.data.find((row: any) => row.id === restaurantId).opening_schedule, open);
+  const preview = await request('/checkout/quote', 'POST', { items: itemLines });
+  assert.equal(preview.status, 200);
+  const stock = (await db.prisma.menuItem.findUniqueOrThrow({ where: { id: itemLines[0].itemId } }))
+    .stock;
+  const key = 'closing-' + randomUUID();
+  try {
+    await db.prisma.deliveryQuote.deleteMany({ where: { restaurant_id: restaurantId } });
+    clearRoutingCache();
+    setRoutingProvider({
+      ...fakeRouting,
+      name: 'closing-router',
+      async walkingRoute(from, to) {
+        await db.prisma
+          .$executeRaw`UPDATE restaurants SET opening_schedule = ${JSON.stringify(closed)}::jsonb WHERE id = ${restaurantId}`;
+        return fakeRouting.walkingRoute(from, to);
+      },
+    });
+    const checkout = await request('/checkout', 'POST', {
+      items: itemLines,
+      expectedTotal: preview.data.total,
+      idempotencyKey: key,
+    });
+    assert.equal(checkout.status, 409, JSON.stringify(checkout.data));
+    assert.equal(checkout.data.code, 'RESTAURANT_CLOSED');
+    assert.equal(
+      (await db.prisma.menuItem.findUniqueOrThrow({ where: { id: itemLines[0].itemId } })).stock,
+      stock,
+    );
+    assert.equal(
+      await db.prisma.order.count({ where: { customer_id: 'customer', idempotency_key: key } }),
+      0,
+    );
+  } finally {
+    setRoutingProvider(fakeRouting);
+    clearRoutingCache();
+    assert.equal(
+      (await request(path, 'PATCH', { phone: null, opening_schedule: null }, 'restaurant')).status,
+      200,
+    );
+  }
+  assert.equal((await request('/checkout/quote', 'POST', { items: itemLines })).status, 200);
 });
 
 test('pausing orders keeps the kitchen public but blocks quote and checkout', async () => {

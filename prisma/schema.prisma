@@ -78,6 +78,7 @@ model Restaurant {
   phone                  String?
   website                String?
   opening_hours          String?
+  opening_schedule       Json?
   address_tags           Json               @default("{}")
   osm_tags               Json               @default("{}")
   imported_at            DateTime?          @db.Timestamptz(6)

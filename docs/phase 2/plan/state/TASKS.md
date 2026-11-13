@@ -29,7 +29,7 @@ Trạng thái này là triển khai **ứng dụng**, không phải soạn tài 
 | [P07-T01](../phases/P07-admin-monitoring-and-reassignment.md#p07-t01) | Monitoring queries, filters và pagination        | DONE        | [run](runs/20261113-1603-P07-T01.md) | —        |
 | [P07-T02](../phases/P07-admin-monitoring-and-reassignment.md#p07-t02) | Attempts, alerts và operational dashboard        | DONE        | [run](runs/20261113-1613-P07-T02.md) | —        |
 | [P07-T03](../phases/P07-admin-monitoring-and-reassignment.md#p07-t03) | Retry/reassign ngoại lệ và account lock          | DONE        | [run](runs/20261113-1621-P07-T03.md) | —        |
-| [P08-T01](../phases/P08-restaurant-profile-menus-hours.md#p08-t01)    | Phone và lịch mở cửa có cấu trúc                 | NOT_STARTED | —                                    | —        |
+| [P08-T01](../phases/P08-restaurant-profile-menus-hours.md#p08-t01)    | Phone và lịch mở cửa có cấu trúc                 | DONE        | [run](runs/20261113-1629-P08-T01.md) | —        |
 | [P08-T02](../phases/P08-restaurant-profile-menus-hours.md#p08-t02)    | CRUD nhóm món có ownership                       | NOT_STARTED | —                                    | —        |
 | [P08-T03](../phases/P08-restaurant-profile-menus-hours.md#p08-t03)    | Restaurant reject và workspace                   | NOT_STARTED | —                                    | —        |
 | [P09-T01](../phases/P09-inventory-ledger-and-alerts.md#p09-t01)       | Opening balance và StockMovement                 | NOT_STARTED | —                                    | —        |

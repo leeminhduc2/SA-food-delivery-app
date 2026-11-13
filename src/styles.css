@@ -2188,3 +2188,29 @@ td small {
   width: 100%;
   min-width: 0;
 }
+.opening-schedule {
+  margin: 1rem 0;
+  padding: 1rem;
+  min-width: 0;
+  border: 1px solid var(--border, #ddd);
+  border-radius: 0.75rem;
+}
+.opening-day {
+  border-top: 1px solid var(--border, #ddd);
+  padding: 0.65rem 0;
+}
+.opening-interval {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.5rem;
+}
+.opening-interval label {
+  display: grid;
+  gap: 0.25rem;
+  width: 6.5rem;
+}
+.opening-interval input {
+  min-width: 0;
+  width: 100%;
+}
