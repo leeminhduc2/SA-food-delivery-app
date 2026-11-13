@@ -554,9 +554,22 @@ components:
         resolution: { type: string, minLength: 3, maxLength: 1000 }
     ReviewModerationInput:
       type: object
-      required: [hidden]
+      required: [hidden, reason]
       properties:
         hidden: { type: boolean }
+        reason: { type: string, minLength: 3, maxLength: 300 }
+    ReviewReplyInput:
+      type: object
+      required: [content, idempotencyKey]
+      properties:
+        content: { type: string, minLength: 3, maxLength: 1000 }
+        idempotencyKey: { type: string, minLength: 8, maxLength: 120 }
+    ReasonWithKey:
+      type: object
+      required: [reason, idempotencyKey]
+      properties:
+        reason: { type: string, minLength: 3, maxLength: 300 }
+        idempotencyKey: { type: string, minLength: 8, maxLength: 120 }
     DeliveryAssignInput:
       type: object
       required: [driverId, reason, exceptionCode, idempotencyKey]
@@ -1530,7 +1543,8 @@ paths:
     post:
       tags: [Support]
       operationId: createComplaint
-      summary: Open a support request for an owned order
+      summary: Open a support request as the order's customer, a restaurant member or a driver who was assigned
+      description: A driver reassigned away may still report the trip but does not gain order access. Staff tickets have no customer_id.
       security: [{ sessionCookie: [], requestedWithHeader: [] }]
       requestBody:
         required: true
@@ -1551,7 +1565,7 @@ paths:
     get:
       tags: [Support]
       operationId: listComplaints
-      summary: Own complaints, or all for an administrator
+      summary: Tickets reported by the caller, or all for an administrator
       security: [{ sessionCookie: [] }]
       responses:
         '200':
@@ -1564,6 +1578,128 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
+  /api/complaints/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Support]
+      operationId: getComplaint
+      summary: One ticket with its history, for its reporter or an administrator
+      security: [{ sessionCookie: [] }]
+      responses:
+        '200': { description: Ticket and history }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/reviews/{id}/reply:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Support]
+      operationId: replyToReview
+      summary: Create the restaurant's reply; the review itself is never edited
+      security: [{ sessionCookie: [], requestedWithHeader: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReviewReplyInput' }
+      responses:
+        '200': { description: Reply ID, revision and content }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+    put:
+      tags: [Support]
+      operationId: reviseReviewReply
+      summary: Revise the current reply; each change appends a revision
+      security: [{ sessionCookie: [], requestedWithHeader: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReviewReplyInput' }
+      responses:
+        '200': { description: Reply ID, revision and content }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/reviews/{id}/moderation-requests:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Support]
+      operationId: requestReviewModeration
+      summary: Ask an administrator to review a review, with reason and evidence
+      security: [{ sessionCookie: [], requestedWithHeader: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReasonWithKey' }
+      responses:
+        '201': { description: Request ID and status PENDING }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/restaurants/{id}/reviews/manage:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Support]
+      operationId: listManagedReviews
+      summary: Reviews of a restaurant with reply and moderation state, for its members
+      security: [{ sessionCookie: [] }]
+      responses:
+        '200': { description: Reviews }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/admin/review-moderation-requests:
+    get:
+      tags: [Admin]
+      operationId: listReviewModerationRequests
+      summary: Moderation requests, optionally filtered by status
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - in: query
+          name: status
+          schema: { type: string, enum: [PENDING, APPROVED, REJECTED] }
+      responses:
+        '200': { description: Requests }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/admin/review-moderation-requests/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    patch:
+      tags: [Admin]
+      operationId: decideReviewModeration
+      summary: Approve (hide) or reject a moderation request with a reason
+      security: [{ sessionCookie: [], requestedWithHeader: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision, reason, idempotencyKey]
+              properties:
+                decision: { type: string, enum: [APPROVE, REJECT] }
+                reason: { type: string, minLength: 3, maxLength: 300 }
+                idempotencyKey: { type: string, minLength: 8, maxLength: 120 }
+      responses:
+        '200': { description: Request ID and decided status }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
   /api/notifications:
     get:
       tags: [Support]

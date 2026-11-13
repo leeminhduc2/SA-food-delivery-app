@@ -22,6 +22,7 @@ export {
   cancelDelivery,
   createDelivery,
   isDriverAssigned,
+  driverParticipated,
   hasActiveTrip,
   activeDeliveryForDriver,
   unassignedDeliveriesForBootstrap,

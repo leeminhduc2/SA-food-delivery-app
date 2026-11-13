@@ -1014,8 +1014,20 @@ test('complete lifecycle: preparation, reassignment, authorized delivery and buy
     (await request(`/orders/${o.id}/review`, 'POST', { rating: 4, content: 'Duplicate' })).status,
     409,
   );
+  // Hiding now requires a moderation reason.
   assert.equal(
     (await request('/admin/reviews/' + review.data.id, 'PATCH', { hidden: true }, 'admin')).status,
+    400,
+  );
+  assert.equal(
+    (
+      await request(
+        '/admin/reviews/' + review.data.id,
+        'PATCH',
+        { hidden: true, reason: 'Test moderation' },
+        'admin',
+      )
+    ).status,
     200,
   );
   assert.equal((await request('/restaurants/saigon')).data.reviews.length, 0);

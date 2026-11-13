@@ -17,7 +17,8 @@ model User {
   created_at         DateTime           @default(now()) @db.Timestamptz(6)
   addresses          Address[]
   carts              Cart?
-  complaints         Complaint[]
+  complaints         Complaint[] @relation("ComplaintCustomer")
+  reported_complaints Complaint[] @relation("ComplaintReporter")
   deliveries         Delivery[]
   assignments        DriverAssignment[]
   notifications      Notification[]
@@ -451,22 +452,94 @@ model Review {
   customer      User       @relation(fields: [customer_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   order         Order      @relation(fields: [order_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   restaurant    Restaurant @relation(fields: [restaurant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  reply               ReviewReply?
+  moderation_requests ReviewModerationRequest[]
 
   @@map("reviews")
 }
 
 model Complaint {
-  id          String   @id
-  order_id    String
-  customer_id String
-  content     String
-  status      String   @default("OPEN")
-  resolution  String?
-  created_at  DateTime @default(now()) @db.Timestamptz(6)
-  customer    User     @relation(fields: [customer_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  order       Order    @relation(fields: [order_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  id            String             @id
+  order_id      String
+  customer_id   String?
+  reporter_id   String
+  reporter_role String
+  content       String
+  status        String             @default("OPEN")
+  resolution    String?
+  resolved_by   String?
+  resolved_at   DateTime?          @db.Timestamptz(6)
+  created_at    DateTime           @default(now()) @db.Timestamptz(6)
+  customer      User?              @relation("ComplaintCustomer", fields: [customer_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  reporter      User               @relation("ComplaintReporter", fields: [reporter_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  order         Order              @relation(fields: [order_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  history       ComplaintHistory[]
 
+  @@index([reporter_id, created_at(sort: Desc)], map: "complaints_reporter")
+  @@index([order_id, status], map: "complaints_order_status")
   @@map("complaints")
+}
+
+model ComplaintHistory {
+  id           String    @id
+  complaint_id String
+  actor_id     String
+  action       String
+  note         String?
+  created_at   DateTime  @default(now()) @db.Timestamptz(6)
+  complaint    Complaint @relation(fields: [complaint_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@index([complaint_id, created_at], map: "complaint_history_complaint")
+  @@map("complaint_history")
+}
+
+model ReviewReply {
+  id            String                @id
+  review_id     String                @unique
+  restaurant_id String
+  author_id     String
+  content       String
+  revision      Int                   @default(1)
+  created_at    DateTime              @default(now()) @db.Timestamptz(6)
+  updated_at    DateTime              @default(now()) @db.Timestamptz(6)
+  review        Review                @relation(fields: [review_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  revisions     ReviewReplyRevision[]
+
+  @@map("review_replies")
+}
+
+model ReviewReplyRevision {
+  id         String      @id
+  reply_id   String
+  revision   Int
+  author_id  String
+  content    String
+  key_hash   String
+  created_at DateTime    @default(now()) @db.Timestamptz(6)
+  reply      ReviewReply @relation(fields: [reply_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@unique([reply_id, revision])
+  @@unique([author_id, reply_id, key_hash], map: "review_reply_revisions_receipt")
+  @@map("review_reply_revisions")
+}
+
+model ReviewModerationRequest {
+  id              String    @id
+  review_id       String
+  restaurant_id   String
+  requester_id    String
+  reason          String
+  status          String    @default("PENDING")
+  decided_by      String?
+  decision_reason String?
+  decided_at      DateTime? @db.Timestamptz(6)
+  key_hash        String
+  created_at      DateTime  @default(now()) @db.Timestamptz(6)
+  review          Review    @relation(fields: [review_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@unique([requester_id, review_id, key_hash])
+  @@index([status, created_at], map: "review_moderation_status")
+  @@map("review_moderation_requests")
 }
 
 model AuditLog {

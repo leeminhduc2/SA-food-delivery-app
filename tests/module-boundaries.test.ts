@@ -161,6 +161,7 @@ const owners: Record<string, { tables: string[]; models: string[] }> = {
       'deliveryOtpChallenge',
       'deliveryOtpAttempt',
       'deliveryProof',
+      'deliveryProofUpload',
     ],
     tables: [
       'deliveries',
@@ -169,11 +170,18 @@ const owners: Record<string, { tables: string[]; models: string[] }> = {
       'delivery_otp_challenges',
       'delivery_otp_attempts',
       'delivery_proofs',
+      'delivery_proof_uploads',
     ],
   },
   notification: { models: ['notification', 'outbox'], tables: ['notifications', 'outbox'] },
-  review: { models: ['review'], tables: ['reviews'] },
-  support: { models: ['complaint'], tables: ['complaints'] },
+  review: {
+    models: ['review', 'reviewReply', 'reviewReplyRevision', 'reviewModerationRequest'],
+    tables: ['reviews', 'review_replies', 'review_reply_revisions', 'review_moderation_requests'],
+  },
+  support: {
+    models: ['complaint', 'complaintHistory'],
+    tables: ['complaints', 'complaint_history'],
+  },
   // Written through shared/audit.repository.ts by every module.
   shared: { models: ['auditLog', 'stateHistory'], tables: ['audit_logs', 'state_history'] },
 };

@@ -39,6 +39,20 @@ export async function isDriverAssigned(
   return Boolean(await deliveries.findActiveForOrderAndDriver(orderId, driverId, db));
 }
 
+/** True if the driver ever held an assignment on this order's delivery, even if reassigned away. */
+export async function driverParticipated(
+  orderId: string,
+  driverId: string,
+  db: DB = prisma,
+): Promise<boolean> {
+  return Boolean(
+    await db.driverAssignment.findFirst({
+      where: { driver_id: driverId, delivery: { order_id: orderId } },
+      select: { id: true },
+    }),
+  );
+}
+
 export async function hasActiveTrip(driverId: string, db: DB = prisma): Promise<boolean> {
   return Boolean(await deliveries.findActiveForDriver(driverId, db));
 }

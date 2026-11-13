@@ -41,6 +41,7 @@ import { MenuGroups } from './components/MenuGroups';
 import { Empty, Modal } from './components/Primitives';
 import { SmartImage } from './components/SmartImage';
 import { AdminPanels, ItemForm, RestaurantForm } from './components/Workspace';
+import { RestaurantReviews } from './components/ReviewResponses';
 import type { Actor, Basket, Line } from './types';
 import { errorText } from './types';
 
@@ -244,7 +245,7 @@ export function App() {
       setManaged(await api('/manage/restaurants'));
     }
     if (actor.role === 'ADMIN') setOverview(await api('/admin/overview'));
-    if (['CUSTOMER', 'ADMIN'].includes(actor.role)) setComplaints(await api('/complaints'));
+    setComplaints(await api('/complaints'));
   }, [actor]);
   const refresh = useCallback(async () => {
     await Promise.all([refreshOrders(), refreshNotifications(), refreshStaff()]);
@@ -1206,12 +1207,14 @@ export function App() {
                 </Empty>
               )}
             </div>
+            {actor.role === 'RESTAURANT' && <RestaurantReviews restaurants={managed} />}
             {actor.role === 'ADMIN' && overview && (
               <AdminPanels
                 overview={overview}
                 complaints={complaints}
                 busy={busy}
                 action={action}
+                refresh={refresh}
               />
             )}
             {reports?.daily.length > 0 && (
@@ -1570,13 +1573,14 @@ export function App() {
             <LogOut size={17} />
             Sign out
           </button>
-          {actor.role === 'CUSTOMER' && (
+          {actor.role !== 'ADMIN' && (
             <>
               <h3>Your support requests</h3>
               {complaints.length ? (
                 complaints.map((c) => (
                   <div className="support-request" key={c.id}>
                     <span className="status">{label(c.status)}</span>
+                    <small className="muted"> Order #{c.order_id.slice(0, 8).toUpperCase()}</small>
                     <p>{c.content}</p>
                     {c.resolution && (
                       <p>

@@ -4,6 +4,7 @@ import { api, label, money } from '../api';
 import { errorText } from '../types';
 import { Field } from './Primitives';
 import { InventoryHistory } from './InventoryHistory';
+import { ModerationRequests } from './ReviewResponses';
 type OpeningDay = { day: number; intervals: Array<{ start: string; end: string }> };
 const weekdays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const emptySchedule = (): OpeningDay[] => weekdays.map((_, day) => ({ day, intervals: [] }));
@@ -537,14 +538,17 @@ export function AdminPanels({
   complaints,
   busy,
   action,
+  refresh,
 }: {
   overview: any;
   complaints: any[];
   busy: boolean;
   action: (p: string, b: unknown, m?: string) => Promise<void>;
+  refresh: () => Promise<void>;
 }) {
   const [resolutions, setResolutions] = useState<Record<string, string>>({});
   const [accountReasons, setAccountReasons] = useState<Record<string, string>>({});
+  const [reviewReasons, setReviewReasons] = useState<Record<string, string>>({});
   return (
     <>
       <section className="panel">
@@ -605,7 +609,9 @@ export function AdminPanels({
           complaints.map((c) => (
             <article className="support-request" key={c.id}>
               <div className="between">
-                <strong>Order #{c.order_id.slice(0, 8)}</strong>
+                <strong>
+                  Order #{c.order_id.slice(0, 8)} · from {label(c.reporter_role ?? 'CUSTOMER')}
+                </strong>
                 <span className="status">{label(c.status)}</span>
               </div>
               <p>{c.content}</p>
@@ -648,19 +654,36 @@ export function AdminPanels({
                 </strong>
                 <p>{r.content}</p>
               </div>
-              <button
-                className="button secondary small"
-                disabled={busy}
-                onClick={() => action('/admin/reviews/' + r.id, { hidden: !r.hidden }, 'PATCH')}
-              >
-                {r.hidden ? 'Publish' : 'Hide'}
-              </button>
+              <div>
+                <label className="field">
+                  Reason to {r.hidden ? 'publish' : 'hide'}
+                  <input
+                    value={reviewReasons[r.id] || ''}
+                    maxLength={300}
+                    onChange={(e) => setReviewReasons({ ...reviewReasons, [r.id]: e.target.value })}
+                  />
+                </label>
+                <button
+                  className="button secondary small"
+                  disabled={busy || (reviewReasons[r.id] || '').trim().length < 3}
+                  onClick={() =>
+                    action(
+                      '/admin/reviews/' + r.id,
+                      { hidden: !r.hidden, reason: reviewReasons[r.id] },
+                      'PATCH',
+                    )
+                  }
+                >
+                  {r.hidden ? 'Publish' : 'Hide'}
+                </button>
+              </div>
             </div>
           ))
         ) : (
           <p className="muted">No reviews to moderate.</p>
         )}
       </section>
+      <ModerationRequests onDecided={refresh} />
       <section className="panel">
         <h2>Recovery & reconciliation</h2>
         <p>

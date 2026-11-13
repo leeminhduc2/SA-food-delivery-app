@@ -413,7 +413,7 @@ export function OrderCard({
           ))}
         </ol>
       )}
-      {actor.role === 'CUSTOMER' && (
+      {['CUSTOMER', 'RESTAURANT', 'DRIVER'].includes(actor.role) && (
         <>
           <button className="text-button full" onClick={() => setSupport(!support)}>
             Need help with this order?

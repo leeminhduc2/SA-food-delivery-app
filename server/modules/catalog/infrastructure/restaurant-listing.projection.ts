@@ -64,7 +64,12 @@ export async function listVisibleReviews(restaurantId: string, db: DB = prisma):
       content: true,
       created_at: true,
       customer: { select: { name: true } },
+      reply: { select: { content: true, updated_at: true } },
     },
   });
-  return rows.map(({ customer, ...review }) => ({ ...review, name: customer.name }));
+  return rows.map(({ customer, reply, ...review }) => ({
+    ...review,
+    name: customer.name,
+    reply: reply ?? null,
+  }));
 }

@@ -35,11 +35,17 @@ export async function create(actor: User, orderId: string, raw: unknown): Promis
 }
 
 export async function moderate(actor: User, reviewId: string, raw: unknown): Promise<void> {
-  const { hidden } = z.object({ hidden: z.boolean() }).parse(raw);
+  // Hiding or publishing is a moderation action and always carries a reason.
+  const { hidden, reason } = z
+    .object({ hidden: z.boolean(), reason: z.string().trim().min(3).max(300) })
+    .parse(raw);
   await transaction(async (db) => {
     const row = await reviews.setHidden(reviewId, hidden, db);
     check(row, 404, 'NOT_FOUND', 'Review not found.');
-    await audits.audit(actor.id, 'REVIEW_MODERATED', row.id, { hidden }, db);
+    await audits.audit(actor.id, 'REVIEW_MODERATED', row.id, { hidden, reason }, db, {
+      resourceType: 'REVIEW',
+      outcome: 'SUCCESS',
+    });
   });
 }
 
