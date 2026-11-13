@@ -23,7 +23,8 @@ docsRoutes.use(
 );
 
 docsRoutes.get('/openapi.yaml', (_req, res) => {
-  res.sendFile(resolve('openapi.yaml'));
+  // Server-chosen path; allow installs under a dot directory (e.g. .tmp/ worktrees).
+  res.sendFile(resolve('openapi.yaml'), { dotfiles: 'allow' });
 });
 
 docsRoutes.use(
