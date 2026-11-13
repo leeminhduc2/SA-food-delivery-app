@@ -3,6 +3,7 @@ import { dbNow, prisma, transaction } from '../../../shared/db.js';
 import { check } from '../../../shared/errors.js';
 import { publish } from '../../../shared/events.js';
 import { lockActiveDriver, lockDriver } from '../../identity/index.js';
+import { trackingTransport } from '../../notification/index.js';
 import { locationDependencies } from '../driver-location.ports.js';
 import { validateLocationTime } from '../domain/driver-location-policy.js';
 
@@ -14,7 +15,7 @@ const locationInput = z.object({
 export async function recordDriverLocation(driverId: string, raw: unknown) {
   const input = locationInput.parse(raw);
   const { policy } = locationDependencies();
-  return transaction(async (db) => {
+  const location = await transaction(async (db) => {
     check(
       await lockActiveDriver(driverId, db),
       403,
@@ -55,8 +56,31 @@ export async function recordDriverLocation(driverId: string, raw: unknown) {
       reason: 'LOCATION_CHANGED',
       observedVersion: row.version,
     });
-    return { capturedAt: row.captured_at, receivedAt: row.received_at, version: row.version };
+    return row;
   });
+  const transport = trackingTransport();
+  if (transport) {
+    // The DB transaction has committed. Redis is an ephemeral hint and must
+    // never fail or delay an accepted location update.
+    void transport
+      .publishLocation(
+        {
+          driverId,
+          latitude: location.latitude,
+          longitude: location.longitude,
+          capturedAt: location.captured_at.toISOString(),
+          receivedAt: location.received_at.toISOString(),
+          version: location.version,
+        },
+        locationDependencies().trackingTtlSeconds,
+      )
+      .catch(() => undefined);
+  }
+  return {
+    capturedAt: location.captured_at,
+    receivedAt: location.received_at,
+    version: location.version,
+  };
 }
 export async function purgeStaleDriverLocations() {
   const { policy, retain } = locationDependencies();

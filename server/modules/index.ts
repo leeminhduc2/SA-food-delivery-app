@@ -55,5 +55,6 @@ export function registerModules(): void {
       retentionSeconds: assignmentConfig.OFFLINE_LOCATION_RETENTION_SECONDS,
     },
     retainDriverLocation,
+    assignmentConfig.TRACKING_LOCATION_TTL_SECONDS,
   );
 }

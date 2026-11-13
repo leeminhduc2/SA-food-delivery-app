@@ -23,7 +23,7 @@ Trạng thái này là triển khai **ứng dụng**, không phải soạn tài 
 | [P05-T02](../phases/P05-offer-response-and-core-workflow.md#p05-t02)  | Timeout, retry và exhaustion                     | DONE        | [run](runs/20261112-2358-P05-T02.md) | —        |
 | [P05-T03](../phases/P05-offer-response-and-core-workflow.md#p05-t03)  | Role notifications and offer UI                  | DONE        | [run](runs/20261113-0227-P05-T03.md) | ?        |
 | [P05-T04](../phases/P05-offer-response-and-core-workflow.md#p05-t04)  | Invalidation, race tests and core gate           | DONE        | [run](runs/20261113-1340-P05-T04.md) | ?        |
-| [P06-T01](../phases/P06-realtime-tracking-and-navigation.md#p06-t01)  | Typed Redis transport và snapshot fallback       | NOT_STARTED | —                                    | —        |
+| [P06-T01](../phases/P06-realtime-tracking-and-navigation.md#p06-t01)  | Typed Redis transport and snapshot fallback      | DONE        | [run](runs/20261113-1354-P06-T01.md) | ?        |
 | [P06-T02](../phases/P06-realtime-tracking-and-navigation.md#p06-t02)  | Tracking authorization và SSE lifecycle          | NOT_STARTED | —                                    | —        |
 | [P06-T03](../phases/P06-realtime-tracking-and-navigation.md#p06-t03)  | Bản đồ, navigation và reconnect UI               | NOT_STARTED | —                                    | —        |
 | [P07-T01](../phases/P07-admin-monitoring-and-reassignment.md#p07-t01) | Monitoring queries, filters và pagination        | NOT_STARTED | —                                    | —        |

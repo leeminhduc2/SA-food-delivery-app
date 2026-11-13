@@ -6,6 +6,7 @@
 export { addressRoutes } from './address.routes.js';
 export {
   latestDriverLocation,
+  trackingLocationSnapshot,
   locationFresh,
   listCandidateLocations,
 } from './application/driver-location.service.js';

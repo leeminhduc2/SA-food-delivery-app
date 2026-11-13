@@ -2,6 +2,7 @@ import {
   createRedisBus,
   type NotificationBus,
   type NotificationPush,
+  type TrackingLocation,
 } from './infrastructure/redis-bus.js';
 
 /**
@@ -18,6 +19,15 @@ export function initNotificationBus(onMessage: (message: NotificationPush) => vo
 }
 
 export function notificationBus(): NotificationBus | null {
+  return bus;
+}
+
+export type TrackingTransport = Pick<
+  NotificationBus,
+  'publishLocation' | 'readLocation' | 'subscribeLocations' | 'trackingReady'
+>;
+export type { TrackingLocation };
+export function trackingTransport(): TrackingTransport | null {
   return bus;
 }
 

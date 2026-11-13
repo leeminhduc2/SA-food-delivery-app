@@ -9,3 +9,5 @@ This runbook describes the P05 cutover. It does not apply migrations or change a
 5. To pause automation, drain traffic and restart all instances with `ASSIGNMENT_AUTOMATION_ENABLED=false`. Pending searches and operational work remain durable; manual override still requires an exception, reason, idempotency key and a fully eligible driver. Restart with true and rerun bootstrap before restoring traffic. Do not remove assignment, receipt, incident or audit data as a rollback shortcut.
 
 The bootstrap and migrations were rehearsed only on disposable test schemas; deployment to an application database requires the normal release process.
+
+For P06 deployments, drain older instances before enabling the namespaced Redis transport. Older versions publish notifications on the unscoped channel; inbox records remain durable and can be replayed after reconnect.
