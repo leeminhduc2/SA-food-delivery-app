@@ -172,8 +172,23 @@ test('customer checkout through restaurant preparation, assignment, driver deliv
       'Finish your active delivery before going offline. You can still set yourself not ready.',
     ),
   ).toBeVisible();
-  for (const state of ['Picked up', 'In transit', 'Delivered'])
+  for (const state of ['Picked up', 'In transit'])
     await driverPage.getByRole('button', { name: state, exact: true }).click();
+  // New deliveries need one proof; the customer shares a one-time code.
+  await expect(
+    driverPage.getByRole('button', { name: 'Add delivery proof to complete' }),
+  ).toBeDisabled();
+  await page.reload();
+  const codeSection = page.getByLabel('Delivery code');
+  await codeSection.getByRole('button', { name: 'Generate delivery code' }).click();
+  await expect(codeSection).toContainText(/Your delivery code: \d{6}/);
+  const code = /Your delivery code: (\d{6})/.exec((await codeSection.textContent()) ?? '')![1];
+  const proof = driverPage.getByLabel('Delivery proof');
+  await proof.getByRole('button', { name: 'check again' }).click();
+  await proof.getByLabel('Customer delivery code').fill(code);
+  await proof.getByRole('button', { name: 'Verify code' }).click();
+  await expect(driverPage.getByText('Delivery proof verified: customer code')).toBeVisible();
+  await driverPage.getByRole('button', { name: 'Delivered', exact: true }).click();
   await expect(driverPage.locator('.order-card > .between .status')).toHaveText('Delivered');
   await driverPage.reload();
   await driverPage.getByRole('link', { name: 'My deliveries' }).click();

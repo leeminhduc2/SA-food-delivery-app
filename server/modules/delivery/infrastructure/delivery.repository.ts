@@ -6,11 +6,18 @@ export type DeliveryRow = {
   driver_id: string | null;
   status: string;
   arrived_at: Date | null;
+  proof_required: boolean;
   updated_at: Date | string;
 };
 
-export async function insert(orderId: string, db: DB = prisma): Promise<void> {
-  await db.delivery.create({ data: { id: id(), order_id: orderId } });
+export async function insert(
+  orderId: string,
+  proofRequired: boolean,
+  db: DB = prisma,
+): Promise<void> {
+  await db.delivery.create({
+    data: { id: id(), order_id: orderId, proof_required: proofRequired },
+  });
 }
 
 export async function findByOrderForUpdate(

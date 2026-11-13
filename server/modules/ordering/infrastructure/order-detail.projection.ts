@@ -82,11 +82,33 @@ export async function detailPayment(orderId: string, db: DB = prisma): Promise<a
 export async function detailDelivery(orderId: string, db: DB = prisma): Promise<any | undefined> {
   const row = await db.delivery.findUnique({
     where: { order_id: orderId },
-    include: { driver: { select: { name: true } } },
+    include: {
+      driver: { select: { name: true } },
+      assignments: { where: { active: true }, select: { id: true }, take: 1 },
+      // Safe proof metadata only: no hash, salt, storage key or OTP.
+      proofs: {
+        select: { id: true, assignment_id: true, method: true, status: true, created_at: true },
+        orderBy: { created_at: 'asc' },
+      },
+      otp_challenges: {
+        where: { status: 'ACTIVE' },
+        select: { id: true, assignment_id: true, expires_at: true },
+        take: 1,
+      },
+    },
   });
   if (!row) return undefined;
-  const { driver, ...delivery } = row;
-  return { ...delivery, driver_name: driver?.name ?? null };
+  const { driver, assignments, proofs, otp_challenges, ...delivery } = row;
+  const current = assignments[0]?.id;
+  const relevant = current ? proofs.filter((proof) => proof.assignment_id === current) : proofs;
+  const challenge = otp_challenges.find((item) => item.assignment_id === current);
+  return {
+    ...delivery,
+    driver_name: driver?.name ?? null,
+    proofs: relevant.map(({ assignment_id: _assignment, ...proof }) => proof),
+    proof_verified: relevant.length > 0,
+    otp_challenge: challenge ? { id: challenge.id, expires_at: challenge.expires_at } : null,
+  };
 }
 
 export async function detailHistory(orderId: string, db: DB = prisma): Promise<any[]> {

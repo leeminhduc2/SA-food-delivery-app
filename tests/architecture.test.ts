@@ -931,12 +931,37 @@ test('complete lifecycle: preparation, reassignment, authorized delivery and buy
     0,
     'manual mode must not start a search',
   );
-  for (const status of ['PICKED_UP', 'IN_TRANSIT', 'DELIVERED'])
+  for (const status of ['PICKED_UP', 'IN_TRANSIT'])
     assert.equal(
       (await request(`/deliveries/${o.delivery.id}/transition`, 'POST', { status }, 'driver2'))
         .status,
       200,
     );
+  const otp = await request(`/orders/${o.id}/delivery-proof/otp`, 'POST', {
+    idempotencyKey: 'lifecycle-otp-challenge',
+  });
+  assert.equal(
+    (
+      await request(
+        `/deliveries/${o.delivery.id}/proofs/otp`,
+        'POST',
+        { challengeId: otp.data.challengeId, otp: otp.data.otp, idempotencyKey: 'lifecycle-otp' },
+        'driver2',
+      )
+    ).status,
+    200,
+  );
+  assert.equal(
+    (
+      await request(
+        `/deliveries/${o.delivery.id}/transition`,
+        'POST',
+        { status: 'DELIVERED' },
+        'driver2',
+      )
+    ).status,
+    200,
+  );
   const deliveredStock = await schemaPool.query(
     'SELECT kind, delta FROM stock_movements WHERE order_id=$1 ORDER BY created_at,id',
     [o.id],

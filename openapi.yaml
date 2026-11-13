@@ -1482,6 +1482,7 @@ paths:
       tags: [Delivery]
       operationId: transitionDelivery
       summary: Move an assigned delivery through pickup and delivery
+      description: DELIVERED requires one VERIFIED proof (OTP or photo) of the current assignment when the delivery's proof_required snapshot is true; otherwise 409 PROOF_REQUIRED. Legacy deliveries (false) complete as before. Repeating the same terminal status as the final driver returns ok without new history, events or notifications.
       security: [{ sessionCookie: [], requestedWithHeader: [] }]
       requestBody:
         required: true

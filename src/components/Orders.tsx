@@ -5,6 +5,7 @@ import type { Actor } from '../types';
 import { Field } from './Primitives';
 import { DeliveryTracking } from './DeliveryTracking';
 import { CustomerDeliveryOtp } from './CustomerDeliveryOtp';
+import { DriverDeliveryProof } from './DriverDeliveryProof';
 export function OrderCard({
   order: o,
   actor,
@@ -12,6 +13,7 @@ export function OrderCard({
   busy,
   action,
   drivers,
+  refresh,
 }: {
   order: any;
   actor: Actor;
@@ -19,6 +21,7 @@ export function OrderCard({
   busy: boolean;
   action: (p: string, b: unknown, m?: string) => Promise<void>;
   drivers: any[];
+  refresh?: () => Promise<void> | void;
 }) {
   const [expanded, setExpanded] = useState(false),
     [reason, setReason] = useState(''),
@@ -52,6 +55,9 @@ export function OrderCard({
     PICKED_UP: 'IN_TRANSIT',
     IN_TRANSIT: 'DELIVERED',
   };
+  const waitingForKitchen = o.delivery.status === 'ASSIGNED' && o.status !== 'READY_FOR_PICKUP';
+  const needsProof =
+    o.delivery.status === 'IN_TRANSIT' && o.delivery.proof_required && !o.delivery.proof_verified;
   return (
     <article className="order-card">
       <div className="between">
@@ -110,9 +116,30 @@ export function OrderCard({
           Driver arrived at pickup: {new Date(o.delivery.arrived_at).toLocaleTimeString()}
         </p>
       )}
-      {actor.role === 'CUSTOMER' && ['PICKED_UP', 'IN_TRANSIT'].includes(o.delivery.status) && (
-        <CustomerDeliveryOtp key={`${actor.id}:${o.id}`} orderId={o.id} />
+      {actor.role === 'CUSTOMER' &&
+        o.delivery.proof_required &&
+        !o.delivery.proof_verified &&
+        ['PICKED_UP', 'IN_TRANSIT'].includes(o.delivery.status) && (
+          <CustomerDeliveryOtp key={`${actor.id}:${o.id}`} orderId={o.id} />
+        )}
+      {o.delivery.proof_verified && (
+        <p className="info">
+          Delivery proof verified:{' '}
+          {(o.delivery.proofs ?? [])
+            .map((proof: any) => (proof.method === 'OTP' ? 'customer code' : 'photo'))
+            .join(', ')}
+        </p>
       )}
+      {actor.role === 'DRIVER' &&
+        !o.delivery.proof_verified &&
+        ['PICKED_UP', 'IN_TRANSIT'].includes(o.delivery.status) && (
+          <DriverDeliveryProof
+            key={`${actor.id}:${o.delivery.id}`}
+            deliveryId={o.delivery.id}
+            challenge={o.delivery.otp_challenge ?? null}
+            onChanged={refresh ?? (() => undefined)}
+          />
+        )}
       <details
         className="tracking-disclosure"
         onToggle={(event) => setTrackingOpen(event.currentTarget.open)}
@@ -216,16 +243,18 @@ export function OrderCard({
         <>
           <button
             className="button full"
-            disabled={busy || (o.delivery.status === 'ASSIGNED' && o.status !== 'READY_FOR_PICKUP')}
+            disabled={busy || waitingForKitchen || needsProof}
             onClick={() =>
               action(`/deliveries/${o.delivery.id}/transition`, {
                 status: deliveryNext[o.delivery.status],
               })
             }
           >
-            {o.delivery.status === 'ASSIGNED' && o.status !== 'READY_FOR_PICKUP'
+            {waitingForKitchen
               ? 'Waiting for the kitchen'
-              : label(deliveryNext[o.delivery.status])}
+              : needsProof
+                ? 'Add delivery proof to complete'
+                : label(deliveryNext[o.delivery.status])}
             <Bike size={18} />
           </button>
           {['PICKED_UP', 'IN_TRANSIT'].includes(o.delivery.status) && (

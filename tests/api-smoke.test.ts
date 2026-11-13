@@ -491,6 +491,31 @@ test('smoke: checkout, payment, delivery and review lifecycle', async () => {
   );
   assert.equal(inTransit.status, 200);
 
+  // New deliveries snapshot DELIVERY_PROOF_REQUIRED=true and need one verified proof.
+  const noProof = await request(
+    `/deliveries/${deliveryId}/transition`,
+    'POST',
+    { status: 'DELIVERED' },
+    'driver',
+  );
+  assert.equal(noProof.status, 409);
+  assert.equal(noProof.data.code, 'PROOF_REQUIRED');
+  const challenge = await request(`/orders/${order.data.id}/delivery-proof/otp`, 'POST', {
+    idempotencyKey: 'smoke-otp-challenge',
+  });
+  assert.equal(challenge.status, 200);
+  const proof = await request(
+    `/deliveries/${deliveryId}/proofs/otp`,
+    'POST',
+    {
+      challengeId: challenge.data.challengeId,
+      otp: challenge.data.otp,
+      idempotencyKey: 'smoke-otp-verify',
+    },
+    'driver',
+  );
+  assert.equal(proof.status, 200);
+
   const delivered = await request(
     `/deliveries/${deliveryId}/transition`,
     'POST',

@@ -8,14 +8,17 @@ import * as audits from '../../../shared/audit.repository.js';
 import * as deliveries from '../infrastructure/delivery.repository.js';
 import { orderGateway } from '../delivery.ports.js';
 import { canDriverTransition, hasFailureReason, isOpen } from '../domain/delivery-status.js';
+import { deliveryConfig } from '../config.js';
+import * as proofs from '../infrastructure/proof.repository.js';
 
 const transitionSchema = z.object({
   status: z.enum(['PICKED_UP', 'IN_TRANSIT', 'DELIVERED', 'FAILED']),
   reason: z.string().max(300).default(''),
 });
 
+/** Snapshots the proof policy so later config changes never alter an existing trip. */
 export async function createDelivery(db: DB, orderId: string): Promise<void> {
-  await deliveries.insert(orderId, db);
+  await deliveries.insert(orderId, deliveryConfig.DELIVERY_PROOF_REQUIRED, db);
   await audits.history(orderId, 'DELIVERY', null, 'UNASSIGNED', 'system', '', db);
 }
 
@@ -278,9 +281,17 @@ export async function transition(actor: User, deliveryId: string, raw: unknown):
     check(order, 404, 'NOT_FOUND', 'Order not found.');
     const delivery = await deliveries.findForUpdate(deliveryId, db);
     check(delivery, 404, 'NOT_FOUND', 'Delivery not found.');
+    // A retried terminal command from the final driver is a no-op: no second
+    // history row, event, notification or earning.
+    if (
+      delivery.status === input.status &&
+      ['DELIVERED', 'FAILED'].includes(input.status) &&
+      delivery.driver_id === actor.id
+    )
+      return;
+    const assignment = await deliveries.findActiveAssignment(delivery.id, actor.id, db);
     check(
-      delivery.driver_id === actor.id &&
-        (await deliveries.findActiveAssignment(delivery.id, actor.id, db)),
+      delivery.driver_id === actor.id && assignment,
       403,
       'FORBIDDEN',
       'This delivery is not assigned to you.',
@@ -297,6 +308,13 @@ export async function transition(actor: User, deliveryId: string, raw: unknown):
         409,
         'NOT_READY',
         'The restaurant has not marked the food ready.',
+      );
+    if (input.status === 'DELIVERED' && delivery.proof_required)
+      check(
+        await proofs.findVerified(delivery.id, assignment.id, db),
+        409,
+        'PROOF_REQUIRED',
+        'Add a delivery code or photo before completing this delivery.',
       );
     if (input.status === 'FAILED')
       check(

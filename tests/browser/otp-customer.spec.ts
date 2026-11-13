@@ -28,7 +28,7 @@ test('customer can safely recover from a lost OTP creation response', async ({ p
       [randomUUID(), order, `otp-ui-payment-${order}`],
     );
     await pool.query(
-      "INSERT INTO deliveries (id,order_id,driver_id,status) VALUES ($1,$2,$3,'PICKED_UP')",
+      "INSERT INTO deliveries (id,order_id,driver_id,status,proof_required) VALUES ($1,$2,$3,'PICKED_UP',true)",
       [delivery, order, driver],
     );
     await pool.query(
