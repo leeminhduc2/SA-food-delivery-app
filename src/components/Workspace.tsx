@@ -3,6 +3,7 @@ import { useRef, useState } from 'react';
 import { api, label, money } from '../api';
 import { errorText } from '../types';
 import { Field } from './Primitives';
+import { InventoryHistory } from './InventoryHistory';
 type OpeningDay = { day: number; intervals: Array<{ start: string; end: string }> };
 const weekdays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const emptySchedule = (): OpeningDay[] => weekdays.map((_, day) => ({ day, intervals: [] }));
@@ -245,7 +246,11 @@ export function ItemForm({
     [currentStock, setCurrentStock] = useState<number>(i?.stock ?? 0),
     [stockDelta, setStockDelta] = useState(''),
     [stockReason, setStockReason] = useState(''),
-    [stockMessage, setStockMessage] = useState('');
+    [stockMessage, setStockMessage] = useState(''),
+    [threshold, setThreshold] = useState<number>(i?.low_stock_threshold ?? 5),
+    [thresholdDraft, setThresholdDraft] = useState<string>(String(i?.low_stock_threshold ?? 5)),
+    [thresholdReason, setThresholdReason] = useState(''),
+    [inventoryRevision, setInventoryRevision] = useState(0);
   const stockKeys = useRef<Record<string, string>>({});
   return (
     <form
@@ -352,6 +357,7 @@ export function ItemForm({
                 setStockDelta('');
                 setStockReason('');
                 setStockMessage('Stock adjustment saved.');
+                setInventoryRevision((value) => value + 1);
                 delete stockKeys.current[signature];
               } catch (e) {
                 setError(errorText(e));
@@ -363,6 +369,60 @@ export function ItemForm({
             Apply stock change
           </button>
           {stockMessage && <p role="status">{stockMessage}</p>}
+          {currentStock <= threshold && (
+            <p className="info">
+              Low stock: {currentStock} remaining (threshold {threshold}).
+            </p>
+          )}
+          <Field
+            label="Low-stock threshold"
+            type="number"
+            min={0}
+            max={100000}
+            step={1}
+            value={thresholdDraft}
+            onChange={(event) => setThresholdDraft(event.target.value)}
+          />
+          <Field
+            label="Threshold change reason"
+            maxLength={300}
+            value={thresholdReason}
+            onChange={(event) => setThresholdReason(event.target.value)}
+          />
+          <button
+            type="button"
+            className="button secondary"
+            disabled={
+              busy ||
+              thresholdDraft.trim() === '' ||
+              !Number.isInteger(Number(thresholdDraft)) ||
+              Number(thresholdDraft) < 0 ||
+              Number(thresholdDraft) > 100000 ||
+              thresholdReason.trim().length < 3
+            }
+            onClick={async () => {
+              setBusy(true);
+              setError('');
+              setStockMessage('');
+              try {
+                const result = await api(`/items/${i.id}/stock-threshold`, 'PATCH', {
+                  threshold: Number(thresholdDraft),
+                  reason: thresholdReason.trim(),
+                });
+                setThreshold(result.threshold);
+                setCurrentStock(result.stock);
+                setThresholdReason('');
+                setStockMessage('Low-stock threshold saved.');
+              } catch (e) {
+                setError(errorText(e));
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            Save threshold
+          </button>
+          <InventoryHistory itemId={i.id} revision={inventoryRevision} />
         </section>
       )}
       <Field

@@ -5,6 +5,10 @@ import type { User } from '../../../shared/types.js';
 import * as audits from '../../../shared/audit.repository.js';
 import * as menu from '../infrastructure/menu.repository.js';
 import { assertMember } from './authorization.service.js';
+import { activeRestaurantIds } from '../../identity/index.js';
+import { notifyOnce } from '../../notification/index.js';
+import { memberUserIds } from '../infrastructure/restaurant.repository.js';
+import { inventoryConfig } from '../config.js';
 import { z } from 'zod';
 
 export type MovementKind = 'OPENING' | 'RESERVE' | 'RELEASE' | 'ADJUSTMENT';
@@ -69,9 +73,28 @@ export async function moveStock(
     'The adjustment would produce an invalid stock balance.',
   );
   const movementId = id();
+  const [metadata] = await db.$queryRaw<
+    Array<{ restaurant_id: string; low_stock_threshold: number }>
+  >`SELECT restaurant_id,COALESCE(low_stock_threshold, ${inventoryConfig.LOW_STOCK_THRESHOLD}::integer) AS low_stock_threshold FROM menu_items WHERE id = ${input.itemId}`;
   await db.menuItem.update({ where: { id: input.itemId }, data: { stock: balance } });
   await db.$executeRaw`INSERT INTO stock_movements (id,item_id,kind,delta,balance_after,actor,reason,operation_key,order_id)
     VALUES (${movementId},${input.itemId},${input.kind},${input.delta},${balance},${input.actor},${input.reason},${input.operationKey},${input.orderId ?? null})`;
+  if (stock > metadata.low_stock_threshold && balance <= metadata.low_stock_threshold) {
+    const members = await activeRestaurantIds(await memberUserIds(metadata.restaurant_id, db), db);
+    for (const recipient of members)
+      await notifyOnce(
+        db,
+        recipient,
+        'LOW_STOCK',
+        {
+          itemId: input.itemId,
+          restaurantId: metadata.restaurant_id,
+          stock: balance,
+          threshold: metadata.low_stock_threshold,
+        },
+        movementId,
+      );
+  }
   return { movementId, balanceAfter: balance, replayed: false };
 }
 
@@ -178,5 +201,30 @@ export async function adjustStock(actor: User, itemId: string, raw: unknown) {
       key: input.idempotencyKey,
     });
     return result;
+  });
+}
+
+export async function setStockThreshold(actor: User, itemId: string, raw: unknown) {
+  const input = z
+    .object({
+      threshold: z.number().int().min(0).max(100000),
+      reason: z.string().trim().min(3).max(300),
+    })
+    .strict()
+    .parse(raw);
+  return transaction(async (db) => {
+    const item = await menu.findForUpdate(itemId, db);
+    check(item, 404, 'NOT_FOUND', 'Dish not found.');
+    await assertMember(db, actor, item.restaurant_id);
+    await db.$executeRaw`UPDATE menu_items SET low_stock_threshold = ${input.threshold} WHERE id = ${itemId}`;
+    await audits.audit(
+      actor.id,
+      'STOCK_THRESHOLD_CHANGED',
+      itemId,
+      { oldThreshold: item.low_stock_threshold, threshold: input.threshold, reason: input.reason },
+      db,
+      { resourceType: 'MENU_ITEM', outcome: 'SUCCESS' },
+    );
+    return { threshold: input.threshold, stock: item.stock };
   });
 }

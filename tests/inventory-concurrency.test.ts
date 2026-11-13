@@ -306,3 +306,138 @@ test('release racing a negative adjustment stays nonnegative and reconciles', as
     blocker.release();
   }
 });
+
+test('low stock crossing alerts once, rearms on restock, and history is scoped and paginated', async () => {
+  await item('stock-alert', 7);
+  const path = '/items/stock-alert/stock-adjustments';
+  const alertCount = async () =>
+    db.prisma.outbox.count({
+      where: { type: 'LOW_STOCK', payload: { path: ['itemId'], equals: 'stock-alert' } },
+    });
+  assert.equal(await alertCount(), 0, 'opening never alerts');
+  const adjust = (delta: number, key: string) =>
+    request(path, 'restaurant', { delta, reason: 'Stock count', idempotencyKey: key });
+  assert.equal((await adjust(-2, 'alert-cross-1')).status, 200);
+  assert.equal((await adjust(-2, 'alert-cross-1')).status, 200);
+  assert.equal((await adjust(-1, 'alert-still-low')).status, 200);
+  assert.equal(await alertCount(), 1);
+  assert.equal((await adjust(3, 'alert-rearm-key')).status, 200);
+  assert.equal((await adjust(-2, 'alert-cross-2')).status, 200);
+  assert.equal(await alertCount(), 2);
+  const alerts = await db.prisma.outbox.findMany({
+    where: { type: 'LOW_STOCK', payload: { path: ['itemId'], equals: 'stock-alert' } },
+  });
+  assert.deepEqual([...new Set(alerts.map((entry) => entry.user_id))], ['restaurant']);
+  assert.equal(
+    (
+      await request(
+        '/items/stock-alert/stock-threshold',
+        'restaurant2',
+        { threshold: 6, reason: 'Adjust threshold' },
+        'PATCH',
+      )
+    ).status,
+    403,
+  );
+  assert.equal(
+    (
+      await request(
+        '/items/stock-alert/stock-threshold',
+        'admin',
+        { threshold: 6, reason: 'Adjust threshold' },
+        'PATCH',
+      )
+    ).status,
+    403,
+  );
+  assert.equal(
+    (
+      await request(
+        '/items/stock-alert/stock-threshold',
+        'restaurant',
+        { threshold: 6, reason: 'Adjust threshold' },
+        'PATCH',
+      )
+    ).status,
+    200,
+  );
+  assert.equal(await alertCount(), 2, 'threshold edits do not invent a crossing');
+  const get = async (who: string, query = '') => {
+    const response = await fetch(`${base}/api/items/stock-alert/stock-movements${query}`, {
+      headers: { cookie: cookies[who] ?? '' },
+    });
+    return { status: response.status, data: await response.json() };
+  };
+  for (const who of ['restaurant2', 'customer', 'driver'])
+    assert.equal((await get(who)).status, 403);
+  assert.equal((await get('admin')).status, 200);
+  assert.equal((await get('restaurant', '?limit=101')).status, 400);
+  assert.equal((await get('restaurant', '?cursor=invalid')).status, 400);
+  await pool.query(
+    "UPDATE stock_movements SET created_at='2026-01-01T00:00:00.123456Z' WHERE item_id='stock-alert'",
+  );
+  const ids: string[] = [];
+  let cursor: string | null = null;
+  do {
+    const params = new URLSearchParams({ limit: '1' });
+    if (cursor) params.set('cursor', cursor);
+    const page = await get('restaurant', `?${params}`);
+    assert.equal(page.status, 200);
+    ids.push(...page.data.items.map((row: any) => row.id));
+    cursor = page.data.nextCursor;
+  } while (cursor);
+  assert.equal(ids.length, 5);
+  assert.equal(new Set(ids).size, 5);
+});
+
+test('configured threshold applies to items without an owner override', async () => {
+  const threshold = Number(process.env.LOW_STOCK_THRESHOLD ?? 5);
+  await item('configured-threshold', threshold + 1);
+  const response = await fetch(`${base}/api/items/configured-threshold`);
+  const data = await response.json();
+  assert.equal(data.low_stock_threshold, threshold);
+  const result = await request('/items/configured-threshold/stock-adjustments', 'restaurant', {
+    delta: -1,
+    reason: 'Count stock',
+    idempotencyKey: 'configured-cross-key',
+  });
+  assert.equal(result.status, 200);
+  const alert = await db.prisma.outbox.findFirst({
+    where: { type: 'LOW_STOCK', payload: { path: ['itemId'], equals: 'configured-threshold' } },
+  });
+  assert.ok(alert);
+  assert.equal((alert.payload as any).threshold, threshold);
+});
+
+test('sold-out is derived without changing the owner availability setting', async () => {
+  await item('stock-sold-out', 1);
+  const adjust = (delta: number, key: string) =>
+    request('/items/stock-sold-out/stock-adjustments', 'restaurant', {
+      delta,
+      reason: 'Count stock',
+      idempotencyKey: key,
+    });
+  assert.equal((await adjust(-1, 'sold-out-key')).status, 200);
+  const getItem = async () => await (await fetch(`${base}/api/items/stock-sold-out`)).json();
+  let data = await getItem();
+  assert.equal(data.available, true);
+  assert.equal(data.sellable, false);
+  assert.equal(data.unavailableReason, 'OUT_OF_STOCK');
+  assert.equal(
+    (
+      await request('/checkout/quote', 'customer', {
+        items: [{ itemId: 'stock-sold-out', quantity: 1, optionIds: [] }],
+      })
+    ).status,
+    409,
+  );
+  assert.equal(
+    (await request('/items/stock-sold-out', 'restaurant', { available: false }, 'PATCH')).status,
+    200,
+  );
+  assert.equal((await adjust(3, 'sold-out-restock')).status, 200);
+  data = await getItem();
+  assert.equal(data.available, false);
+  assert.equal(data.sellable, false);
+  assert.equal(data.unavailableReason, 'ITEM_UNAVAILABLE');
+});

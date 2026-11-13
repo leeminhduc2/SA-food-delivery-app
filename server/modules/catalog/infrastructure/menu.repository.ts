@@ -1,5 +1,6 @@
 import { id, lockRow, prisma, type DB } from '../../../shared/db.js';
 import type { Prisma } from '@prisma/client';
+import { inventoryConfig } from '../config.js';
 
 export type MenuItemRow = {
   id: string;
@@ -12,6 +13,7 @@ export type MenuItemRow = {
   available: boolean;
   visible: boolean;
   stock: number;
+  low_stock_threshold?: number | null;
   options: { id: string; name: string; extraPrice: number }[];
   category?: string;
 };
@@ -40,8 +42,13 @@ export async function listByRestaurant(
     include: { menu: { select: { name: true } } },
     orderBy: [{ menu: { name: 'asc' } }, { name: 'asc' }],
   });
+  const thresholds = await db.$queryRaw<
+    Array<{ id: string; low_stock_threshold: number }>
+  >`SELECT id, COALESCE(low_stock_threshold, ${inventoryConfig.LOW_STOCK_THRESHOLD}::integer) AS low_stock_threshold FROM menu_items WHERE restaurant_id = ${restaurantId}`;
+  const byId = new Map(thresholds.map((row) => [row.id, row.low_stock_threshold]));
   return rows.map(({ menu, ...item }) => ({
     ...withOptions(item),
+    low_stock_threshold: byId.get(item.id) ?? inventoryConfig.LOW_STOCK_THRESHOLD,
     category: menu.name,
   }));
 }
@@ -53,7 +60,14 @@ export async function findById(itemId: string, db: DB = prisma): Promise<MenuIte
   });
   if (!row) return undefined;
   const { menu, ...item } = row;
-  return { ...withOptions(item), category: menu.name };
+  const thresholds = await db.$queryRaw<
+    Array<{ low_stock_threshold: number }>
+  >`SELECT COALESCE(low_stock_threshold, ${inventoryConfig.LOW_STOCK_THRESHOLD}::integer) AS low_stock_threshold FROM menu_items WHERE id = ${itemId}`;
+  return {
+    ...withOptions(item),
+    low_stock_threshold: thresholds[0].low_stock_threshold,
+    category: menu.name,
+  };
 }
 
 export async function findForUpdate(

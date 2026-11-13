@@ -4,11 +4,52 @@ import {
   isOpenAt,
   openingScheduleSchema,
 } from '../server/modules/catalog/domain/opening-schedule.js';
+import { sellability } from '../server/modules/catalog/domain/sellability.js';
+import { parseInventoryConfig } from '../server/modules/catalog/config.js';
 
 const schedule = Array.from({ length: 7 }, (_, day) => ({
   day,
   intervals: [] as Array<{ start: string; end: string }>,
 }));
+
+test('inventory default threshold is configurable and invalid values fail validation', () => {
+  assert.equal(parseInventoryConfig({}).LOW_STOCK_THRESHOLD, 5);
+  assert.equal(parseInventoryConfig({ LOW_STOCK_THRESHOLD: '9' }).LOW_STOCK_THRESHOLD, 9);
+  for (const value of ['', '-1', '1.5', '100001', 'abc'])
+    assert.throws(() => parseInventoryConfig({ LOW_STOCK_THRESHOLD: value }));
+});
+
+test('sellability combines restaurant policy, hours, manual flags and stock', () => {
+  const now = new Date('2026-01-05T02:00:00Z');
+  const restaurant = {
+    status: 'APPROVED',
+    catalog_visible: true,
+    accepting_orders: true,
+    opening_schedule: null,
+  };
+  const item = { visible: true, available: true, stock: 1 };
+  assert.deepEqual(sellability(item, restaurant, now), { sellable: true, unavailableReason: null });
+  assert.equal(
+    sellability({ ...item, stock: 0 }, restaurant, now).unavailableReason,
+    'OUT_OF_STOCK',
+  );
+  assert.equal(
+    sellability({ ...item, available: false }, restaurant, now).unavailableReason,
+    'ITEM_UNAVAILABLE',
+  );
+  assert.equal(
+    sellability({ ...item, visible: false }, restaurant, now).unavailableReason,
+    'ITEM_HIDDEN',
+  );
+  assert.equal(
+    sellability(item, { ...restaurant, accepting_orders: false }, now).unavailableReason,
+    'RESTAURANT_UNAVAILABLE',
+  );
+  assert.equal(
+    sellability(item, { ...restaurant, opening_schedule: schedule }, now).unavailableReason,
+    'RESTAURANT_CLOSED',
+  );
+});
 
 test('schedule uses Vietnam local day and half-open boundaries including midnight', () => {
   const hours = structuredClone(schedule);

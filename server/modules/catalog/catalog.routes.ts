@@ -2,7 +2,8 @@ import { Router } from 'express';
 import * as catalog from './application/catalog.service.js';
 import { actor } from '../../shared/http/actor.js';
 import * as groups from './application/menu-groups.service.js';
-import { adjustStock } from './application/inventory.service.js';
+import { adjustStock, setStockThreshold } from './application/inventory.service.js';
+import { stockHistory } from './application/inventory-history.service.js';
 
 export const catalogRoutes = Router();
 
@@ -73,6 +74,12 @@ catalogRoutes.get('/items/:id', async (req, res) => {
 
 catalogRoutes.post('/items/:id/stock-adjustments', async (req, res) => {
   res.json(await adjustStock(actor(req, 'RESTAURANT'), String(req.params.id), req.body));
+});
+catalogRoutes.get('/items/:id/stock-movements', async (req, res) => {
+  res.json(await stockHistory(actor(req, 'RESTAURANT', 'ADMIN'), String(req.params.id), req.query));
+});
+catalogRoutes.patch('/items/:id/stock-threshold', async (req, res) => {
+  res.json(await setStockThreshold(actor(req, 'RESTAURANT'), String(req.params.id), req.body));
 });
 
 catalogRoutes.put('/items/:id', async (req, res) => {

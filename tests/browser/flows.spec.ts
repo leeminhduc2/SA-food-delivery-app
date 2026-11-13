@@ -211,6 +211,17 @@ test('restaurant edits menu options and stock with persistent results', async ({
   await page.getByLabel('Stock adjustment reason').fill('Inventory count');
   await page.getByRole('button', { name: 'Apply stock change' }).click();
   await expect(page.getByRole('status')).toContainText('Stock adjustment saved.');
+  await expect(page.getByLabel('Stock history')).toContainText('adjustment');
+  await page.getByLabel('Low-stock threshold').fill('29');
+  await page.getByLabel('Threshold change reason').fill('Prepare for busy period');
+  await page.getByRole('button', { name: 'Save threshold' }).click();
+  await expect(page.getByText('Low stock: 25 remaining (threshold 29).')).toBeVisible();
+  for (const width of [375, 768, 1024, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+    ).toBeTruthy();
+  }
   await page.getByRole('button', { name: 'Save dish', exact: true }).click();
   await expect(
     page.getByRole('dialog').locator('.manage-item').filter({ hasText: 'Nem rán' }),

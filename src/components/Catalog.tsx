@@ -46,13 +46,19 @@ export function Dish({
           </strong>
           <button
             className="add-button"
-            disabled={busy || disabled || !item.available || item.stock === 0}
+            disabled={
+              busy || disabled || item.sellable === false || !item.available || item.stock === 0
+            }
             aria-label={`Add ${item.name}`}
             onClick={() => add(item, options)}
           >
             {disabled ? (
               'Paused'
-            ) : !item.available || !item.stock ? (
+            ) : item.unavailableReason === 'RESTAURANT_CLOSED' ? (
+              'Closed'
+            ) : item.unavailableReason === 'RESTAURANT_UNAVAILABLE' ? (
+              'Unavailable'
+            ) : !item.available || !item.stock || item.sellable === false ? (
               'Sold out'
             ) : (
               <>

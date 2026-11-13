@@ -158,6 +158,7 @@ model MenuItem {
   available     Boolean     @default(true)
   visible       Boolean     @default(true)
   stock         Int         @default(30)
+  low_stock_threshold Int?
   options       Json        @default("[]")
   mock          Boolean     @default(false)
   menu          Menu        @relation(fields: [menu_id], references: [id], onDelete: NoAction, onUpdate: NoAction)

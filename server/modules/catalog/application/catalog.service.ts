@@ -1,11 +1,12 @@
 import { z } from 'zod';
 import { createHash } from 'node:crypto';
 import type { Prisma } from '@prisma/client';
-import { transaction, type DB } from '../../../shared/db.js';
+import { dbNow, prisma, transaction, type DB } from '../../../shared/db.js';
 import { requireActor } from '../../../shared/authz.js';
 import { check } from '../../../shared/errors.js';
 import { imageSchema, linesSchema } from '../domain/catalog.schemas.js';
 import { isOpenAt, openingScheduleSchema } from '../domain/opening-schedule.js';
+import { sellability } from '../domain/sellability.js';
 import type { User } from '../../../shared/types.js';
 import * as audits from '../../../shared/audit.repository.js';
 import * as menu from '../infrastructure/menu.repository.js';
@@ -213,12 +214,18 @@ export async function getRestaurant(actor: User | undefined, restaurantId: strin
   const items = await menu.listByRestaurant(restaurant.id, {
     includeHidden: privilegedViewer,
   });
+  const now = await dbNow();
   const reviews = await listing.listVisibleReviews(restaurant.id);
   const address = await deliveryAddressForActor(actor?.id);
   const deliveryInfo = await boundedDelivery(
     deliveryInfoForRestaurant(restaurant, address, { includeGeometry: true }),
   );
-  return { ...publicRestaurant(restaurant), items, reviews, deliveryInfo };
+  return {
+    ...publicRestaurant(restaurant),
+    items: items.map((item) => ({ ...item, ...sellability(item, restaurant, now) })),
+    reviews,
+    deliveryInfo,
+  };
 }
 
 /** Public menu for one restaurant; hidden dishes never leave the server. */
@@ -233,7 +240,11 @@ export async function listPublicItems(
     Boolean(actor && (await restaurants.isMember(actor.id, restaurantId)));
   if (restaurant.status !== 'APPROVED' || !restaurant.catalog_visible)
     check(privileged, 404, 'NOT_FOUND', 'Restaurant not found.');
-  return menu.listByRestaurant(restaurantId, { includeHidden: privileged });
+  const [items, now] = await Promise.all([
+    menu.listByRestaurant(restaurantId, { includeHidden: privileged }),
+    dbNow(prisma),
+  ]);
+  return items.map((item) => ({ ...item, ...sellability(item, restaurant, now) }));
 }
 
 export async function getItem(actor: User | undefined, itemId: string): Promise<any> {
@@ -245,7 +256,9 @@ export async function getItem(actor: User | undefined, itemId: string): Promise<
       Boolean(actor && (await restaurants.isMember(actor.id, item.restaurant_id)));
     check(privileged, 404, 'NOT_FOUND', 'Item not found.');
   }
-  return item;
+  const restaurant = await restaurants.findById(item.restaurant_id);
+  check(restaurant, 404, 'NOT_FOUND', 'Restaurant not found.');
+  return { ...item, ...sellability(item, restaurant, await dbNow()) };
 }
 
 export async function createRestaurant(actor: User, raw: unknown): Promise<any> {

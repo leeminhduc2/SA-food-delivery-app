@@ -274,6 +274,9 @@ components:
             restaurant_id: { type: string }
             menu_id: { type: string }
             category: { type: string }
+            low_stock_threshold: { type: integer, minimum: 0, maximum: 100000 }
+            sellable: { type: boolean }
+            unavailableReason: { type: [string, 'null'], enum: [RESTAURANT_UNAVAILABLE, RESTAURANT_CLOSED, ITEM_HIDDEN, ITEM_UNAVAILABLE, OUT_OF_STOCK, null] }
             mock:
               type: boolean
               description: True when the dish belongs to the fictional demo catalog.
@@ -1864,6 +1867,47 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+  /api/items/{id}/stock-movements:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Catalog]
+      operationId: listStockMovements
+      summary: Read stock history as an owner or administrator
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - { in: query, name: limit, schema: { type: integer, minimum: 1, maximum: 100, default: 25 } }
+        - { in: query, name: cursor, schema: { type: string } }
+      responses:
+        '200': { description: Stock movement page with an opaque nextCursor }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/items/{id}/stock-threshold:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    patch:
+      tags: [Catalog]
+      operationId: updateStockThreshold
+      summary: Change the low-stock alert threshold with a reason
+      security: [{ sessionCookie: [], requestedWithHeader: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [threshold, reason]
+              properties:
+                threshold: { type: integer, minimum: 0, maximum: 100000 }
+                reason: { type: string, minLength: 3, maxLength: 300 }
+      responses:
+        '200': { description: Updated threshold and current stock }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /api/restaurants/{id}/menus:
     parameters:
       - $ref: '#/components/parameters/Id'
