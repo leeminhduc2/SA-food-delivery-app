@@ -169,12 +169,15 @@ components:
         district: { type: [string, 'null'] }
         mock:
           type: boolean
-          description: True for the fictional demo catalog. Never verified business data.
+          description: >-
+            True only for demo/test fixtures. The official managed catalog and
+            user-created records use false.
         source:
           type: string
           description: >-
-            MOCK for the fictional demo catalog, MANUAL for user-created records,
-            and OSM for retained legacy imports.
+            CATALOG for the system-managed official catalog, MANUAL for
+            user-created records, MOCK for demo/test fixtures, and OSM for
+            retained legacy imports.
         verified:
           type: boolean
           description: True only when a human has verified the venue data.
@@ -252,7 +255,9 @@ components:
             category: { type: string }
             mock:
               type: boolean
-              description: True when the dish belongs to the fictional demo catalog.
+              description: >-
+                True only for demo/test fixtures. False for the official managed
+                catalog and for dishes created through the API.
     Line:
       type: object
       required: [itemId, quantity]
