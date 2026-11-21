@@ -81,6 +81,16 @@ export function SystemHealth() {
           ) : (
             <p className="muted">No provider has been called by this server process yet.</p>
           )}
+          <h3>Redis pub/sub</h3>
+          {data.redis ? (
+            <ul>
+              <li>Publisher: {label(data.redis.publisher)}</li>
+              <li>Subscriber: {label(data.redis.subscriber)}</li>
+              <li>Live tracking: {data.redis.trackingReady ? 'Ready' : 'Unavailable'}</li>
+            </ul>
+          ) : (
+            <p className="muted">Redis is not configured; live updates use polling.</p>
+          )}
           <p className="small-text muted">{data.note}</p>
         </>
       )}

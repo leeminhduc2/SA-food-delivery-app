@@ -2,6 +2,7 @@ import {
   createRedisBus,
   type NotificationBus,
   type NotificationPush,
+  type RedisHealth,
   type TrackingLocation,
 } from './infrastructure/redis-bus.js';
 
@@ -11,15 +12,29 @@ import {
  */
 let bus: NotificationBus | null = null;
 
-export function initNotificationBus(onMessage: (message: NotificationPush) => void): void {
-  const url = process.env.REDIS_URL;
-  if (!url || bus) return;
-  bus = createRedisBus(url);
+/**
+ * `create` is a test seam for an in-memory bus; production always passes the
+ * real Redis factory. Without a URL the real factory is skipped so Redis stays
+ * optional.
+ */
+export function initNotificationBus(
+  onMessage: (message: NotificationPush) => void,
+  create: (url: string) => NotificationBus = createRedisBus,
+): void {
+  if (bus) return;
+  const url = process.env.REDIS_URL ?? '';
+  if (!url && create === createRedisBus) return;
+  bus = create(url);
   bus.subscribe(onMessage);
 }
 
 export function notificationBus(): NotificationBus | null {
   return bus;
+}
+
+/** Statuses of the in-memory clients; `null` means Redis is not configured. */
+export function redisHealth(): RedisHealth | null {
+  return bus?.health() ?? null;
 }
 
 export type TrackingTransport = Pick<

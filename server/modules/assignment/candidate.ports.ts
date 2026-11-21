@@ -10,6 +10,8 @@ export type CandidateSources = {
   locations: (db: DB) => Promise<CandidateLocation[]>;
   activeDrivers: (ids: readonly string[], db: DB) => Promise<string[]>;
   busyDrivers: (ids: readonly string[], db: DB) => Promise<string[]>;
+  /** All driver accounts, including inactive ones, for assignment diagnostics. */
+  allDrivers: (db: DB) => Promise<string[]>;
 };
 let sources: CandidateSources | undefined;
 export function setCandidateSources(value: CandidateSources): void {

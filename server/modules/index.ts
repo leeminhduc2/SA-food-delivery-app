@@ -26,7 +26,7 @@ import {
   setTrackingRouteGateway,
   estimateWalking,
 } from './location/index.js';
-import { activeDriverIds } from './identity/index.js';
+import { activeDriverIds, allDriverIds } from './identity/index.js';
 import {
   assignmentConfig,
   retainDriverLocation,
@@ -82,6 +82,7 @@ export function registerModules(): void {
     locations: listCandidateLocations,
     activeDrivers: activeDriverIds,
     busyDrivers: busyDriverIds,
+    allDrivers: allDriverIds,
   });
   configureDriverLocation(
     {

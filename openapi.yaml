@@ -690,17 +690,50 @@ paths:
     get:
       tags: [Health]
       operationId: health
-      summary: Check database connectivity
+      summary: Check database and live-transport connectivity
       security: []
       responses:
         '200':
-          description: Healthy
+          description: Database reachable; Redis may be degraded or not configured
           content:
             application/json:
               schema:
                 type: object
+                required: [status, postgres, redis]
                 properties:
-                  status: { type: string, const: ok }
+                  status:
+                    type: string
+                    enum: [ok, degraded]
+                    description: degraded when Redis is configured but not ready
+                  postgres:
+                    type: string
+                    const: ready
+                  redis:
+                    type: [object, 'null']
+                    description: null when REDIS_URL is not configured
+                    required: [publisher, subscriber, trackingReady]
+                    additionalProperties: false
+                    properties:
+                      publisher:
+                        type: string
+                        enum: [ready, reconnecting, disconnected]
+                      subscriber:
+                        type: string
+                        enum: [ready, reconnecting, disconnected]
+                      trackingReady:
+                        type: boolean
+        '503':
+          description: Database unavailable
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, postgres, redis]
+                properties:
+                  status: { type: string, const: unavailable }
+                  postgres: { type: string, const: unavailable }
+                  redis:
+                    type: [object, 'null']
         '500': { $ref: '#/components/responses/ServerError' }
 
   /api/config:
@@ -2669,7 +2702,18 @@ paths:
       summary: Read a search and its attempt history
       security: [{ sessionCookie: [] }]
       responses:
-        '200': { description: Search and attempt metadata }
+        '200':
+          description: >-
+            Search metadata, attempt history and a live read-only candidate
+            diagnostic snapshot. `diagnostics` is null when the order or its
+            pickup point is no longer available. Otherwise it contains
+            `considered`, `eligible`, `reasons` (counts keyed by exclusion
+            reason: ACCOUNT_INACTIVE, LOCATION_MISSING, LOCATION_STALE,
+            DRIVER_OFFLINE, DRIVER_NOT_READY, HEARTBEAT_STALE, DRIVER_BUSY,
+            ALREADY_TRIED, OUT_OF_RANGE or INVALID_LOCATION) and `drivers`
+            (per-driver eligible flag, reason and distance from pickup). The
+            snapshot is computed with the same policy as assignment selection
+            and never changes eligibility.
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }

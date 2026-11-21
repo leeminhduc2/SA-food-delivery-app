@@ -64,10 +64,14 @@ test('accepted order is offered, assigned and picked up without admin interventi
   const availability = driver
     .locator('section')
     .filter({ has: driver.getByRole('heading', { name: 'Driver availability' }) });
-  await availability.getByRole('button', { name: 'Enable location' }).click();
+  // Signing in starts location sharing and goes online once a fix is accepted.
   await expect(availability).toContainText('Location is recent');
-  await availability.getByRole('button', { name: 'Go online' }).click();
-  await availability.getByRole('button', { name: 'Set ready', exact: true }).click();
+  // Other specs in the shared E2E schema may leave the driver not ready, so
+  // only toggle what is not already set.
+  if (await availability.getByRole('button', { name: 'Go online' }).isVisible())
+    await availability.getByRole('button', { name: 'Go online' }).click();
+  if (await availability.getByRole('button', { name: 'Set ready', exact: true }).isVisible())
+    await availability.getByRole('button', { name: 'Set ready', exact: true }).click();
   await expect(availability).toContainText('Online · Ready');
 
   const customerContext = await browser.newContext();
@@ -87,14 +91,16 @@ test('accepted order is offered, assigned and picked up without admin interventi
   await customer.getByRole('button', { name: 'Continue to checkout' }).click();
   await customer.getByRole('button', { name: 'Place order', exact: true }).click();
   await customer.getByRole('button', { name: 'Simulate successful payment' }).click();
-  await expect(customer.locator('.order-card > .between .status')).toHaveText('Confirmed');
+  // Orders are listed newest first; other specs may have left older orders in
+  // the shared schema, so assert on the order that was just placed.
+  await expect(customer.locator('.order-card > .between .status').first()).toHaveText('Confirmed');
 
   const kitchenContext = await browser.newContext();
   const kitchen = await kitchenContext.newPage();
   await login(kitchen, 'restaurant');
   await kitchen.getByRole('link', { name: 'Orders', exact: true }).click();
   await kitchen.getByRole('button', { name: 'Accepted', exact: true }).click();
-  await expect(kitchen.locator('.order-card > .between .status')).toHaveText('Accepted');
+  await expect(kitchen.locator('.order-card > .between .status').first()).toHaveText('Accepted');
   await runWorker();
   const offers = driver
     .locator('section')
@@ -144,6 +150,7 @@ test('offer expired on server is rejected even while countdown is positive', asy
     const target = await pool.query('SELECT current_schema() AS schema');
     expect(target.rows[0].schema).toBe(process.env.E2E_SCHEMA);
     await pool.query(`INSERT INTO orders (id, customer_id, restaurant_id, status, subtotal, delivery_fee, total, address, idempotency_key, fingerprint, expires_at) VALUES ('e2e-expiry-order','customer','mock-restaurant-01','ACCEPTED',1000,10000,11000,'Private address','e2e-expiry-key','test',now()+interval '10 minutes');
+      INSERT INTO payments (id,order_id,reference,amount,status) VALUES ('e2e-expiry-payment','e2e-expiry-order','e2e-expiry-reference',11000,'SUCCEEDED');
       INSERT INTO deliveries (id,order_id) VALUES ('e2e-expiry-delivery','e2e-expiry-order');
       INSERT INTO assignment_searches (id,delivery_id,status,deadline_at,next_run_at) VALUES ('e2e-expiry-search','e2e-expiry-delivery','OFFERED',now()+interval '10 minutes',now()+interval '30 seconds');
       INSERT INTO driver_offers (id,search_id,driver_id,expires_at) VALUES ('e2e-expiry-offer','e2e-expiry-search','driver2',now()+interval '30 seconds');

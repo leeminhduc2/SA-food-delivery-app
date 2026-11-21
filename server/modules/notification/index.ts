@@ -4,8 +4,10 @@ export { deliverNotifications, notify, notifyOnce, outboxHealth } from './notifi
 export {
   closeNotificationBus,
   initNotificationBus,
+  redisHealth,
   trackingTransport,
   type TrackingTransport,
   type TrackingLocation,
 } from './notification.bus.js';
+export type { RedisConnectionStatus, RedisHealth } from './infrastructure/redis-bus.js';
 export { closeAllStreams, dispatchPush } from './notification.stream.js';

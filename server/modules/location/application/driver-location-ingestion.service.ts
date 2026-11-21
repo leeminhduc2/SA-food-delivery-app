@@ -6,6 +6,7 @@ import { lockActiveDriver, lockDriver } from '../../identity/index.js';
 import { trackingTransport } from '../../notification/index.js';
 import { locationDependencies } from '../driver-location.ports.js';
 import { validateLocationTime } from '../domain/driver-location-policy.js';
+import { logLocationPublishFailure } from './driver-location-publish-log.js';
 
 const locationInput = z.object({
   latitude: z.number().finite().min(-90).max(90),
@@ -74,7 +75,11 @@ export async function recordDriverLocation(driverId: string, raw: unknown) {
         },
         locationDependencies().trackingTtlSeconds,
       )
-      .catch(() => undefined);
+      .catch((error: unknown) => {
+        // Fire-and-forget: the GPS request already returned and the row is
+        // committed. Log without coordinates, rate-limited per driver.
+        logLocationPublishFailure(driverId, error instanceof Error ? error.message : String(error));
+      });
   }
   return {
     capturedAt: location.captured_at,

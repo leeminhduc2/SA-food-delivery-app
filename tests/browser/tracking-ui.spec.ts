@@ -155,6 +155,32 @@ test('tracking shows clear fallback, walking routes, freshness, keyboard and cle
     }, id);
     await expect(tracking).toContainText('21.03100');
     await expect(tracking).not.toContainText('0.00000');
+    // A live SSE location event must move the marker and report Live without
+    // waiting for the polling fallback.
+    const beforeLive = await customer.evaluate(() => (window as any).trackingOpened);
+    await expect
+      .poll(() => customer.evaluate(() => (window as any).trackingOpened))
+      .toBeGreaterThan(beforeLive);
+    await customer.evaluate((orderId) => {
+      const stream = (window as any).trackingInstances.at(-1);
+      stream.dispatchEvent(
+        new MessageEvent('location', {
+          data: JSON.stringify({
+            orderId,
+            deliveryId: null,
+            status: 'ASSIGNED',
+            driver: { id: 'driver', name: 'Đức Lê' },
+            location: { latitude: 21.0325, longitude: 105.854 },
+            routeMode: 'WALKING',
+            capturedAt: new Date().toISOString(),
+            stale: false,
+            reason: null,
+          }),
+        }),
+      );
+    }, id);
+    await expect(tracking).toContainText('21.03250');
+    await expect(tracking.locator('.tracking-connection')).toHaveText('Live');
     for (const role of ['restaurant', 'admin']) {
       const context = await browser.newContext();
       contexts.push(context);

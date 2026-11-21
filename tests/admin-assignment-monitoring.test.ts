@@ -35,6 +35,11 @@ before(async () => {
   await verifyTestSchema(schema, db.prisma);
   await (await import('../server/migrate.js')).migrate();
   await (await import('../server/seed/seed.js')).seed();
+  // The demo restaurant has no coordinates by default; diagnostics need a pickup.
+  await db.prisma.restaurant.update({
+    where: { id: 'saigon' },
+    data: { latitude: 21, longitude: 105 },
+  });
   for (const suffix of ['a', 'b', 'c', 'd']) {
     await db.prisma.order.create({
       data: {
@@ -257,4 +262,19 @@ test('alerts are acknowledged once without changing searches or incidents', asyn
   assert.equal(locked.busy, available.busy);
   assert.equal(locked.online, available.online - 1);
   assert.equal(locked.ready, available.ready - 1);
+});
+
+test('assignment detail exposes read-only candidate diagnostics to administrators only', async () => {
+  const detail = await get('/admin/assignments/monitor-search-b');
+  assert.equal(detail.status, 200);
+  assert.ok(detail.data.diagnostics);
+  assert.equal(typeof detail.data.diagnostics.eligible, 'number');
+  assert.equal(typeof detail.data.diagnostics.considered, 'number');
+  assert.ok(
+    detail.data.diagnostics.drivers.some((driver: any) => driver.reason === 'LOCATION_MISSING'),
+  );
+  assert.doesNotMatch(JSON.stringify(detail.data.diagnostics), /private-address|password/i);
+  for (const who of ['customer', 'restaurant'])
+    assert.equal((await get('/admin/assignments/monitor-search-b', who)).status, 403);
+  assert.equal((await get('/admin/assignments/monitor-search-b', '')).status, 401);
 });

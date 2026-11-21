@@ -6,6 +6,7 @@ export {
   lockActiveDriver,
   lockDriver,
   activeDriverIds,
+  allDriverIds,
   activeDriverDisplay,
   activeAdministratorIds,
   activeRestaurantIds,

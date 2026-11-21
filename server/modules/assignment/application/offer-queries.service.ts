@@ -1,6 +1,7 @@
 ﻿import { prisma } from '../../../shared/db.js';
 import { check } from '../../../shared/errors.js';
 import { assignmentOrderGateway } from '../assignment.ports.js';
+import { explainCandidates } from './candidates.service.js';
 
 export async function listDriverOffers(driverId: string) {
   const now = (await prisma.$queryRaw<Array<{ now: Date }>>`SELECT clock_timestamp() AS now`)[0]
@@ -66,6 +67,13 @@ export async function adminSearchDetail(searchId: string) {
   >`
     SELECT id, round, event, reason, next_run_at AS "nextRunAt", created_at AS "createdAt"
     FROM assignment_search_events WHERE search_id = ${searchId} ORDER BY created_at, id`;
+  // A live, read-only explanation of assignment eligibility for operators. The
+  // pickup comes from the same gateway the worker uses; when the order is gone
+  // there is nothing meaningful to explain.
+  const context = await assignmentOrderGateway().context(row.delivery_id, prisma);
+  const diagnostics = context?.pickup
+    ? await explainCandidates(row.id, context.pickup, prisma)
+    : null;
   return {
     searchId: row.id,
     deliveryId: row.delivery_id,
@@ -76,6 +84,7 @@ export async function adminSearchDetail(searchId: string) {
     deadlineAt: row.deadline_at,
     nextRunAt: row.next_run_at,
     events,
+    diagnostics,
     attempts: attempts.map((entry) => ({
       attemptId: entry.id,
       driverId: entry.driver_id,

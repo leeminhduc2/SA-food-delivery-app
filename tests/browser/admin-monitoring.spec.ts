@@ -79,6 +79,21 @@ test('admin monitoring filters, timeline, acknowledgement and responsive fallbac
             nextRunAt: '2026-01-01T00:01:00Z',
           },
         ],
+        diagnostics: {
+          pickup: { latitude: 21, longitude: 105 },
+          considered: 2,
+          eligible: 1,
+          reasons: { DRIVER_OFFLINE: 1 },
+          drivers: [
+            { driverId: 'driver-a', eligible: true, reason: null, distanceMeters: 120 },
+            {
+              driverId: 'driver-b',
+              eligible: false,
+              reason: 'DRIVER_OFFLINE',
+              distanceMeters: 340,
+            },
+          ],
+        },
       },
     }),
   );
@@ -129,6 +144,12 @@ test('admin monitoring filters, timeline, acknowledgement and responsive fallbac
   await panel.getByRole('button', { name: 'View search details' }).click();
   await expect(panel.getByLabel('Search details')).toContainText('Driver driver-a');
   await expect(panel.getByLabel('Search details')).toContainText('No candidate');
+  const diagnostics = panel.getByLabel('Search details');
+  await expect(diagnostics).toContainText('Candidate diagnostics');
+  await expect(diagnostics).toContainText('Eligible now: 1 of 2 considered drivers.');
+  await expect(diagnostics.getByLabel('Candidate exclusion reasons')).toContainText(
+    'Driver offline: 1',
+  );
   await panel.getByLabel('Reason', { exact: true }).fill('Operations review');
   await panel.getByRole('button', { name: 'Retry search' }).click();
   await expect.poll(() => retryBody?.reason).toBe('Operations review');

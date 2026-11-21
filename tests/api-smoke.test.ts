@@ -162,7 +162,19 @@ after(async () => {
 test('smoke: health and API docs respond', async () => {
   const health = await fetch(base + '/api/health');
   assert.equal(health.status, 200);
-  assert.deepEqual(await health.json(), { status: 'ok' });
+  const body = await health.json();
+  assert.ok(body.status === 'ok' || body.status === 'degraded');
+  assert.equal(body.postgres, 'ready');
+  assert.ok(body.redis === null || typeof body.redis === 'object');
+  if (body.redis) {
+    for (const status of [body.redis.publisher, body.redis.subscriber])
+      assert.match(status, /^(ready|reconnecting|disconnected)$/);
+    assert.equal(
+      body.redis.trackingReady,
+      body.redis.publisher === 'ready' && body.redis.subscriber === 'ready',
+    );
+  }
+  assert.doesNotMatch(JSON.stringify(body), /redis:\/\/|password/i);
   assert.match(health.headers.get('x-request-id') || '', /^[0-9a-f-]{36}$/);
 
   const docs = await fetch(base + '/api/docs/');

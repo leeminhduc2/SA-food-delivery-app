@@ -14,8 +14,9 @@ import { assignmentConfig as config } from '../config.js';
 import { haversineMeters } from '../domain/assignment-strategy.js';
 import { resolveAttempt } from '../infrastructure/assignment.repository.js';
 import { availabilityInTransaction } from './availability.service.js';
+import { redispatchForDriver } from './redispatch.service.js';
 
-type Claim = { id: string; driver_id: string; lease_owner: string };
+type Claim = { id: string; driver_id: string; lease_owner: string; source: string };
 async function claimChange(owner: string): Promise<Claim | undefined> {
   return (
     await prisma.$queryRaw<Claim[]>`
@@ -25,7 +26,7 @@ async function claimChange(owner: string): Promise<Claim | undefined> {
       WHERE processed_at IS NULL AND (lease_until IS NULL OR lease_until <= clock_timestamp())
         AND due_at <= clock_timestamp()
       ORDER BY due_at, created_at, id FOR UPDATE SKIP LOCKED LIMIT 1)
-    RETURNING id, driver_id, lease_owner`
+    RETURNING id, driver_id, lease_owner, source`
   )[0];
 }
 async function lockClaim(claim: Claim, db: DB): Promise<boolean> {
@@ -177,6 +178,13 @@ async function handleActiveDelivery(claim: Claim): Promise<void> {
   });
 }
 
+/** A driver coming online is also a dispatch trigger for waiting deliveries. */
+async function handleAvailability(claim: Claim): Promise<void> {
+  // Creating an offer already means the driver has work in front of them.
+  if (claim.source === 'OFFER') return;
+  await redispatchForDriver(claim.driver_id);
+}
+
 /** Finish the claim and schedule a DB-clock recheck when heartbeat or GPS will expire. */
 async function finishChange(claim: Claim): Promise<boolean> {
   return transaction(async (db) => {
@@ -234,6 +242,7 @@ export async function runOperationalInvalidation(
     if (!claim) break;
     await handleOffer(claim);
     await handleActiveDelivery(claim);
+    await handleAvailability(claim);
     if (await finishChange(claim)) processed++;
   }
   return processed;

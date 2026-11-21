@@ -35,6 +35,7 @@ import { AddressMap, AddressSettings, type SavedAddress } from './components/Del
 import { OrderCard } from './components/Orders';
 import { DriverHistory } from './components/DriverHistory';
 import { DriverAvailability } from './components/DriverAvailability';
+import { DriverPresenceProvider } from './components/DriverPresence';
 import { DriverOffers } from './components/DriverOffers';
 import { AdminAssignments } from './components/AdminAssignments';
 import { MenuGroups } from './components/MenuGroups';
@@ -494,7 +495,7 @@ export function App() {
       : []),
   ];
   return (
-    <>
+    <DriverPresenceProvider driverId={actor?.role === 'DRIVER' ? actor.id : null}>
       <a className="skip" href="#main">
         Skip to content
       </a>
@@ -1667,6 +1668,6 @@ export function App() {
           />
         </Modal>
       )}
-    </>
+    </DriverPresenceProvider>
   );
 }

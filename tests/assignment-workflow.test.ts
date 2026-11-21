@@ -202,6 +202,16 @@ test('candidate query uses module capabilities and excludes unavailable drivers'
       active: name !== 'inactive',
     })),
   });
+  await db.prisma.user.create({
+    data: {
+      id: 'candidate-nolocation',
+      email: 'nolocation@candidate.test',
+      name: 'nolocation',
+      password_hash: 'test',
+      role: 'DRIVER',
+      active: true,
+    },
+  });
   const time = (await db.prisma.$queryRaw<Array<{ now: Date }>>`SELECT now() AS now`)[0].now;
   const old = new Date(time.getTime() - 120000);
   await db.prisma.driverLocation.createMany({
@@ -214,12 +224,20 @@ test('candidate query uses module capabilities and excludes unavailable drivers'
     })),
   });
   await db.prisma.driverAvailability.createMany({
-    data: names.map((name) => ({
-      driver_id: userId(name),
-      online: name !== 'offline',
-      ready: name !== 'unready',
-      heartbeat_at: name === 'oldheartbeat' ? old : time,
-    })),
+    data: [
+      ...names.map((name) => ({
+        driver_id: userId(name),
+        online: name !== 'offline',
+        ready: name !== 'unready',
+        heartbeat_at: name === 'oldheartbeat' ? old : time,
+      })),
+      {
+        driver_id: 'candidate-nolocation',
+        online: true,
+        ready: true,
+        heartbeat_at: time,
+      },
+    ],
   });
   await db.prisma.driverAssignment.create({
     data: {
@@ -244,11 +262,39 @@ test('candidate query uses module capabilities and excludes unavailable drivers'
     },
   });
   (await import('../server/modules/index.js')).registerModules();
-  const selected = await (
-    await import('../server/modules/assignment/index.js')
-  ).findEligibleCandidates(search.id, { latitude: 21, longitude: 105 }, db.prisma);
+  const assignment = await import('../server/modules/assignment/index.js');
+  const selected = await assignment.findEligibleCandidates(
+    search.id,
+    { latitude: 21, longitude: 105 },
+    db.prisma,
+  );
   assert.deepEqual(
     selected.map((item) => item.driverId),
     [userId('ok')],
   );
+  // The admin diagnostics must explain the same decisions the worker made.
+  const diagnostics = await assignment.explainCandidates(
+    search.id,
+    { latitude: 21, longitude: 105 },
+    db.prisma,
+  );
+  const reasonOf = (driverId: string) =>
+    diagnostics.drivers.find((driver) => driver.driverId === driverId)?.reason;
+  assert.equal(diagnostics.eligible, 1);
+  assert.equal(
+    diagnostics.drivers.find((driver) => driver.driverId === userId('ok'))?.eligible,
+    true,
+  );
+  assert.equal(reasonOf(userId('inactive')), 'ACCOUNT_INACTIVE');
+  assert.equal(reasonOf(userId('offline')), 'DRIVER_OFFLINE');
+  assert.equal(reasonOf(userId('unready')), 'DRIVER_NOT_READY');
+  assert.equal(reasonOf(userId('oldgps')), 'LOCATION_STALE');
+  assert.equal(reasonOf(userId('oldheartbeat')), 'HEARTBEAT_STALE');
+  assert.equal(reasonOf(userId('busy')), 'DRIVER_BUSY');
+  assert.equal(reasonOf(userId('far')), 'OUT_OF_RANGE');
+  assert.equal(reasonOf(userId('attempted')), 'ALREADY_TRIED');
+  assert.equal(reasonOf(userId('offered')), 'ALREADY_TRIED');
+  assert.equal(reasonOf('candidate-nolocation'), 'LOCATION_MISSING');
+  assert.equal(diagnostics.reasons.LOCATION_STALE, 1);
+  assert.equal(diagnostics.reasons.ACCOUNT_INACTIVE, 1);
 });

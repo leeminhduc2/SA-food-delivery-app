@@ -150,6 +150,11 @@ export function DeliveryTracking({
       startPolling();
       const current = new EventSource(`/api/orders/${encodeURIComponent(orderId)}/tracking/stream`);
       source = current;
+      current.onopen = () => {
+        if (disposed || source !== current) return;
+        retryDelay = 3000;
+        setConnection('live');
+      };
       current.addEventListener('location', (event) => {
         if (disposed || source !== current) return;
         try {
@@ -157,6 +162,10 @@ export function DeliveryTracking({
           if (!data || data.orderId !== orderId || typeof data.status !== 'string') return;
           requestVersion++;
           update(data);
+          if (!terminal(data.status)) {
+            retryDelay = 3000;
+            setConnection('live');
+          }
         } catch {
           /* The next snapshot or heartbeat will recover. */
         }

@@ -2,7 +2,7 @@ import { transaction } from '../../shared/db.js';
 import { stageStatuses } from '../../shared/job-status.js';
 import { breakerSnapshots } from '../../shared/resilience.js';
 import { activeAdministratorIds } from '../identity/index.js';
-import { notifyOnce } from '../notification/index.js';
+import { notifyOnce, redisHealth } from '../notification/index.js';
 import { backlogRows } from './backlog-health.projection.js';
 
 /** A queue is overdue when its next retry is more than this late. */
@@ -20,6 +20,7 @@ export async function backlogHealth(now = new Date()) {
     asOf: now.toISOString(),
     queues,
     breakers: breakerSnapshots(),
+    redis: redisHealth(),
     stages: stageStatuses(),
     note: 'Breaker and stage state are per process; queue counts come from the database.',
   };

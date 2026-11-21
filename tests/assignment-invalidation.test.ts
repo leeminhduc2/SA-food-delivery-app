@@ -1076,3 +1076,41 @@ test(
     }
   },
 );
+
+test('an available driver reopens a search that never found a candidate', async () => {
+  // Other fixtures leave operational rows behind; start this assertion from a clean queue.
+  await db.prisma.driverOperationalChange.deleteMany({ where: { processed_at: null } });
+  const f = await fixture('rearm', 'OFFERED');
+  await db.prisma.assignmentAttempt.deleteMany({ where: { search_id: f.search } });
+  await db.prisma.driverOffer.deleteMany({ where: { search_id: f.search } });
+  await db.prisma.assignmentSearch.update({
+    where: { id: f.search },
+    data: { status: 'EXHAUSTED', offers_created: 0 },
+  });
+  await enqueue(f.driver, 'rearm');
+  assert.equal(await worker.runOperationalInvalidation(50, true), 1);
+  const reopened = await db.prisma.assignmentSearch.findFirstOrThrow({
+    where: { delivery_id: f.delivery, generation: 2 },
+  });
+  assert.equal(reopened.status, 'WAITING');
+  assert.ok(reopened.deadline_at.getTime() > Date.now());
+});
+
+test('an exhausted search that already offered work is not reopened automatically', async () => {
+  await db.prisma.driverOperationalChange.deleteMany({ where: { processed_at: null } });
+  const f = await fixture('rearm-offered', 'OFFERED');
+  await db.prisma.assignmentAttempt.deleteMany({ where: { search_id: f.search } });
+  await db.prisma.driverOffer.deleteMany({ where: { search_id: f.search } });
+  await db.prisma.assignmentSearch.update({
+    where: { id: f.search },
+    data: { status: 'EXHAUSTED', offers_created: 1 },
+  });
+  await enqueue(f.driver, 'rearm-offered');
+  assert.equal(await worker.runOperationalInvalidation(50, true), 1);
+  assert.equal(
+    await db.prisma.assignmentSearch.count({
+      where: { delivery_id: f.delivery, generation: 2 },
+    }),
+    0,
+  );
+});

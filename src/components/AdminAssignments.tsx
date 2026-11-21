@@ -29,7 +29,24 @@ type Event = {
   createdAt: string;
   nextRunAt: string | null;
 };
-type Detail = Search & { attempts: Attempt[]; events: Event[] };
+type Diagnostic = {
+  driverId: string;
+  eligible: boolean;
+  reason: string | null;
+  distanceMeters: number | null;
+};
+type Diagnostics = {
+  pickup: { latitude: number; longitude: number };
+  considered: number;
+  eligible: number;
+  reasons: Record<string, number>;
+  drivers: Diagnostic[];
+};
+type Detail = Search & {
+  attempts: Attempt[];
+  events: Event[];
+  diagnostics?: Diagnostics | null;
+};
 type Alert = {
   kind: string;
   resourceId: string;
@@ -441,6 +458,39 @@ export function AdminAssignments() {
                   {new Date(attempt.createdAt).toLocaleString()}
                 </p>
               ))}
+              <h4>Candidate diagnostics</h4>
+              {!detail.diagnostics ? (
+                <p>No live candidate snapshot for this search.</p>
+              ) : (
+                <>
+                  <p>
+                    Eligible now: {detail.diagnostics.eligible} of {detail.diagnostics.considered}{' '}
+                    considered drivers.
+                  </p>
+                  {Object.entries(detail.diagnostics.reasons).length > 0 && (
+                    <ul aria-label="Candidate exclusion reasons">
+                      {Object.entries(detail.diagnostics.reasons).map(([reason, count]) => (
+                        <li key={reason}>
+                          {label(reason)}: {count}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {detail.diagnostics.drivers.length > 0 && (
+                    <details>
+                      <summary>Show every considered driver</summary>
+                      {detail.diagnostics.drivers.map((driver) => (
+                        <p key={driver.driverId}>
+                          Driver {driver.driverId}:{' '}
+                          {driver.eligible ? 'Eligible' : label(driver.reason ?? 'Unknown')}
+                          {driver.distanceMeters != null &&
+                            ' ? ' + driver.distanceMeters + ' m from pickup'}
+                        </p>
+                      ))}
+                    </details>
+                  )}
+                </>
+              )}
               <Intervention
                 key={detail.searchId}
                 detail={detail}

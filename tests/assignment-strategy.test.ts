@@ -7,6 +7,7 @@ import {
   type AssignmentStrategy,
 } from '../server/modules/assignment/domain/assignment-strategy.js';
 import {
+  candidateExclusionReason,
   selectEligibleCandidates,
   type CandidateFact,
 } from '../server/modules/assignment/domain/candidate-policy.js';
@@ -102,5 +103,61 @@ test('candidate policy filters stale, inactive, unready, busy, out of radius and
   assert.deepEqual(
     selectEligibleCandidates(facts, { latitude: 91, longitude: 105 }, now, policy),
     [],
+  );
+});
+test('candidate diagnostics name the first reason a driver is not assignable', () => {
+  const now = new Date('2026-01-01T00:02:00Z');
+  const fact: CandidateFact = {
+    driverId: 'ok',
+    ...pickup,
+    capturedAt: now,
+    receivedAt: now,
+    heartbeatAt: now,
+    active: true,
+    online: true,
+    ready: true,
+    busy: false,
+    excluded: false,
+  };
+  const policy = {
+    radiusMeters: 5000,
+    locationMaxAgeSeconds: 90,
+    locationMaxFutureSeconds: 15,
+    heartbeatMaxAgeSeconds: 90,
+  };
+  const tooOld = new Date(now.getTime() - 91000);
+  const reason = (value: CandidateFact, at = pickup) =>
+    candidateExclusionReason(value, at, now, policy);
+  assert.equal(reason(fact), null);
+  assert.equal(reason({ ...fact, active: false }), 'ACCOUNT_INACTIVE');
+  assert.equal(reason({ ...fact, online: false }), 'DRIVER_OFFLINE');
+  assert.equal(reason({ ...fact, ready: false }), 'DRIVER_NOT_READY');
+  assert.equal(reason({ ...fact, heartbeatAt: null }), 'HEARTBEAT_STALE');
+  assert.equal(reason({ ...fact, heartbeatAt: tooOld }), 'HEARTBEAT_STALE');
+  assert.equal(reason({ ...fact, heartbeatAt: new Date(now.getTime() + 1000) }), 'HEARTBEAT_STALE');
+  assert.equal(reason({ ...fact, capturedAt: tooOld }), 'LOCATION_STALE');
+  assert.equal(reason({ ...fact, receivedAt: tooOld }), 'LOCATION_STALE');
+  assert.equal(reason({ ...fact, busy: true }), 'DRIVER_BUSY');
+  assert.equal(reason({ ...fact, excluded: true }), 'ALREADY_TRIED');
+  assert.equal(reason({ ...fact, latitude: 22 }), 'OUT_OF_RANGE');
+  assert.equal(reason({ ...fact, latitude: NaN }), 'INVALID_LOCATION');
+  assert.equal(reason({ ...fact, longitude: 181 }), 'INVALID_LOCATION');
+  assert.equal(reason(fact, { latitude: 91, longitude: 105 }), 'OUT_OF_RANGE');
+  // Diagnostics and selection agree for every fact in the matrix.
+  const facts: CandidateFact[] = [
+    fact,
+    { ...fact, driverId: 'inactive', active: false },
+    { ...fact, driverId: 'offline', online: false },
+    { ...fact, driverId: 'unready', ready: false },
+    { ...fact, driverId: 'busy', busy: true },
+    { ...fact, driverId: 'attempted', excluded: true },
+    { ...fact, driverId: 'old-capture', capturedAt: tooOld },
+    { ...fact, driverId: 'old-heartbeat', heartbeatAt: tooOld },
+    { ...fact, driverId: 'far', latitude: 22 },
+    { ...fact, driverId: 'invalid', latitude: NaN },
+  ];
+  assert.deepEqual(
+    facts.filter((value) => reason(value) === null).map((value) => value.driverId),
+    selectEligibleCandidates(facts, pickup, now, policy).map((value) => value.driverId),
   );
 });

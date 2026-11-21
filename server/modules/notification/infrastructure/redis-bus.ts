@@ -30,6 +30,20 @@ export type TrackingLocation = {
   version: number;
 };
 
+export type RedisConnectionStatus = 'ready' | 'reconnecting' | 'disconnected';
+export type RedisHealth = {
+  publisher: RedisConnectionStatus;
+  subscriber: RedisConnectionStatus;
+  trackingReady: boolean;
+};
+
+/** Map ioredis connection states onto the three states the health API exposes. */
+export function redisConnectionStatus(status: string): RedisConnectionStatus {
+  if (status === 'ready') return 'ready';
+  if (status === 'close' || status === 'end') return 'disconnected';
+  return 'reconnecting';
+}
+
 export type NotificationBus = {
   publish(message: NotificationPush): Promise<void>;
   subscribe(handler: (message: NotificationPush) => void): void;
@@ -37,6 +51,7 @@ export type NotificationBus = {
   readLocation(driverId: string): Promise<TrackingLocation | null>;
   subscribeLocations(handler: (message: TrackingLocation) => void): () => void;
   trackingReady(): boolean;
+  health(): RedisHealth;
   close(): Promise<void>;
 };
 
@@ -209,6 +224,14 @@ export function createRedisBus(
     },
     trackingReady() {
       return publisher.status === 'ready' && subscriber.status === 'ready';
+    },
+    health() {
+      // Reads in-memory connection state only; no Redis round-trip per call.
+      return {
+        publisher: redisConnectionStatus(publisher.status),
+        subscriber: redisConnectionStatus(subscriber.status),
+        trackingReady: publisher.status === 'ready' && subscriber.status === 'ready',
+      };
     },
     async close() {
       closed = true;

@@ -4,7 +4,12 @@ export { retainDriverLocation } from './application/location-retention.service.j
 export { isEligibleForAssignment } from './domain/eligibility.js';
 export { getAvailability } from './application/availability.service.js';
 export { setCandidateSources, type CandidateSources } from './candidate.ports.js';
-export { findEligibleCandidates } from './application/candidates.service.js';
+export {
+  explainCandidates,
+  findEligibleCandidates,
+  type CandidateDiagnostic,
+  type CandidateDiagnostics,
+} from './application/candidates.service.js';
 export {
   nearestStrategy,
   strategyNames,

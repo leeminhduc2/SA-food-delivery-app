@@ -220,7 +220,9 @@ npm run db:pull       # re-introspect (read-only; review the diff carefully)
 npm run db:studio     # Prisma Studio at http://localhost:5555
 npm run db:migrate    # apply pending migrations (prisma migrate deploy)
 npm exec prisma migrate status   # show applied and pending migrations
-npm run db:seed       # demo data; requires DEMO_MODE=true
+npm run db:seed:catalog # official 10-restaurant/60-item catalog; no DEMO_MODE
+npm run catalog:promote # metadata-only promotion of an existing MOCK catalog
+npm run db:seed         # demo accounts/legacy fixtures; requires DEMO_MODE=true
 ```
 
 `prisma studio` opens a read/write browser UI. Treat it as an administrative

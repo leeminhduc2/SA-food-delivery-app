@@ -58,19 +58,30 @@ export function OrderCard({
     PICKED_UP: 'IN_TRANSIT',
     IN_TRANSIT: 'DELIVERED',
   };
-  const waitingForKitchen = o.delivery.status === 'ASSIGNED' && o.status !== 'READY_FOR_PICKUP';
+  // Legacy or incomplete orders may have no payment or delivery row. The API
+  // omits those keys instead of inventing data, so every access is guarded.
+  const payment = o.payment ?? null;
+  const delivery = o.delivery ?? null;
+  const items = Array.isArray(o.items) ? o.items : [];
+  const history = Array.isArray(o.history) ? o.history : [];
+  const waitingForKitchen =
+    delivery !== null && delivery.status === 'ASSIGNED' && o.status !== 'READY_FOR_PICKUP';
   const needsProof =
-    o.delivery.status === 'IN_TRANSIT' && o.delivery.proof_required && !o.delivery.proof_verified;
+    delivery !== null &&
+    delivery.status === 'IN_TRANSIT' &&
+    delivery.proof_required &&
+    !delivery.proof_verified;
+  const nextDeliveryStatus = delivery ? deliveryNext[delivery.status] : undefined;
   return (
     <article className="order-card">
       <div className="between">
         <span className="order-number">ORDER #{o.id.slice(0, 8).toUpperCase()}</span>
         <span className={'status ' + o.status}>{label(o.status)}</span>
       </div>
-      <h2>{o.restaurant_name}</h2>
+      <h2>{o.restaurant_name ?? 'Restaurant unavailable'}</h2>
       <p className="muted">{new Date(o.created_at).toLocaleString()}</p>
       <div className="order-items">
-        {o.items.map((i: any) => (
+        {items.map((i: any) => (
           <div key={i.id}>
             <span>
               {i.quantity} × {i.name}
@@ -102,44 +113,47 @@ export function OrderCard({
       <div className="state-pair">
         {actor.role !== 'DRIVER' && (
           <span>
-            Payment<strong>{label(o.payment.status)}</strong>
+            Payment
+            <strong>{payment?.status ? label(payment.status) : 'No payment record'}</strong>
           </span>
         )}
         <span>
-          Delivery<strong>{label(o.delivery.status)}</strong>
+          Delivery
+          <strong>{delivery?.status ? label(delivery.status) : 'No delivery record'}</strong>
         </span>
       </div>
-      {o.delivery.driver_name && (
+      {delivery?.driver_name && (
         <p className="muted">
-          <Bike size={16} /> Your driver: {o.delivery.driver_name}
+          <Bike size={16} /> Your driver: {delivery.driver_name}
         </p>
       )}
-      {o.delivery.arrived_at && (
+      {delivery?.arrived_at && (
         <p className="info">
-          Driver arrived at pickup: {new Date(o.delivery.arrived_at).toLocaleTimeString()}
+          Driver arrived at pickup: {new Date(delivery.arrived_at).toLocaleTimeString()}
         </p>
       )}
       {actor.role === 'CUSTOMER' &&
-        o.delivery.proof_required &&
-        !o.delivery.proof_verified &&
-        ['PICKED_UP', 'IN_TRANSIT'].includes(o.delivery.status) && (
+        delivery?.proof_required &&
+        !delivery.proof_verified &&
+        ['PICKED_UP', 'IN_TRANSIT'].includes(delivery.status) && (
           <CustomerDeliveryOtp key={`${actor.id}:${o.id}`} orderId={o.id} />
         )}
-      {o.delivery.proof_verified && (
+      {delivery?.proof_verified && (
         <p className="info">
           Delivery proof verified:{' '}
-          {(o.delivery.proofs ?? [])
+          {(delivery.proofs ?? [])
             .map((proof: any) => (proof.method === 'OTP' ? 'customer code' : 'photo'))
             .join(', ')}
         </p>
       )}
       {actor.role === 'DRIVER' &&
-        !o.delivery.proof_verified &&
-        ['PICKED_UP', 'IN_TRANSIT'].includes(o.delivery.status) && (
+        delivery &&
+        !delivery.proof_verified &&
+        ['PICKED_UP', 'IN_TRANSIT'].includes(delivery.status) && (
           <DriverDeliveryProof
-            key={`${actor.id}:${o.delivery.id}`}
-            deliveryId={o.delivery.id}
-            challenge={o.delivery.otp_challenge ?? null}
+            key={`${actor.id}:${delivery.id}`}
+            deliveryId={delivery.id}
+            challenge={delivery.otp_challenge ?? null}
             onChanged={refresh ?? (() => undefined)}
           />
         )}
@@ -157,12 +171,12 @@ export function OrderCard({
           />
         )}
       </details>
-      {actor.role === 'DRIVER' && o.delivery.status === 'ASSIGNED' && !o.delivery.arrived_at && (
+      {actor.role === 'DRIVER' && delivery?.status === 'ASSIGNED' && !delivery.arrived_at && (
         <button
           className="button secondary full"
           disabled={busy}
           onClick={() =>
-            action(`/deliveries/${o.delivery.id}/arrive`, { idempotencyKey: arrivalKey.current })
+            action(`/deliveries/${delivery.id}/arrive`, { idempotencyKey: arrivalKey.current })
           }
         >
           Mark arrived at pickup
@@ -175,7 +189,7 @@ export function OrderCard({
             Complete by {new Date(o.expires_at).toLocaleTimeString()}. The kitchen receives your
             order after payment.
           </p>
-          {simulated && (
+          {simulated && payment && (
             <div className="row-actions">
               <button
                 className="button"
@@ -192,6 +206,11 @@ export function OrderCard({
                 Simulate failure
               </button>
             </div>
+          )}
+          {simulated && !payment && (
+            <p className="muted">
+              No payment record is available for this order, so payment cannot be simulated.
+            </p>
           )}
         </div>
       )}
@@ -242,14 +261,14 @@ export function OrderCard({
             After acceptance, contact support if the order cannot be prepared.
           </p>
         )}
-      {actor.role === 'DRIVER' && deliveryNext[o.delivery.status] && (
+      {actor.role === 'DRIVER' && delivery && nextDeliveryStatus && (
         <>
           <button
             className="button full"
             disabled={busy || waitingForKitchen || needsProof}
             onClick={() =>
-              action(`/deliveries/${o.delivery.id}/transition`, {
-                status: deliveryNext[o.delivery.status],
+              action(`/deliveries/${delivery.id}/transition`, {
+                status: nextDeliveryStatus,
               })
             }
           >
@@ -257,14 +276,14 @@ export function OrderCard({
               ? 'Waiting for the kitchen'
               : needsProof
                 ? 'Add delivery proof to complete'
-                : label(deliveryNext[o.delivery.status])}
+                : label(nextDeliveryStatus)}
             <Bike size={18} />
           </button>
-          {['PICKED_UP', 'IN_TRANSIT'].includes(o.delivery.status) && (
+          {['PICKED_UP', 'IN_TRANSIT'].includes(delivery.status) && (
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                action(`/deliveries/${o.delivery.id}/transition`, { status: 'FAILED', reason });
+                action(`/deliveries/${delivery.id}/transition`, { status: 'FAILED', reason });
               }}
             >
               <Field
@@ -282,7 +301,8 @@ export function OrderCard({
         </>
       )}
       {actor.role === 'ADMIN' &&
-        ['UNASSIGNED', 'ASSIGNED'].includes(o.delivery.status) &&
+        delivery &&
+        ['UNASSIGNED', 'ASSIGNED'].includes(delivery.status) &&
         ['ACCEPTED', 'PREPARING', 'READY_FOR_PICKUP'].includes(o.status) && (
           <form
             className="assign"
@@ -290,7 +310,7 @@ export function OrderCard({
               e.preventDefault();
               const signature = JSON.stringify([driver, overrideReason.trim(), exceptionCode]);
               overrideKeys.current[signature] ||= crypto.randomUUID();
-              action(`/admin/deliveries/${o.delivery.id}/reassign`, {
+              action(`/admin/deliveries/${delivery.id}/reassign`, {
                 driverId: driver,
                 reason: overrideReason,
                 exceptionCode,
@@ -414,7 +434,7 @@ export function OrderCard({
       </button>
       {expanded && (
         <ol className="timeline">
-          {o.history.map((h: any) => (
+          {history.map((h: any) => (
             <li key={h.id}>
               <strong>
                 {label(h.entity)} · {label(h.to_state)}

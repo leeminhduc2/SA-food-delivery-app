@@ -20,7 +20,7 @@ npm run dev
 
 Open **http://127.0.0.1:5173**. The API listens on port 3001 and the database on localhost:5433. On macOS/Linux use `npm` and `cp .env.example .env` instead. If `.env` already exists, keep your settings rather than copying over it.
 
-The Compose credentials and example password are only local development defaults. Configure your own `DATABASE_URL`, `PAYMENT_WEBHOOK_SECRET` (at least 32 characters), and `DEMO_PASSWORD` in `.env`. Seeding requires `DEMO_MODE=true` and preserves existing records; changing `DEMO_PASSWORD` does not reset previously seeded passwords.
+The Compose credentials and example password are only local development defaults. Configure your own `DATABASE_URL`, `PAYMENT_WEBHOOK_SECRET` (at least 32 characters), and `DEMO_PASSWORD` in `.env`. The demo account/legacy-fixture seed and the MOCK catalog fixture require `DEMO_MODE=true`; the official catalog (`npm run db:seed:catalog`) does not. All seeds are idempotent and preserve existing records; changing `DEMO_PASSWORD` does not reset previously seeded passwords.
 
 ### Run the whole stack in Docker
 
@@ -29,6 +29,9 @@ docker compose up --build -d
 docker compose run --rm app npm run db:seed
 docker compose run --rm app npm run db:seed:mock
 ```
+
+For an official catalog without demo accounts, replace the two seed commands
+with `docker compose run --rm app npm run db:seed:catalog`.
 
 Compose builds the multi-stage `Dockerfile`, waits for the database healthcheck, then the entrypoint applies pending Prisma migrations (`prisma migrate deploy`) before starting the API on port 3001. A migration failure aborts startup. Seeding stays a deliberate manual step. Open [http://127.0.0.1:3001](http://127.0.0.1:3001); the interactive API reference is at [/api/docs](http://127.0.0.1:3001/api/docs).
 
@@ -120,8 +123,8 @@ npm run db:migrate   # applies the additive address/order-snapshot migration
 ### Legacy OpenStreetMap/demo data
 
 The earlier OSM importer and curated Hanoi demo remain in the database for
-development and are hidden from the public catalog by the mock seed. They are
-never deleted, so historical orders keep working. `npm run catalog:archive`
+development and are hidden from the public catalog by the one-time catalog
+initialization. They are never deleted, so historical orders keep working. `npm run catalog:archive`
 reports or re-applies the reversible visibility change; see
 [the import guide](docs/IMPORT.md) and [the Hanoi data guide](docs/DATA_IMPORT.md).
 Data is © OpenStreetMap contributors (ODbL). The public catalog does not use it.
@@ -137,8 +140,18 @@ npm run db:generate   # regenerate the client after a schema change
 npm run db:validate   # validate prisma/schema.prisma
 npm run db:studio     # browse data in Prisma Studio (port 5555)
 npm run db:migrate    # apply pending migrations (prisma migrate deploy)
-npm run db:seed       # demo data; requires DEMO_MODE=true
+npm run db:seed:catalog # provision the official 10-kitchen/60-dish catalog
+npm run catalog:promote # promote an existing MOCK catalog in place (metadata only)
+npm run db:seed       # demo accounts and legacy fixtures; requires DEMO_MODE=true
 ```
+
+The official catalog does **not** require `DEMO_MODE`. On a fresh database,
+`npm run db:seed:catalog` creates the same ten restaurants and sixty menu items
+as system-managed records (`mock=false`, `source="CATALOG"`, `verified=false`).
+It is idempotent and never overwrites operator edits. On an existing database
+whose catalog was seeded as MOCK, run `npm run catalog:promote`; it updates only
+the mock/source metadata in a transaction, preserves every business field and
+relationship, and is safe to run repeatedly (`-- --dry-run` reports first).
 
 Prisma cannot express PostgreSQL CHECK constraints or partial indexes; those
 live in the baseline migration SQL under `prisma/migrations/`. The existing

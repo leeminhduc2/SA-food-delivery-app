@@ -1,0 +1,8 @@
+* text=auto
+
+# Shell scripts and Docker files must keep LF endings: the container executes
+# docker-entrypoint.sh directly, and a CRLF shebang makes exec fail.
+*.sh text eol=lf
+Dockerfile text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf

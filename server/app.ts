@@ -12,7 +12,7 @@ import { deliveryRoutes } from './modules/delivery/index.js';
 import { authenticate, identityRoutes } from './modules/identity/index.js';
 import { registerModules } from './modules/index.js';
 import { addressRoutes, trackingRoutes } from './modules/location/index.js';
-import { notificationRoutes } from './modules/notification/index.js';
+import { notificationRoutes, redisHealth } from './modules/notification/index.js';
 import { orderRoutes } from './modules/ordering/index.js';
 import { paymentRoutes, refundRoutes } from './modules/payment/index.js';
 import { reviewRoutes } from './modules/review/index.js';
@@ -63,8 +63,26 @@ export function createApp() {
     next();
   });
   app.get('/api/health', async (_req, res) => {
-    await prisma.$queryRaw`SELECT 1`;
-    res.json({ status: 'ok' });
+    // Redis status comes from the in-memory ioredis clients: no extra Redis
+    // round-trip per health request, and no credentials are exposed.
+    const redis = redisHealth();
+    try {
+      await prisma.$queryRaw`SELECT 1`;
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          event: 'health_postgres_unavailable',
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      );
+      res.status(503).json({ status: 'unavailable', postgres: 'unavailable', redis });
+      return;
+    }
+    res.json({
+      status: redis && !redis.trackingReady ? 'degraded' : 'ok',
+      postgres: 'ready',
+      redis,
+    });
   });
   app.use(
     '/api/payments',

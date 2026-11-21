@@ -95,6 +95,9 @@ test('catalog shows the seeded dataset, grouped menu, cuisine filter and safe im
 test('customer checkout through restaurant preparation, assignment, driver delivery, review and complaint', async ({
   browser,
 }) => {
+  // Four browser contexts and the full order lifecycle; slower hosts need
+  // headroom so a timing overrun cannot cascade into later shared-schema specs.
+  test.setTimeout(180000);
   const customer = await browser.newContext();
   const page = await customer.newPage();
   await login(page, 'customer');
@@ -152,10 +155,8 @@ test('customer checkout through restaurant preparation, assignment, driver deliv
   const availability = driverPage
     .locator('section')
     .filter({ has: driverPage.getByRole('heading', { name: 'Driver availability' }) });
-  await availability.getByRole('button', { name: 'Enable location' }).click();
+  // Presence starts on sign-in: the first accepted position goes online and ready.
   await expect(availability).toContainText('Location is recent');
-  await availability.getByRole('button', { name: 'Go online' }).click();
-  await availability.getByRole('button', { name: 'Set ready', exact: true }).click();
   await expect(availability).toContainText('Online · Ready');
   const admin = await browser.newContext();
   const adminPage = await admin.newPage();
@@ -330,7 +331,6 @@ test('driver denied GPS remains offline and offers an accessible retry', async (
     .locator('section')
     .filter({ has: page.getByRole('heading', { name: 'Driver availability' }) });
   await expect(panel).toContainText('Offline');
-  await panel.getByRole('button', { name: 'Enable location' }).click();
   await expect(panel.getByRole('alert')).toContainText('permission denied');
   await expect(panel.getByRole('button', { name: 'Go online' })).toBeDisabled();
   await expect(panel.getByRole('button', { name: 'Enable location' })).toBeEnabled();
@@ -370,9 +370,8 @@ test('driver GPS enables online and is cleaned up on logout', async ({ page }) =
   const panel = page
     .locator('section')
     .filter({ has: page.getByRole('heading', { name: 'Driver availability' }) });
-  await panel.getByRole('button', { name: 'Enable location' }).click();
+  // Signing in starts sharing; the first accepted fix goes online without a click.
   await expect(panel).toContainText('Location is recent');
-  await panel.getByRole('button', { name: 'Go online' }).click();
   await expect(panel).toContainText('Online');
   for (const width of [375, 768, 1024, 1440]) {
     await page.setViewportSize({ width, height: 900 });
